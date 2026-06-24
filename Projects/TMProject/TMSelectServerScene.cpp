@@ -24,7 +24,6 @@
 #include <cstdio>
 extern "C" unsigned int wyd_d3d9_get_debug_flags();
 static constexpr unsigned int kWydDebugDisableDemoCamera = 1u << 22;
-static constexpr unsigned int kWydDebugDisableDemoMotionFix = 1u << 29;
 
 struct WydSelServerHumanTelemetry
 {
@@ -47,6 +46,7 @@ struct WydSelServerHumanTelemetry
 	int mountSkinMeshType;
 	int motion;
 	int sentMotion;
+	int loop;
 	int skinAni;
 	int skinFps;
 	int skinOffset;
@@ -204,6 +204,12 @@ extern "C" int wyd_selserver_human_sent_motion(unsigned int index)
 {
 	auto entry = WydSelServerHumanTelemetryAt(index);
 	return entry ? entry->sentMotion : 0;
+}
+
+extern "C" int wyd_selserver_human_loop(unsigned int index)
+{
+	auto entry = WydSelServerHumanTelemetryAt(index);
+	return entry ? entry->loop : 0;
 }
 
 extern "C" int wyd_selserver_human_skin_ani(unsigned int index)
@@ -368,6 +374,12 @@ extern "C" int wyd_selserver_human_demo_ani(unsigned int index)
 	return entry ? entry->demoAni : 0;
 }
 
+extern "C" int wyd_selserver_human_moving(unsigned int index)
+{
+	auto entry = WydSelServerHumanTelemetryAt(index);
+	return entry ? entry->moving : 0;
+}
+
 extern "C" float wyd_selserver_human_progress_rate(unsigned int index)
 {
 	auto entry = WydSelServerHumanTelemetryAt(index);
@@ -384,6 +396,18 @@ extern "C" int wyd_selserver_human_sliding(unsigned int index)
 {
 	auto entry = WydSelServerHumanTelemetryAt(index);
 	return entry ? entry->sliding : 0;
+}
+
+extern "C" int wyd_selserver_human_last_route_index(unsigned int index)
+{
+	auto entry = WydSelServerHumanTelemetryAt(index);
+	return entry ? entry->lastRouteIndex : 0;
+}
+
+extern "C" int wyd_selserver_human_max_route_index(unsigned int index)
+{
+	auto entry = WydSelServerHumanTelemetryAt(index);
+	return entry ? entry->maxRouteIndex : 0;
 }
 
 extern "C" int wyd_selserver_human_target_x(unsigned int index)
@@ -555,6 +579,7 @@ void WasmSelServerCaptureHumanTelemetry(TMSelectServerScene* scene)
 		out.mountSkinMeshType = human->m_nMountSkinMeshType;
 		out.motion = static_cast<int>(human->m_eMotion);
 		out.sentMotion = static_cast<int>(human->m_SendeMotion);
+		out.loop = human->m_nLoop;
 		out.weaponTypeIndex = human->m_nWeaponTypeIndex;
 		out.headIndex = human->m_sHeadIndex;
 		out.bodyCurrentTable = SelServerResolveBodyAniTable(human, human->m_eMotion, false);
@@ -606,140 +631,6 @@ void WasmSelServerCaptureHumanTelemetry(TMSelectServerScene* scene)
 }
 } // namespace
 #endif
-
-namespace {
-ECHAR_MOTION SelServerDemoMoveMotion(TMHuman* human)
-{
-	if (!human)
-		return ECHAR_MOTION::ECMOTION_WALK;
-
-	int nWalk = 2;
-	if ((human->m_nSkinMeshType == 31 && human->m_fScale > 0.7f)
-		|| (human->m_cMount == 1 && human->m_nMountSkinMeshType == 31 && human->m_fMountScale > 0.7f))
-		nWalk = 3;
-	if (human->m_nMountSkinMeshType == 40 || human->m_nMountSkinMeshType == 20 || human->m_nMountSkinMeshType == 39)
-		nWalk = 3;
-
-	return (static_cast<float>(nWalk) < human->m_fMaxSpeed)
-		? ECHAR_MOTION::ECMOTION_RUN
-		: ECHAR_MOTION::ECMOTION_WALK;
-}
-
-void SelServerEnsureDemoMountReady(TMHuman* human)
-{
-	if (!human || human->m_cMount <= 0 || human->m_pMount || !human->m_pSkinMesh)
-		return;
-
-	human->UpdateMount();
-}
-
-bool SelServerIsValidDemoMotion(int motion)
-{
-	return motion >= static_cast<int>(ECHAR_MOTION::ECMOTION_STAND01)
-		&& motion <= static_cast<int>(ECHAR_MOTION::ECMOTION_PUNEND);
-}
-
-bool SelServerIsMoveMotion(ECHAR_MOTION motion)
-{
-	return motion == ECHAR_MOTION::ECMOTION_WALK || motion == ECHAR_MOTION::ECMOTION_RUN;
-}
-
-bool SelServerIsRestMotion(ECHAR_MOTION motion)
-{
-	return motion == ECHAR_MOTION::ECMOTION_STAND01
-		|| motion == ECHAR_MOTION::ECMOTION_STAND02
-		|| motion == ECHAR_MOTION::ECMOTION_SEATING;
-}
-
-void SelServerApplyDemoPose(TMHuman* human, int demoMotion)
-{
-	if (!human || !human->m_pSkinMesh)
-		return;
-
-#if defined(__EMSCRIPTEN__)
-	if ((wyd_d3d9_get_debug_flags() & kWydDebugDisableDemoMotionFix) != 0u)
-		return;
-#endif
-
-	SelServerEnsureDemoMountReady(human);
-	if (SelServerIsValidDemoMotion(demoMotion))
-	{
-		const ECHAR_MOTION motion = static_cast<ECHAR_MOTION>(demoMotion);
-		if (human->m_eMotion != motion)
-			human->SetAnimation(motion, 0);
-		return;
-	}
-
-	if (human->m_cMount == 1 && human->m_eMotion != ECHAR_MOTION::ECMOTION_SEATING)
-		human->SetAnimation(ECHAR_MOTION::ECMOTION_SEATING, 1);
-}
-
-void SelServerApplyDemoMotion(TMHuman* human, bool moving)
-{
-	if (!human || !human->m_pSkinMesh)
-		return;
-
-#if defined(__EMSCRIPTEN__)
-	if ((wyd_d3d9_get_debug_flags() & kWydDebugDisableDemoMotionFix) != 0u)
-		return;
-#endif
-
-	SelServerEnsureDemoMountReady(human);
-	if (moving)
-	{
-		const ECHAR_MOTION moveMotion = SelServerDemoMoveMotion(human);
-		if (human->m_eMotion != moveMotion)
-			human->SetAnimation(moveMotion, 1);
-		return;
-	}
-
-	if (human->m_cMount == 1 && human->m_eMotion != ECHAR_MOTION::ECMOTION_SEATING)
-		human->SetAnimation(ECHAR_MOTION::ECMOTION_SEATING, 1);
-}
-
-void SelServerApplyDemoIdleMotions(TMSelectServerScene* scene)
-{
-	if (!scene)
-		return;
-
-	for (int i = 0; i < 50; ++i)
-	{
-		TMHuman* human = scene->m_pCheckHumanList[i];
-		if (!human || !human->m_pSkinMesh)
-			continue;
-		if (human->m_bMoveing || SelServerIsMoveMotion(human->m_eMotion))
-			continue;
-
-		const int demoMotionValue = scene->m_stDemoHuman[i].nHumanAni;
-		if (!SelServerIsValidDemoMotion(demoMotionValue))
-		{
-			if (human->m_cMount == 1)
-				SelServerApplyDemoPose(human, demoMotionValue);
-			continue;
-		}
-
-		const ECHAR_MOTION demoMotion = static_cast<ECHAR_MOTION>(demoMotionValue);
-		if (SelServerIsMoveMotion(demoMotion) || human->m_eMotion == demoMotion)
-			continue;
-		if (SelServerIsRestMotion(human->m_eMotion) || human->m_eMotion == ECHAR_MOTION::ECMOTION_NONE)
-			SelServerApplyDemoPose(human, demoMotionValue);
-	}
-}
-
-void SelServerRestoreDemoSpeeds(TMSelectServerScene* scene)
-{
-	if (!scene)
-		return;
-
-	for (int i = 0; i < 50; ++i)
-	{
-		TMHuman* human = scene->m_pCheckHumanList[i];
-		const int demoSpeed = scene->m_stDemoHuman[i].nSpeed;
-		if (human && demoSpeed > 0)
-			human->m_fMaxSpeed = static_cast<float>(demoSpeed);
-	}
-}
-} // namespace
 
 void SwapLauncher()
 {
@@ -1017,7 +908,7 @@ int TMSelectServerScene::InitializeScene()
 	sprintf_s(szMapPath, "env\\Field1616.trn");
 	sprintf_s(szDataPath, "env\\Field1616.dat");
 
-	m_nDemoType = 1;
+	m_nDemoType = time.wSecond % 3;
 	if (m_nDemoType)
 	{
 		switch (m_nDemoType)
@@ -1664,10 +1555,7 @@ int TMSelectServerScene::OnPacketEvent(unsigned int dwCode, char* buf)
 
 int TMSelectServerScene::FrameMove(unsigned int dwServerTime)
 {
-	SelServerRestoreDemoSpeeds(this);
 	TMScene::FrameMove(dwServerTime);
-	SelServerRestoreDemoSpeeds(this);
-	SelServerApplyDemoIdleMotions(this);
 
 	dwServerTime = g_pTimerManager->GetServerTime();
 
@@ -1939,7 +1827,6 @@ void TMSelectServerScene::ResetDemoPlayer()
 
 			m_pCheckHumanList[i]->m_fMaxSpeed = (float)m_stDemoHuman[i].nSpeed;
 			m_pCheckHumanList[i]->m_bParty = 1;
-			SelServerApplyDemoPose(m_pCheckHumanList[i], m_stDemoHuman[i].nHumanAni);
 
 			m_pHumanContainer->AddChild(m_pCheckHumanList[i]);
 		}
@@ -1960,13 +1847,6 @@ void TMSelectServerScene::ResetDemoPlayer()
 
 void TMSelectServerScene::AniDemoPlayer()
 {
-	for (int nPerson = 0; nPerson < 50; ++nPerson)
-	{
-		if (m_pCheckHumanList[nPerson])
-		{
-			SelServerApplyDemoPose(m_pCheckHumanList[nPerson], m_stDemoHuman[nPerson].nHumanAni);
-		}			
-	}
 }
 
 void TMSelectServerScene::CamAction()
@@ -2018,14 +1898,12 @@ void TMSelectServerScene::MoveHuman(int nIndex)
 			if (m_pCheckHumanList[nPerson])
 			{
 				m_pCheckHumanList[nPerson]->GetRoute(m_vecMoveToPos[nPerson], 32, 0);
-				SelServerApplyDemoMotion(m_pCheckHumanList[nPerson], true);
 			}
 		}
 	}
 	else if (m_pCheckHumanList[nIndex])
 	{
 		m_pCheckHumanList[nIndex]->GetRoute(m_vecMoveToPos[nIndex], 32, 0);
-		SelServerApplyDemoMotion(m_pCheckHumanList[nIndex], true);
 	}
 }
 

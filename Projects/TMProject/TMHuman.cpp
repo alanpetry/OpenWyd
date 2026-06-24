@@ -159,6 +159,276 @@ TMVector2 TMHuman::m_vecPickSize[100] = {
   { 0.0f, 0.0f }
 };
 
+#if defined(__EMSCRIPTEN__)
+namespace {
+unsigned int g_wydSelServerSetAnimationVersion = 0;
+unsigned int g_wydSelServerSetAnimationCount = 0;
+unsigned int g_wydSelServerSetAnimationAttackCount = 0;
+int g_wydSelServerSetAnimationLastMotion = 0;
+int g_wydSelServerSetAnimationLastLoop = 0;
+int g_wydSelServerSetAnimationLastSkinMeshType = 0;
+int g_wydSelServerSetAnimationLastWeaponTypeIndex = 0;
+int g_wydSelServerSetAnimationLastMount = 0;
+int g_wydSelServerSetAnimationLastMountPresent = 0;
+int g_wydSelServerSetAnimationLastRouteIndex = 0;
+int g_wydSelServerSetAnimationLastMaxRouteIndex = 0;
+
+struct WydSelServerMovePacketTelemetry
+{
+    unsigned int routeOutCount;
+    unsigned int packetInCount;
+    int routeOutSpeed;
+    int routeOutTargetX;
+    int routeOutTargetY;
+    int routeOutRouteLen;
+    int packetInSpeed;
+    int packetInTargetX;
+    int packetInTargetY;
+    int packetBeforeSpeed;
+    int packetAfterSpeed;
+};
+
+WydSelServerMovePacketTelemetry g_wydSelServerMovePacketTelemetry[50]{};
+unsigned int g_wydSelServerMovePacketTelemetryVersion = 0;
+
+bool WydHumanIsSelectServerSceneActive()
+{
+    return g_pCurrentScene && g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELECT_SERVER;
+}
+
+int WydSelectServerHumanIndex(const TMHuman* human)
+{
+    if (!human)
+        return -1;
+
+    int index = -1;
+    if (std::sscanf(human->m_szName, "person%d", &index) != 1)
+        return -1;
+    if (index < 0 || index >= 50)
+        return -1;
+    return index;
+}
+
+int WydRouteLength(const char* route)
+{
+    if (!route)
+        return 0;
+    int len = 0;
+    while (len < 24 && route[len])
+        ++len;
+    return len;
+}
+
+void WydRecordSelectServerSetAnimation(const TMHuman* human, ECHAR_MOTION eMotion, int nLoop)
+{
+    if (!human || !WydHumanIsSelectServerSceneActive())
+        return;
+
+    ++g_wydSelServerSetAnimationVersion;
+    ++g_wydSelServerSetAnimationCount;
+    const int motion = static_cast<int>(eMotion);
+    if (motion >= static_cast<int>(ECHAR_MOTION::ECMOTION_ATTACK01)
+        && motion <= static_cast<int>(ECHAR_MOTION::ECMOTION_ATTACK06))
+        ++g_wydSelServerSetAnimationAttackCount;
+
+    g_wydSelServerSetAnimationLastMotion = motion;
+    g_wydSelServerSetAnimationLastLoop = nLoop;
+    g_wydSelServerSetAnimationLastSkinMeshType = human->m_nSkinMeshType;
+    g_wydSelServerSetAnimationLastWeaponTypeIndex = human->m_nWeaponTypeIndex;
+    g_wydSelServerSetAnimationLastMount = human->m_cMount;
+    g_wydSelServerSetAnimationLastMountPresent = human->m_pMount ? 1 : 0;
+    g_wydSelServerSetAnimationLastRouteIndex = human->m_nLastRouteIndex;
+    g_wydSelServerSetAnimationLastMaxRouteIndex = human->m_nMaxRouteIndex;
+}
+
+void WydRecordSelectServerRouteOut(const TMHuman* human, const MSG_Action& action)
+{
+    if (!WydHumanIsSelectServerSceneActive())
+        return;
+
+    const int index = WydSelectServerHumanIndex(human);
+    if (index < 0)
+        return;
+
+    auto& out = g_wydSelServerMovePacketTelemetry[index];
+    ++out.routeOutCount;
+    out.routeOutSpeed = action.Speed;
+    out.routeOutTargetX = action.TargetX;
+    out.routeOutTargetY = action.TargetY;
+    out.routeOutRouteLen = WydRouteLength(action.Route);
+    ++g_wydSelServerMovePacketTelemetryVersion;
+}
+
+void WydRecordSelectServerPacketInStart(const TMHuman* human, const MSG_Action* action)
+{
+    if (!action || !WydHumanIsSelectServerSceneActive())
+        return;
+
+    const int index = WydSelectServerHumanIndex(human);
+    if (index < 0)
+        return;
+
+    auto& out = g_wydSelServerMovePacketTelemetry[index];
+    ++out.packetInCount;
+    out.packetInSpeed = action->Speed;
+    out.packetInTargetX = action->TargetX;
+    out.packetInTargetY = action->TargetY;
+    out.packetBeforeSpeed = static_cast<int>(human->m_fMaxSpeed);
+    ++g_wydSelServerMovePacketTelemetryVersion;
+}
+
+void WydRecordSelectServerPacketInEnd(const TMHuman* human)
+{
+    if (!WydHumanIsSelectServerSceneActive())
+        return;
+
+    const int index = WydSelectServerHumanIndex(human);
+    if (index < 0)
+        return;
+
+    g_wydSelServerMovePacketTelemetry[index].packetAfterSpeed = static_cast<int>(human->m_fMaxSpeed);
+    ++g_wydSelServerMovePacketTelemetryVersion;
+}
+} // namespace
+
+extern "C" unsigned int wyd_selserver_set_animation_version()
+{
+    return g_wydSelServerSetAnimationVersion;
+}
+
+extern "C" unsigned int wyd_selserver_set_animation_count()
+{
+    return g_wydSelServerSetAnimationCount;
+}
+
+extern "C" unsigned int wyd_selserver_set_animation_attack_count()
+{
+    return g_wydSelServerSetAnimationAttackCount;
+}
+
+extern "C" int wyd_selserver_set_animation_last_motion()
+{
+    return g_wydSelServerSetAnimationLastMotion;
+}
+
+extern "C" int wyd_selserver_set_animation_last_loop()
+{
+    return g_wydSelServerSetAnimationLastLoop;
+}
+
+extern "C" int wyd_selserver_set_animation_last_skin_mesh_type()
+{
+    return g_wydSelServerSetAnimationLastSkinMeshType;
+}
+
+extern "C" int wyd_selserver_set_animation_last_weapon_type_index()
+{
+    return g_wydSelServerSetAnimationLastWeaponTypeIndex;
+}
+
+extern "C" int wyd_selserver_set_animation_last_mount()
+{
+    return g_wydSelServerSetAnimationLastMount;
+}
+
+extern "C" int wyd_selserver_set_animation_last_mount_present()
+{
+    return g_wydSelServerSetAnimationLastMountPresent;
+}
+
+extern "C" int wyd_selserver_set_animation_last_route_index()
+{
+    return g_wydSelServerSetAnimationLastRouteIndex;
+}
+
+extern "C" int wyd_selserver_set_animation_last_max_route_index()
+{
+    return g_wydSelServerSetAnimationLastMaxRouteIndex;
+}
+
+extern "C" unsigned int wyd_selserver_move_packet_version()
+{
+    return g_wydSelServerMovePacketTelemetryVersion;
+}
+
+extern "C" unsigned int wyd_selserver_human_route_out_count(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].routeOutCount;
+}
+
+extern "C" unsigned int wyd_selserver_human_packet_in_count(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetInCount;
+}
+
+extern "C" int wyd_selserver_human_route_out_speed(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].routeOutSpeed;
+}
+
+extern "C" int wyd_selserver_human_route_out_target_x(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].routeOutTargetX;
+}
+
+extern "C" int wyd_selserver_human_route_out_target_y(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].routeOutTargetY;
+}
+
+extern "C" int wyd_selserver_human_route_out_route_len(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].routeOutRouteLen;
+}
+
+extern "C" int wyd_selserver_human_packet_in_speed(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetInSpeed;
+}
+
+extern "C" int wyd_selserver_human_packet_in_target_x(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetInTargetX;
+}
+
+extern "C" int wyd_selserver_human_packet_in_target_y(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetInTargetY;
+}
+
+extern "C" int wyd_selserver_human_packet_before_speed(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetBeforeSpeed;
+}
+
+extern "C" int wyd_selserver_human_packet_after_speed(unsigned int index)
+{
+    if (index >= 50)
+        return 0;
+    return g_wydSelServerMovePacketTelemetry[index].packetAfterSpeed;
+}
+#endif
+
 DWORD TMHuman::m_dwNameColor[9] =
 {
   0xFF000000,
@@ -2297,7 +2567,6 @@ int TMHuman::FrameMove(unsigned int dwServerTime)
             }
 
             m_cOnlyMove = 0;
-            SetSpeed(0);
 
             TMFieldScene* pFScene = (TMFieldScene*)g_pCurrentScene;
             if (g_pCurrentScene->m_pMyHuman == this && m_pMoveTargetHuman)
@@ -3514,6 +3783,10 @@ int TMHuman::OnPacketMove(MSG_Action* pAction)
     if (pAction == nullptr)
         return 0;
 
+#if defined(__EMSCRIPTEN__)
+    WydRecordSelectServerPacketInStart(this, pAction);
+#endif
+
     // NOTE: there's a strange code in the beginnig, that not make sense...
     // and is not used aparently.
 
@@ -3624,6 +3897,10 @@ int TMHuman::OnPacketMove(MSG_Action* pAction)
     MoveTo(m_vecRouteBuffer[1]);
     m_fMoveToAngle = m_fAngle;
     m_dwStartMoveTime = g_pTimerManager->GetServerTime();
+
+#if defined(__EMSCRIPTEN__)
+    WydRecordSelectServerPacketInEnd(this);
+#endif
 
     return 1;
 }
@@ -5826,6 +6103,10 @@ void TMHuman::SetAnimation(ECHAR_MOTION eMotion, int nLoop)
 {
     if (!m_dwDelayDel && eMotion != ECHAR_MOTION::ECMOTION_NONE && m_pSkinMesh)
     {
+#if defined(__EMSCRIPTEN__)
+        WydRecordSelectServerSetAnimation(this, eMotion, nLoop);
+#endif
+
         if (eMotion == ECHAR_MOTION::ECMOTION_LEVELUP && (m_nClass == 34 || m_nClass == 38))
             eMotion = ECHAR_MOTION::ECMOTION_STAND02;
 
@@ -12610,6 +12891,11 @@ void TMHuman::GetRoute(IVector2 vecTarget, int nCount, int bStop)
                     nMaxRoute = 16;
 
                 BASE_GetRoute(nSX, nSY, &vecTarget.x, &vecTarget.y, cRouteBuffer, nMaxRoute, pHeightMapData, 8);
+                if (vecTarget.x != nTX || vecTarget.y != nTY)
+                {
+                    memset(cRouteBuffer, 0, sizeof(cRouteBuffer));
+                    BASE_GetRoute(nSX, nSY, &vecTarget.x, &vecTarget.y, cRouteBuffer, nMaxRoute, pHeightMapData, 8);
+                }
 
                 int nStart2 = pScene->GroundGetMask(TMVector2((float)m_LastSendTargetPos.x, (float)m_LastSendTargetPos.y));
                 int nStart = pScene->GroundGetMask(TMVector2((float)nSX, (float)nSY));
@@ -12663,6 +12949,9 @@ void TMHuman::GetRoute(IVector2 vecTarget, int nCount, int bStop)
                                 dst.TargetY = vecTarget.y;
 
                                 g_pCurrentScene->OnPacketEvent(MSG_Action_Opcode, (char*)&dst);
+#if defined(__EMSCRIPTEN__)
+                                WydRecordSelectServerRouteOut(this, dst);
+#endif
 
                                 if (bStop != 2)
                                 {
@@ -12778,6 +13067,9 @@ void TMHuman::GetRoute(IVector2 vecTarget, int nCount, int bStop)
                                 }
                             }
 
+#if defined(__EMSCRIPTEN__)
+                            WydRecordSelectServerRouteOut(this, stAction);
+#endif
                             OnPacketEvent(MSG_Action_Opcode, (char*)&stAction);
                             return;
                         }

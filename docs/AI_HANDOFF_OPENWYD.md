@@ -59,8 +59,8 @@ Recent validated metrics from the 1280x720 smoke:
 - `shaderDrawsSkipped = 0`
 - `skinSuspiciousTextureDraws = 0`
 - Fog is active in the final shader path.
-- Mounted humans have mount meshes present and varied mounted animations.
-- Demo human poses/weapon angles are now varied again by applying each record's `nHumanAni`.
+- Mounted humans have mount meshes present; body/mount animation must come from the original `TMHuman` pipeline.
+- `nHumanAni` from `demo*.bin` is captured for telemetry only. The decompiled select-server reset path does not apply it directly.
 
 Screenshots from recent runs:
 
@@ -85,11 +85,16 @@ In real D3D9, `SetFVF()` belongs to the fixed-function path and should not leave
 
 `WydD3D9Device_SetFVF()` now clears the active vertex shader and active VS hash. `DummyD3DXSprite::RestoreDeviceState()` restores FVF before shader state so sprite draws do not destroy the restored shader.
 
-### Server-selection demo pose logic
+### Server-selection animation parity
 
-`demo2.bin` contains one record per demo human, including `nHumanAni`. The selection scene was not preserving these per-character demo poses well enough; many humans returned to stand/idle after short clips, making weapons/arms look static and identical.
+`demo*.bin` records include `nHumanAni`, but the decompiled official `TMSelectServerScene::ResetDemoPlayer()` path creates each `TMHuman`, applies look/mount/weapon/angle/position/speed, calls `InitObject()`/`CheckWeapon()`, adds it to the human container, then lets `TMHuman::FrameMove()` and route logic choose animation. It does not call `SetAnimation(nHumanAni)` during reset or from `MoveHuman()`.
 
-`TMSelectServerScene.cpp` now applies the demo pose after object init and reapplies it only when a human is not moving and has fallen back to rest motion. It does not interfere with walk/run route animation.
+The WASM client now treats `nHumanAni` as telemetry only. Do not reintroduce select-server-only pose or walk/run overrides unless the official client code proves that path exists. If characters slide or attack unexpectedly, debug `TMHuman::FrameMove()`, route state, animation tables, skin/mount timing, or weapon attachment instead of forcing a scene-local animation.
+
+Two parity bugs were fixed after removing the scene-local animation overrides:
+
+- `TMSelectServerScene::InitializeScene()` had been hardcoded to `m_nDemoType = 1`; the official client uses `GetLocalTime().wSecond % 3`.
+- `TMHuman::FrameMove()` was recalculating speed with `SetSpeed(0)` when a normal walk/run route ended. The decompiled client only recalculates speed for the `m_cOnlyMove` idle path. The incorrect call made demo humans fall back to score-derived speed `1`, causing slow/sliding or odd late-demo movement.
 
 ### Fog
 
@@ -166,4 +171,3 @@ A useful future debugging setup is possible:
 4. Run the WASM harness for the same tick sequence and compare telemetry/screenshot output.
 
 This can greatly improve pipeline parity debugging, especially for D3D state, render order, animation timing, and matrix conventions. It is not guaranteed that the original client will render perfectly in headless Wine without GPU/DirectX setup, but it is realistic enough to try. If Wine rendering is unstable, the fallback is still valuable: run the instrumented Windows client locally or in a GPU-enabled VM and compare exported telemetry against WASM.
-
