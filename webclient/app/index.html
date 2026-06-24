@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WYD Web Port - M4 (Avançado)</title>
+    <link rel="stylesheet" href="/app/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel panel-status">
+        <h1>WYD Web Port - M4 (Avançado)</h1>
+        <p class="subtitle">Inventário + loaders proprietários + viewer de mesh + ANI/BON + skinning + perfil BoneAni/ValidIndex + objetos estáticos .msa + runtime de personagem em field</p>
+        <div id="status">Inicializando...</div>
+        <ul class="metrics">
+          <li>Total de assets: <strong id="metric-files">-</strong></li>
+          <li>Tamanho total: <strong id="metric-bytes">-</strong></li>
+          <li>Bootstrap resolvido: <strong id="metric-bootstrap">-</strong></li>
+        </ul>
+
+        <div class="mesh-controls">
+          <label for="mesh-select">Mesh real</label>
+          <select id="mesh-select"></select>
+          <button id="load-mesh" type="button">Carregar Mesh Selecionado</button>
+          <div id="mesh-meta" class="mesh-meta">Aguardando catálogo...</div>
+          <div id="render-meta" class="mesh-meta">Render: aguardando...</div>
+
+          <label for="field-select">Field (TRN/DAT)</label>
+          <select id="field-select"></select>
+          <button id="load-field" type="button">Carregar Field</button>
+          <div id="field-meta" class="mesh-meta">Field: aguardando catálogo...</div>
+          <div class="control-row">
+            <div>
+              <label for="toggle-player-mode">Modo Personagem</label>
+              <select id="toggle-player-mode">
+                <option value="on">Ligado</option>
+                <option value="off" selected>Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="player-walk-speed">Velocidade Walk</label>
+              <input id="player-walk-speed" type="range" min="1.5" max="8.0" value="3.8" step="0.1" />
+            </div>
+          </div>
+          <label for="player-run-speed">Velocidade Run</label>
+          <input id="player-run-speed" type="range" min="2.0" max="12.0" value="7.2" step="0.1" />
+          <div class="control-row">
+            <div>
+              <label for="toggle-player-click-move">Click-to-Move (Minimap)</label>
+              <select id="toggle-player-click-move">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="toggle-player-collision">Colisão de Objetos</label>
+              <select id="toggle-player-collision">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+          </div>
+          <div class="control-row">
+            <div>
+              <label for="toggle-player-autorun">Auto Run no Destino</label>
+              <select id="toggle-player-autorun">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="player-camera-mode">Câmera</label>
+              <select id="player-camera-mode">
+                <option value="follow" selected>Follow</option>
+                <option value="orbit">Órbita</option>
+              </select>
+            </div>
+          </div>
+          <div class="control-row">
+            <div>
+              <label for="player-camera-distance">Distância da Câmera</label>
+              <input id="player-camera-distance" type="range" min="3.0" max="15.0" value="7.2" step="0.1" />
+            </div>
+            <div>
+              <label for="player-camera-height">Altura da Câmera</label>
+              <input id="player-camera-height" type="range" min="1.2" max="8.0" value="2.8" step="0.1" />
+            </div>
+          </div>
+          <button id="spawn-player-at-selected" type="button">Spawn no Objeto Selecionado</button>
+          <div id="player-meta" class="mesh-meta">Personagem: inativo (ative e use WASD + Shift; clique no minimapa para destino, Shift+clique para teleport).</div>
+          <canvas id="field-preview" width="256" height="256"></canvas>
+          <div id="field-object-meta" class="mesh-meta">Objetos de field: aguardando...</div>
+          <div id="field-minimap-meta" class="mesh-meta">Minimap: aguardando field...</div>
+
+          <div class="control-row">
+            <div>
+              <label for="toggle-terrain">Terreno 3D</label>
+              <select id="toggle-terrain">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="terrain-scale">Escala Terreno</label>
+              <input id="terrain-scale" type="range" min="0.02" max="0.20" value="0.08" step="0.01" />
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div>
+              <label for="toggle-terrain-texture">Textura Minimap</label>
+              <select id="toggle-terrain-texture">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="terrain-texture-blend">Blend Minimap</label>
+              <input id="terrain-texture-blend" type="range" min="0.00" max="1.00" value="0.82" step="0.02" />
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div>
+              <label for="toggle-object-points">Pontos Objetos</label>
+              <select id="toggle-object-points">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="object-point-size">Tamanho Ponto</label>
+              <input id="object-point-size" type="range" min="1.0" max="8.0" value="2.5" step="0.5" />
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div>
+              <label for="toggle-object-meshes">Meshes Objetos</label>
+              <select id="toggle-object-meshes">
+                <option value="on" selected>Ligado</option>
+                <option value="off">Desligado</option>
+              </select>
+            </div>
+            <div>
+              <label for="object-mesh-budget">Budget Instâncias</label>
+              <input id="object-mesh-budget" type="range" min="128" max="3200" value="640" step="32" />
+            </div>
+          </div>
+          <label for="object-mesh-types">Tipos de Mesh por Field</label>
+          <input id="object-mesh-types" type="range" min="4" max="96" value="20" step="1" />
+          <div id="field-object-mesh-meta" class="mesh-meta">Meshes estáticos: aguardando field...</div>
+          <div id="field-object-selected" class="mesh-meta">Objeto selecionado: nenhum (clique no canvas 3D para inspecionar).</div>
+          <button id="clear-object-selection" type="button">Limpar Seleção de Objeto</button>
+
+          <label for="ani-select">ANI candidato</label>
+          <select id="ani-select"></select>
+
+          <label for="bon-select">BON candidato</label>
+          <select id="bon-select"></select>
+
+          <label for="ani-profile-entry">Perfil BoneAni</label>
+          <select id="ani-profile-entry"></select>
+
+          <div class="control-row">
+            <div>
+              <label for="ani-profile-weapon">Weapon Group</label>
+              <select id="ani-profile-weapon"></select>
+            </div>
+            <div>
+              <label for="ani-profile-motion">Motion</label>
+              <select id="ani-profile-motion"></select>
+            </div>
+          </div>
+
+          <button id="apply-profile-ani" type="button">Aplicar ANI por Perfil</button>
+          <button id="preload-profile" type="button">Precarregar Perfil ANI</button>
+
+          <div class="control-row">
+            <div>
+              <label for="sequence-scope">Sequência</label>
+              <select id="sequence-scope">
+                <option value="weapon">Weapon atual</option>
+                <option value="all">Todos os weapons</option>
+              </select>
+            </div>
+            <div>
+              <label for="sequence-interval">Intervalo (s)</label>
+              <input id="sequence-interval" type="range" min="0.8" max="6.0" value="2.0" step="0.2" />
+            </div>
+          </div>
+
+          <button id="toggle-profile-seq" type="button">Iniciar Sequência</button>
+          <div id="ani-sequence-meta" class="mesh-meta">Sequência: inativa.</div>
+          <div id="ani-profile-meta" class="mesh-meta">Perfil de animação: aguardando mesh...</div>
+
+          <div class="control-row">
+            <button id="load-skinning" type="button">Aplicar Bundle ANI/BON</button>
+            <button id="toggle-ani" type="button">Pausar ANI</button>
+          </div>
+
+          <label for="ani-frame">Frame ANI</label>
+          <input id="ani-frame" type="range" min="0" max="0" value="0" step="1" />
+
+          <label for="ani-speed">Velocidade ANI</label>
+          <input id="ani-speed" type="range" min="0.25" max="2.00" value="1.00" step="0.05" />
+
+          <div id="ani-meta" class="mesh-meta">Animação: aguardando bundle...</div>
+        </div>
+
+        <button id="reload" type="button">Recarregar Probes</button>
+      </section>
+
+      <section class="panel panel-canvas">
+        <canvas id="viewport" width="960" height="540"></canvas>
+      </section>
+
+      <section class="panel panel-log">
+        <h2>Probes de Asset</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="/app/src/main.js"></script>
+  </body>
+</html>

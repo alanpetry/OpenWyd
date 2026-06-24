@@ -1,0 +1,77 @@
+# Startup dataset focused on booting real C++ select-server scene in WASM.
+# Syntax: <source-path>@<wasm-fs-path>
+
+v769ClientRelease/serverlist.bin@/serverlist.bin
+v769ClientRelease/SkillData.bin@/SkillData.bin
+v769ClientRelease/ItemList.bin@/ItemList.bin
+v769ClientRelease/ItemPrice.bin@/ItemPrice.bin
+v769ClientRelease/itemicon.bin@/itemicon.bin
+v769ClientRelease/Itemname.bin@/Itemname.bin
+v769ClientRelease/itemhelp.dat@/itemhelp.dat
+v769ClientRelease/Mixhelp.dat@/Mixhelp.dat
+v769ClientRelease/sn.bin@/sn.bin
+v769ClientRelease/Config.bin@/Config.bin
+v769ClientRelease/AniSound4.txt@/AniSound4.txt
+v769ClientRelease/Music.txt@/Music.txt
+v769ClientRelease/sound.txt@/sound.txt
+v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
+v769ClientRelease/object.bin@/object.bin
+
+# UI packs and RC/data needed by scene loading.
+v769ClientRelease/UI/*.bin@/UI/
+v769ClientRelease/UI/*.txt@/UI/
+v769ClientRelease/UI/*.wyt@/UI/
+v769ClientRelease/UI/*.wys@/UI/
+v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
+v769ClientRelease/UI/Image/*@/UI/Image/
+v769ClientRelease/UI/Panel/*@/UI/Panel/
+v769ClientRelease/UI/Potal/*@/UI/Potal/
+v769ClientRelease/NUI/*.wyt@/NUI/
+v769ClientRelease/NUI/*.wys@/NUI/
+
+# Environment maps/textures (select-server map uses Env/Character.*).
+v769ClientRelease/Env/*.bin@/Env/
+v769ClientRelease/Env/*.trn@/Env/
+v769ClientRelease/Env/*.dat@/Env/
+v769ClientRelease/Env/*.map@/Env/
+v769ClientRelease/Env/*.wys@/Env/
+
+# Effect texture/animation bundles.
+v769ClientRelease/Effect/*.bin@/Effect/
+v769ClientRelease/Effect/*.msa@/Effect/
+v769ClientRelease/Effect/*.wys@/Effect/
+
+# Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
+v769ClientRelease/Mesh/*.bin@/Mesh/
+v769ClientRelease/Mesh/*.txt@/Mesh/
+v769ClientRelease/Mesh/*.bon@/Mesh/
+v769ClientRelease/Mesh/*.ani@/Mesh/
+v769ClientRelease/Mesh/*.msh@/Mesh/
+v769ClientRelease/Mesh/*.mshb@/Mesh/
+v769ClientRelease/Mesh/*.msa@/Mesh/
+v769ClientRelease/Mesh/*.wys@/Mesh/
+v769ClientRelease/Mesh/*.dat@/Mesh/
+
+# Audio assets used by startup scenes.
+v769ClientRelease/Sound/*@/Sound/
+v769ClientRelease/music/*@/music/
+
+# Legacy D3D9 shader bytecode.
+v769ClientRelease/shader/skinmesh1.bin@/shader/skinmesh1.bin
+v769ClientRelease/shader/skinmesh2.bin@/shader/skinmesh2.bin
+v769ClientRelease/shader/skinmesh3.bin@/shader/skinmesh3.bin
+v769ClientRelease/shader/skinmesh4.bin@/shader/skinmesh4.bin
+v769ClientRelease/shader/skinmesh5.bin@/shader/skinmesh5.bin
+v769ClientRelease/shader/skinmesh6.bin@/shader/skinmesh6.bin
+v769ClientRelease/shader/skinmesh7.bin@/shader/skinmesh7.bin
+v769ClientRelease/shader/skinmesh8.bin@/shader/skinmesh8.bin
+v769ClientRelease/shader/vseffect1.bin@/shader/vseffect1.bin
+v769ClientRelease/shader/vseffect2.bin@/shader/vseffect2.bin
+v769ClientRelease/shader/vseffect3.bin@/shader/vseffect3.bin
+v769ClientRelease/shader/vseffect4.bin@/shader/vseffect4.bin
+v769ClientRelease/shader/pseffect1.bin@/shader/pseffect1.bin
+v769ClientRelease/shader/pseffect2.bin@/shader/pseffect2.bin
+v769ClientRelease/shader/pseffect3.bin@/shader/pseffect3.bin
+v769ClientRelease/shader/pseffect4.bin@/shader/pseffect4.bin
+v769ClientRelease/shader/pseffect5.bin@/shader/pseffect5.bin
+v769ClientRelease/shader/pseffect6.bin@/shader/pseffect6.bin
