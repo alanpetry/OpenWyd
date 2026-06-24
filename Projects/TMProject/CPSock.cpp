@@ -5,7 +5,305 @@
 #include "TMGlobal.h"
 #include "TMLog.h"
 
+#include <cstdio>
+#include <cstdint>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#include <emscripten/websocket.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <map>
+#include <string>
+#include <vector>
+#endif
+
 int ConnectPort = 0;
+
+namespace
+{
+struct WydSocketDebugState
+{
+	char last_host[128]{};
+	char last_proxy_url[512]{};
+	int last_port = 0;
+	int last_connect_result = 0;
+	int last_error = 0;
+	std::uint64_t bytes_sent = 0;
+	std::uint64_t bytes_received = 0;
+	unsigned int last_sent_opcode = 0;
+	unsigned int last_recv_opcode = 0;
+};
+
+WydSocketDebugState g_wyd_socket_debug;
+
+void WydSocketRecordConnectAttempt(const char* host, int port)
+{
+	std::snprintf(g_wyd_socket_debug.last_host, sizeof(g_wyd_socket_debug.last_host), "%s", host ? host : "");
+	g_wyd_socket_debug.last_port = port;
+	g_wyd_socket_debug.last_connect_result = 0;
+	g_wyd_socket_debug.last_error = 0;
+}
+
+void WydSocketRecordSentOpcode(char* msg, int size)
+{
+	if (msg && size >= static_cast<int>(sizeof(MSG_STANDARD)))
+		g_wyd_socket_debug.last_sent_opcode = reinterpret_cast<MSG_STANDARD*>(msg)->Type;
+}
+
+#if defined(__EMSCRIPTEN__)
+struct WydWasmSocket
+{
+	EMSCRIPTEN_WEBSOCKET_T handle = 0;
+	bool open = false;
+	bool closed = false;
+	int error = 0;
+	std::deque<unsigned char> recv_buffer;
+	std::vector<unsigned char> pending_send;
+};
+
+std::map<unsigned int, WydWasmSocket> g_wasm_sockets;
+
+std::string WydUrlEncode(const char* text)
+{
+	static const char* hex = "0123456789ABCDEF";
+	std::string out;
+	for (const unsigned char ch : std::string(text ? text : ""))
+	{
+		if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+			ch == '-' || ch == '_' || ch == '.' || ch == '~')
+		{
+			out.push_back(static_cast<char>(ch));
+		}
+		else
+		{
+			out.push_back('%');
+			out.push_back(hex[(ch >> 4) & 0xF]);
+			out.push_back(hex[ch & 0xF]);
+		}
+	}
+	return out;
+}
+
+std::string WydReadSocketProxyUrl()
+{
+	char* ptr = reinterpret_cast<char*>(EM_ASM_PTR({
+		const params = new URLSearchParams(globalThis.location ? globalThis.location.search : '');
+		const moduleObj = typeof Module !== 'undefined' ? Module : {};
+		const value = moduleObj.wydSocketProxyUrl || params.get('socketProxy') || 'ws://127.0.0.1:8282/';
+		const len = lengthBytesUTF8(value) + 1;
+		const ptr = _malloc(len);
+		stringToUTF8(value, ptr, len);
+		return ptr;
+	}));
+	std::string value = ptr ? ptr : "";
+	if (ptr) std::free(ptr);
+	return value.empty() ? "ws://127.0.0.1:8282/" : value;
+}
+
+void WydWasmFlushPending(WydWasmSocket& sock)
+{
+	if (!sock.open || sock.pending_send.empty()) return;
+	const EMSCRIPTEN_RESULT result = emscripten_websocket_send_binary(
+		sock.handle,
+		sock.pending_send.data(),
+		static_cast<std::uint32_t>(sock.pending_send.size()));
+	if (result < 0)
+	{
+		sock.error = static_cast<int>(result);
+		g_wyd_socket_debug.last_error = static_cast<int>(result);
+		return;
+	}
+	g_wyd_socket_debug.bytes_sent += sock.pending_send.size();
+	sock.pending_send.clear();
+}
+
+bool WydWasmOnOpen(int, const EmscriptenWebSocketOpenEvent* event, void*)
+{
+	auto it = g_wasm_sockets.find(static_cast<unsigned int>(event->socket));
+	if (it == g_wasm_sockets.end()) return true;
+	it->second.open = true;
+	g_wyd_socket_debug.last_connect_result = 1;
+	WydWasmFlushPending(it->second);
+	return true;
+}
+
+bool WydWasmOnMessage(int, const EmscriptenWebSocketMessageEvent* event, void*)
+{
+	auto it = g_wasm_sockets.find(static_cast<unsigned int>(event->socket));
+	if (it == g_wasm_sockets.end() || event->isText) return true;
+	for (std::uint32_t i = 0; i < event->numBytes; ++i)
+		it->second.recv_buffer.push_back(event->data[i]);
+	g_wyd_socket_debug.bytes_received += event->numBytes;
+	return true;
+}
+
+bool WydWasmOnError(int, const EmscriptenWebSocketErrorEvent* event, void*)
+{
+	auto it = g_wasm_sockets.find(static_cast<unsigned int>(event->socket));
+	if (it != g_wasm_sockets.end())
+	{
+		it->second.error = -1;
+		g_wyd_socket_debug.last_connect_result = -1;
+		g_wyd_socket_debug.last_error = -1;
+	}
+	return true;
+}
+
+bool WydWasmOnClose(int, const EmscriptenWebSocketCloseEvent* event, void*)
+{
+	auto it = g_wasm_sockets.find(static_cast<unsigned int>(event->socket));
+	if (it != g_wasm_sockets.end())
+	{
+		const bool was_open = it->second.open;
+		it->second.closed = true;
+		it->second.open = false;
+		if (!was_open)
+			g_wyd_socket_debug.last_connect_result = -1;
+		g_wyd_socket_debug.last_error = event->code;
+	}
+	return true;
+}
+
+unsigned int WydSocketOpenForClient(const char* host, int port)
+{
+	if (!emscripten_websocket_is_supported())
+	{
+		g_wyd_socket_debug.last_error = -1000;
+		return 0;
+	}
+
+	std::string url = WydReadSocketProxyUrl();
+	url += (url.find('?') == std::string::npos) ? '?' : '&';
+	url += "host=" + WydUrlEncode(host);
+	url += "&port=" + std::to_string(port);
+	std::snprintf(g_wyd_socket_debug.last_proxy_url, sizeof(g_wyd_socket_debug.last_proxy_url), "%s", url.c_str());
+
+	EmscriptenWebSocketCreateAttributes attrs;
+	emscripten_websocket_init_create_attributes(&attrs);
+	attrs.url = url.c_str();
+	attrs.protocols = nullptr;
+	attrs.createOnMainThread = true;
+
+	EMSCRIPTEN_WEBSOCKET_T handle = emscripten_websocket_new(&attrs);
+	if (handle <= 0)
+	{
+		g_wyd_socket_debug.last_error = handle;
+		return 0;
+	}
+
+	WydWasmSocket sock;
+	sock.handle = handle;
+	g_wasm_sockets[static_cast<unsigned int>(handle)] = sock;
+	emscripten_websocket_set_onopen_callback(handle, nullptr, WydWasmOnOpen);
+	emscripten_websocket_set_onmessage_callback(handle, nullptr, WydWasmOnMessage);
+	emscripten_websocket_set_onerror_callback(handle, nullptr, WydWasmOnError);
+	emscripten_websocket_set_onclose_callback(handle, nullptr, WydWasmOnClose);
+	g_wyd_socket_debug.last_connect_result = 2;
+	return static_cast<unsigned int>(handle);
+}
+
+int WydSocketSendBytes(unsigned int sock, const char* data, int len)
+{
+	auto it = g_wasm_sockets.find(sock);
+	if (it == g_wasm_sockets.end() || !data || len < 0) return -1;
+	if (len == 0) return 0;
+	WydWasmSocket& wasm_sock = it->second;
+	if (!wasm_sock.open)
+	{
+		wasm_sock.pending_send.insert(wasm_sock.pending_send.end(), data, data + len);
+		return len;
+	}
+	WydWasmFlushPending(wasm_sock);
+	const EMSCRIPTEN_RESULT result = emscripten_websocket_send_binary(
+		wasm_sock.handle,
+		const_cast<char*>(data),
+		static_cast<std::uint32_t>(len));
+	if (result < 0)
+	{
+		wasm_sock.error = static_cast<int>(result);
+		g_wyd_socket_debug.last_error = static_cast<int>(result);
+		return -1;
+	}
+	g_wyd_socket_debug.bytes_sent += len;
+	return len;
+}
+
+int WydSocketRecvBytes(unsigned int sock, char* data, int len)
+{
+	auto it = g_wasm_sockets.find(sock);
+	if (it == g_wasm_sockets.end() || !data || len < 0) return -1;
+	WydWasmSocket& wasm_sock = it->second;
+	if (wasm_sock.recv_buffer.empty())
+		return (wasm_sock.closed || wasm_sock.error) ? -1 : 0;
+
+	const int take = std::min<int>(len, static_cast<int>(wasm_sock.recv_buffer.size()));
+	for (int i = 0; i < take; ++i)
+	{
+		data[i] = static_cast<char>(wasm_sock.recv_buffer.front());
+		wasm_sock.recv_buffer.pop_front();
+	}
+	return take;
+}
+
+void WydSocketCloseHandle(unsigned int sock)
+{
+	auto it = g_wasm_sockets.find(sock);
+	if (it == g_wasm_sockets.end()) return;
+	emscripten_websocket_close(it->second.handle, 1000, "close");
+	emscripten_websocket_delete(it->second.handle);
+	g_wasm_sockets.erase(it);
+}
+#else
+unsigned int WydSocketOpenForClient(const char* host, int port)
+{
+	sockaddr_in InAddr;
+	memset((char*)&InAddr, 0, sizeof(InAddr));
+	InAddr.sin_addr.S_un.S_addr = inet_addr(host);
+	InAddr.sin_family = AF_INET;
+	InAddr.sin_port = htons(port);
+
+	SOCKET tSock = socket(2, 1, 0);
+	if (tSock == -1)
+	{
+		g_wyd_socket_debug.last_error = WSAGetLastError();
+		return 0;
+	}
+
+	if (connect(tSock, (const struct sockaddr*)&InAddr, 16) < 0)
+	{
+		g_wyd_socket_debug.last_error = WSAGetLastError();
+		closesocket(tSock);
+		return 0;
+	}
+
+	g_wyd_socket_debug.last_connect_result = 1;
+	return static_cast<unsigned int>(tSock);
+}
+
+int WydSocketSendBytes(unsigned int sock, const char* data, int len)
+{
+	const int sent = send(static_cast<SOCKET>(sock), data, len, 0);
+	if (sent > 0) g_wyd_socket_debug.bytes_sent += sent;
+	return sent;
+}
+
+int WydSocketRecvBytes(unsigned int sock, char* data, int len)
+{
+	const int received = recv(static_cast<SOCKET>(sock), data, len, 0);
+	if (received > 0) g_wyd_socket_debug.bytes_received += received;
+	return received;
+}
+
+void WydSocketCloseHandle(unsigned int sock)
+{
+	closesocket(static_cast<SOCKET>(sock));
+}
+#endif
+}
 
 unsigned char pKeyWord[512] = {
 	0x84, 0x87, 0x37, 0xd7, 0xea, 0x79, 0x91, 0x7d, 0x4b, 0x4b, 0x85, 0x7d, 0x87, 0x81, 0x91, 0x7c, 0x0f, 0x73, 0x91, 0x91, 0x87, 0x7d, 0x0d, 0x7d, 0x86, 0x8f, 0x73, 0x0f, 0xe1, 0xdd, 0x85, 0x7d,
@@ -121,6 +419,37 @@ unsigned int CPSock::StartListen(HWND hWnd, int ip, int port, int WSA)
 
 unsigned int CPSock::ConnectServer(char* HostAddr, int Port, int ip, int WSA)
 {
+	WydSocketRecordConnectAttempt(HostAddr, Port);
+
+#if defined(__EMSCRIPTEN__)
+	(void)ip;
+	(void)WSA;
+
+	nSendPosition = 0;
+	nSentPosition = 0;
+	nRecvPosition = 0;
+	nProcPosition = 0;
+
+	if (Sock)
+		CloseSocket();
+
+	unsigned int tSock = WydSocketOpenForClient(HostAddr, Port);
+	if (!tSock)
+	{
+		Sock = 0;
+		return 0;
+	}
+
+	Sock = tSock;
+	unsigned int InitCode = INIT_CODE;
+	if (WydSocketSendBytes(tSock, (const char*)&InitCode, 4) < 0)
+	{
+		CloseSocket();
+		return 0;
+	}
+	Init = 1;
+	return tSock;
+#else
 	sockaddr_in InAddr;
 	memset((char*)& InAddr, 0, sizeof(InAddr));
 	sockaddr_in local_sin;
@@ -194,10 +523,16 @@ unsigned int CPSock::ConnectServer(char* HostAddr, int Port, int ip, int WSA)
 	}
 
 	return 1;
+#endif
 }
 
 unsigned int CPSock::SingleConnect(char* HostAddr, int Port, int ip, int WSA)
 {
+	WydSocketRecordConnectAttempt(HostAddr, Port);
+
+#if defined(__EMSCRIPTEN__)
+	return ConnectServer(HostAddr, Port, ip, WSA);
+#else
 	sockaddr_in InAddr;
 	memset((char*)&InAddr, 0, sizeof(InAddr));
 	sockaddr_in local_sin;
@@ -269,12 +604,13 @@ unsigned int CPSock::SingleConnect(char* HostAddr, int Port, int ip, int WSA)
 	}
 
 	return 1;
+#endif
 }
 
 int CPSock::Receive()
 {
 	int Rest = RECV_BUFFER_SIZE - nRecvPosition;
-	int tReceiveSize = recv(Sock, &pRecvBuffer[nRecvPosition], Rest, 0);
+	int tReceiveSize = WydSocketRecvBytes(Sock, &pRecvBuffer[nRecvPosition], Rest);
 	if (tReceiveSize == -1)
 		return 0;
 	if (tReceiveSize == Rest)
@@ -406,6 +742,9 @@ char* CPSock::ReadMessage(int* ErrorCode, int* ErrorType)
 		*ErrorType = Size;
 	}
 
+	if (Size >= sizeof(MSG_STANDARD))
+		g_wyd_socket_debug.last_recv_opcode = reinterpret_cast<MSG_STANDARD*>(pMsg)->Type;
+
 	return pMsg;
 }
 
@@ -417,7 +756,7 @@ int CPSock::CloseSocket()
 	nProcPosition = 0;
 	Init = 0;
 	if (Sock)
-		closesocket(Sock);
+		WydSocketCloseHandle(Sock);
 	Sock = 0;
 
 	return 1;
@@ -557,7 +896,7 @@ bool CPSock::SendMessageA()
 
 		for (int i = 0; i < 1; ++i)
 		{
-			int tSend = send(Sock, &pSendBuffer[nSentPosition], nSendPosition - nSentPosition, 0);
+			int tSend = WydSocketSendBytes(Sock, &pSendBuffer[nSentPosition], nSendPosition - nSentPosition);
 			if (tSend == -1)
 				WSAGetLastError();
 			else
@@ -584,6 +923,7 @@ bool CPSock::SendMessageA()
 
 int CPSock::SendOneMessage(char* Msg, int Size)
 {
+	WydSocketRecordSentOpcode(Msg, Size);
 	AddMessage(Msg, Size);
 
 	return SendMessageA();
@@ -591,6 +931,7 @@ int CPSock::SendOneMessage(char* Msg, int Size)
 
 int CPSock::SendOneMessageKeyword(char* Msg, int Size, int Keyword)
 {
+	WydSocketRecordSentOpcode(Msg, Size);
 	AddMessage(Msg, Size, Keyword);
 
 	return SendMessageA();
@@ -661,4 +1002,49 @@ void CPSock::RefreshSendBuffer()
 		nSentPosition = 0;
 		nSendPosition -= left;
 	}
+}
+
+extern "C" const char* wyd_socket_last_host()
+{
+	return g_wyd_socket_debug.last_host;
+}
+
+extern "C" const char* wyd_socket_last_proxy_url()
+{
+	return g_wyd_socket_debug.last_proxy_url;
+}
+
+extern "C" int wyd_socket_last_port()
+{
+	return g_wyd_socket_debug.last_port;
+}
+
+extern "C" int wyd_socket_last_connect_result()
+{
+	return g_wyd_socket_debug.last_connect_result;
+}
+
+extern "C" int wyd_socket_last_error()
+{
+	return g_wyd_socket_debug.last_error;
+}
+
+extern "C" unsigned int wyd_socket_bytes_sent()
+{
+	return static_cast<unsigned int>(g_wyd_socket_debug.bytes_sent & 0xFFFFFFFFu);
+}
+
+extern "C" unsigned int wyd_socket_bytes_received()
+{
+	return static_cast<unsigned int>(g_wyd_socket_debug.bytes_received & 0xFFFFFFFFu);
+}
+
+extern "C" unsigned int wyd_socket_last_sent_opcode()
+{
+	return g_wyd_socket_debug.last_sent_opcode;
+}
+
+extern "C" unsigned int wyd_socket_last_recv_opcode()
+{
+	return g_wyd_socket_debug.last_recv_opcode;
 }

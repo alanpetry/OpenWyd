@@ -5,11 +5,19 @@ import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.m
 
 const { chromium } = playwrightPkg;
 const GAME_STATE_SELECT_SERVER = 7;
+const SCREEN_STATES = {
+  selectserver: 7,
+  server: 7,
+  selectchar: 5,
+  char: 5,
+  login: 3,
+};
 
 function parseArgs(argv) {
   const opts = {
     url: "http://127.0.0.1:8877/webclient/client-wasm/build/link/startup_harness.html",
     state: GAME_STATE_SELECT_SERVER,
+    screen: null,
     debugFlags: 0,
     debugSkipFvf: 0,
     ticks: 30,
@@ -27,6 +35,12 @@ function parseArgs(argv) {
     logical: null,
     layout: null,
     fit: null,
+    socketProxy: null,
+    host: null,
+    account: "OPENWYD01",
+    password: "TEST1234",
+    dummyLogin: false,
+    loginTicks: 120,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -38,6 +52,15 @@ function parseArgs(argv) {
     }
     if (a === "--state" && argv[i + 1]) {
       opts.state = Number.parseInt(argv[i + 1], 10) || opts.state;
+      i += 1;
+      continue;
+    }
+    if (a === "--screen" && argv[i + 1]) {
+      const screen = String(argv[i + 1] || "").toLowerCase();
+      opts.screen = screen;
+      if (Object.prototype.hasOwnProperty.call(SCREEN_STATES, screen)) {
+        opts.state = SCREEN_STATES[screen];
+      }
       i += 1;
       continue;
     }
@@ -102,6 +125,35 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (a === "--socket-proxy" && argv[i + 1]) {
+      opts.socketProxy = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (a === "--host" && argv[i + 1]) {
+      opts.host = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (a === "--account" && argv[i + 1]) {
+      opts.account = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (a === "--password" && argv[i + 1]) {
+      opts.password = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (a === "--dummy-login") {
+      opts.dummyLogin = true;
+      continue;
+    }
+    if (a === "--login-ticks" && argv[i + 1]) {
+      opts.loginTicks = Number.parseInt(argv[i + 1], 10) || opts.loginTicks;
+      i += 1;
+      continue;
+    }
     if (a === "--trace") {
       opts.trace = true;
       continue;
@@ -146,10 +198,16 @@ function parseSize(value) {
 
 function harnessUrl(opts) {
   const url = new URL(opts.url, "http://127.0.0.1");
+  url.searchParams.set("state", `${opts.state}`);
+  if (opts.screen) url.searchParams.set("screen", opts.screen);
   if (opts.layout) url.searchParams.set("layout", opts.layout);
   const logical = opts.logical || opts.canvas;
   if (logical) url.searchParams.set("logical", `${logical.width}x${logical.height}`);
   if (opts.fit) url.searchParams.set("fit", opts.fit);
+  if (opts.socketProxy) url.searchParams.set("socketProxy", opts.socketProxy);
+  if (opts.host) url.searchParams.set("host", opts.host);
+  if (opts.account) url.searchParams.set("account", opts.account);
+  if (opts.password) url.searchParams.set("password", opts.password);
   if (Number.isFinite(opts.tickMs)) url.searchParams.set("tickMs", `${opts.tickMs}`);
   return url.toString();
 }
@@ -394,6 +452,10 @@ let result = {
   drawTraceTop: [],
   font2: null,
   gameState: null,
+  screen: opts.screen,
+  selChar: null,
+  socket: null,
+  dummyLoginReturn: null,
   pixel: null,
   camera: null,
   renderVisible: false,
@@ -446,6 +508,37 @@ try {
   result.debugFlagsEarly = await page.evaluate(() => (
     typeof Module._wyd_d3d9_get_debug_flags === "function" ? Module._wyd_d3d9_get_debug_flags() : null
   ));
+  if (opts.dummyLogin) {
+    result.step = "dummy-login";
+    result.dummyLoginReturn = await page.evaluate(({ host, account, password, socketProxy }) => {
+      const hostInput = document.getElementById("debug-host");
+      const accountInput = document.getElementById("debug-account");
+      const passwordInput = document.getElementById("debug-password");
+      const proxyInput = document.getElementById("socket-proxy");
+      if (hostInput && host) hostInput.value = host;
+      if (accountInput && account) accountInput.value = account;
+      if (passwordInput && password) passwordInput.value = password;
+      if (proxyInput && socketProxy) proxyInput.value = socketProxy;
+      if (typeof window.runDummyLogin !== "function") return -1;
+      return window.runDummyLogin();
+    }, {
+      host: opts.host || "",
+      account: opts.account || "OPENWYD01",
+      password: opts.password || "TEST1234",
+      socketProxy: opts.socketProxy || "",
+    });
+    await page.waitForTimeout(250);
+    if (opts.loginTicks > 0) {
+      await page.evaluate(({ count, tickMs }) => {
+        for (let i = 0; i < count; i += 1) {
+          if (tickMs > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
+            Module._wyd_debug_advance_fake_time(tickMs >>> 0);
+          }
+          Module._wyd_tick_client();
+        }
+      }, { count: opts.loginTicks, tickMs: opts.tickMs });
+    }
+  }
   if (opts.cameraOffset) {
     await page.evaluate((offset) => {
       if (typeof Module._wyd_debug_set_demo_camera_offset === "function") {
@@ -1798,6 +1891,47 @@ try {
       return Module._wyd_get_game_state();
     }
     return null;
+  });
+  result.selChar = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    const str = (name, ...args) => {
+      if (typeof M[name] !== "function" || typeof M.UTF8ToString !== "function") return null;
+      const ptr = M[name](...args);
+      return ptr ? M.UTF8ToString(ptr >>> 0) : "";
+    };
+    return {
+      initialized: call("_wyd_selchar_initialized"),
+      charCount: call("_wyd_selchar_char_count"),
+      humans: [0, 1, 2, 3].map((slot) => call("_wyd_selchar_human_present", slot)),
+      names: [0, 1, 2, 3].map((slot) => str("_wyd_selchar_name", slot)),
+      serverListSample: [
+        str("_wyd_serverlist_entry", 0, 0),
+        str("_wyd_serverlist_entry", 0, 1),
+        str("_wyd_serverlist_entry", 1, 0),
+        str("_wyd_serverlist_entry", 2, 1),
+      ],
+    };
+  });
+  result.socket = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name) => (typeof M[name] === "function" ? M[name]() : null);
+    const str = (name) => {
+      if (typeof M[name] !== "function" || typeof M.UTF8ToString !== "function") return null;
+      const ptr = M[name]();
+      return ptr ? M.UTF8ToString(ptr >>> 0) : "";
+    };
+    return {
+      host: str("_wyd_socket_last_host"),
+      proxyUrl: str("_wyd_socket_last_proxy_url"),
+      port: call("_wyd_socket_last_port"),
+      connectResult: call("_wyd_socket_last_connect_result"),
+      lastError: call("_wyd_socket_last_error"),
+      bytesSent: call("_wyd_socket_bytes_sent"),
+      bytesReceived: call("_wyd_socket_bytes_received"),
+      lastSentOpcode: call("_wyd_socket_last_sent_opcode"),
+      lastRecvOpcode: call("_wyd_socket_last_recv_opcode"),
+    };
   });
 
   const canvas = page.locator("#canvas");

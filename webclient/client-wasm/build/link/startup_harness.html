@@ -49,6 +49,25 @@
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
+    .debug-row {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: 1fr 1fr;
+      margin-bottom: 10px;
+    }
+    .debug-row label {
+      display: grid;
+      gap: 3px;
+      font-size: 11px;
+      color: #b7b7b7;
+    }
+    .debug-row input,
+    .debug-row select {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+    }
     #log {
       white-space: pre-wrap;
       line-height: 1.35;
@@ -99,9 +118,31 @@
         <button id="tick-btn">Tick Once</button>
         <button id="tick120-btn">Tick 120 Frames</button>
         <button id="auto-btn">Toggle Auto Tick</button>
-        <button id="set-selectserver-btn">Set State: SelectServer</button>
+        <select id="screen-select">
+          <option value="7">Select Server</option>
+          <option value="5">Select Character</option>
+          <option value="3">Login</option>
+        </select>
+        <button id="set-state-btn">Set State</button>
         <button id="stats-btn">Read Runtime Stats</button>
         <button id="shutdown-btn">Shutdown Client</button>
+      </div>
+      <div class="debug-row">
+        <label>Server host
+          <input id="debug-host" value="" placeholder="official host or IP" />
+        </label>
+        <label>Socket proxy
+          <input id="socket-proxy" value="ws://127.0.0.1:8282/" />
+        </label>
+        <label>Account
+          <input id="debug-account" value="OPENWYD01" />
+        </label>
+        <label>Password
+          <input id="debug-password" value="TEST1234" />
+        </label>
+      </div>
+      <div class="controls">
+        <button id="dummy-login-btn">Dummy Login</button>
       </div>
       <div id="log">loading...</div>
     </div>
@@ -117,15 +158,30 @@
     const tickBtn = document.getElementById('tick-btn');
     const tick120Btn = document.getElementById('tick120-btn');
     const autoBtn = document.getElementById('auto-btn');
-    const setSelectServerBtn = document.getElementById('set-selectserver-btn');
+    const screenSelect = document.getElementById('screen-select');
+    const setStateBtn = document.getElementById('set-state-btn');
     const statsBtn = document.getElementById('stats-btn');
     const shutdownBtn = document.getElementById('shutdown-btn');
+    const debugHostInput = document.getElementById('debug-host');
+    const socketProxyInput = document.getElementById('socket-proxy');
+    const debugAccountInput = document.getElementById('debug-account');
+    const debugPasswordInput = document.getElementById('debug-password');
+    const dummyLoginBtn = document.getElementById('dummy-login-btn');
     const MAX_LOG_LINES = 800;
     let lineCount = 0;
     let autoTickRunning = false;
     let autoTickFrames = 0;
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
+    const screenStates = {
+      selectserver: 7,
+      server: 7,
+      selectchar: 5,
+      char: 5,
+      login: 3
+    };
+    const queryScreen = (query.get('screen') || '').toLowerCase();
+    const queryState = Number.parseInt(query.get('state') || '', 10);
     const parseSize = (value) => {
       const match = String(value || '').match(/^(\d+)x(\d+)$/i);
       if (!match) return null;
@@ -135,7 +191,7 @@
       return { width, height };
     };
     const autoConfig = {
-      state: Number.parseInt(query.get('state') || '7', 10) || 7,
+      state: Number.isFinite(queryState) ? queryState : (screenStates[queryScreen] || 7),
       debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
       skipFvf: Number.parseInt(query.get('skipFvf') || '0', 10) || 0,
       tickBurst: Number.parseInt(query.get('tickBurst') || '0', 10) || 0,
@@ -145,8 +201,17 @@
       quiet: query.get('quiet') === '1',
       layout: query.get('layout') || 'panel',
       fit: query.get('fit') || 'actual',
-      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 1280, height: 720 }
+      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 1280, height: 720 },
+      socketProxyUrl: query.get('socketProxy') || 'ws://127.0.0.1:8282/',
+      debugHost: query.get('host') || '',
+      debugAccount: query.get('account') || 'OPENWYD01',
+      debugPassword: query.get('password') || 'TEST1234'
     };
+    screenSelect.value = String(autoConfig.state);
+    socketProxyInput.value = autoConfig.socketProxyUrl;
+    debugHostInput.value = autoConfig.debugHost;
+    debugAccountInput.value = autoConfig.debugAccount;
+    debugPasswordInput.value = autoConfig.debugPassword;
     if (autoConfig.layout === 'capture') {
       document.body.classList.add('capture');
     }
@@ -308,24 +373,80 @@
       }
     };
 
-    window.setSelectServerState = () => {
+    window.setGameState = (state) => {
       try {
         if (typeof Module._wyd_set_game_state !== 'function') {
           write('_wyd_set_game_state export unavailable', 'err');
           return;
         }
-        const ret = Module._wyd_set_game_state(7);
-        write(`_wyd_set_game_state(7) returned: ${ret}`, ret ? 'ok' : 'err');
-        setStatus(`set_state=${ret}`);
+        const requested = Number.isFinite(Number(state)) ? Number(state) : Number(screenSelect.value || 7);
+        const ret = Module._wyd_set_game_state(requested);
+        screenSelect.value = String(requested);
+        write(`_wyd_set_game_state(${requested}) returned: ${ret}`, ret ? 'ok' : 'err');
+        setStatus(`state=${requested} rc=${ret}`);
       } catch (err) {
         write(`_wyd_set_game_state threw: ${err?.message || err}`, 'err');
       }
     };
 
+    window.setSelectServerState = () => window.setGameState(7);
+
+    window.runDummyLogin = () => {
+      try {
+        if (typeof Module._wyd_debug_selectserver_login !== 'function') {
+          write('_wyd_debug_selectserver_login export unavailable', 'err');
+          return 0;
+        }
+        Module.wydSocketProxyUrl = socketProxyInput.value || 'ws://127.0.0.1:8282/';
+        const account = debugAccountInput.value || 'OPENWYD01';
+        const password = debugPasswordInput.value || 'TEST1234';
+        const host = debugHostInput.value || '';
+        const ret = Module.ccall(
+          'wyd_debug_selectserver_login',
+          'number',
+          ['string', 'string', 'string'],
+          [account, password, host]
+        );
+        write(`_wyd_debug_selectserver_login(${host || '(current server)'}) returned: ${ret}`, ret ? 'ok' : 'err');
+        setStatus(`dummy_login=${ret}`);
+        return ret;
+      } catch (err) {
+        write(`_wyd_debug_selectserver_login threw: ${err?.message || err}`, 'err');
+        setStatus('dummy login failed');
+        return 0;
+      }
+    };
+
     window.readRuntimeStats = () => {
       try {
+        const str = (name, ...args) => {
+          if (typeof Module[name] !== 'function' || typeof Module.UTF8ToString !== 'function') return null;
+          const ptr = Module[name](...args);
+          return ptr ? Module.UTF8ToString(ptr) : '';
+        };
         const stats = {
           gameState: typeof Module._wyd_get_game_state === 'function' ? Module._wyd_get_game_state() : null,
+          selCharInitialized: typeof Module._wyd_selchar_initialized === 'function' ? Module._wyd_selchar_initialized() : null,
+          selCharCount: typeof Module._wyd_selchar_char_count === 'function' ? Module._wyd_selchar_char_count() : null,
+          selCharNames: [0, 1, 2, 3].map((slot) => str('_wyd_selchar_name', slot)),
+          selCharHumans: [0, 1, 2, 3].map((slot) => (
+            typeof Module._wyd_selchar_human_present === 'function' ? Module._wyd_selchar_human_present(slot) : null
+          )),
+          serverListSample: [
+            str('_wyd_serverlist_entry', 0, 0),
+            str('_wyd_serverlist_entry', 0, 1),
+            str('_wyd_serverlist_entry', 1, 0),
+            str('_wyd_serverlist_entry', 2, 1)
+          ],
+          socketHost: str('_wyd_socket_last_host'),
+          socketProxy: str('_wyd_socket_last_proxy_url'),
+          socketPort: typeof Module._wyd_socket_last_port === 'function' ? Module._wyd_socket_last_port() : null,
+          socketConnect: typeof Module._wyd_socket_last_connect_result === 'function' ? Module._wyd_socket_last_connect_result() : null,
+          socketError: typeof Module._wyd_socket_last_error === 'function' ? Module._wyd_socket_last_error() : null,
+          socketBytesSent: typeof Module._wyd_socket_bytes_sent === 'function' ? Module._wyd_socket_bytes_sent() : null,
+          socketBytesReceived: typeof Module._wyd_socket_bytes_received === 'function' ? Module._wyd_socket_bytes_received() : null,
+          socketLastSentOpcode: typeof Module._wyd_socket_last_sent_opcode === 'function' ? Module._wyd_socket_last_sent_opcode() : null,
+          socketLastRecvOpcode: typeof Module._wyd_socket_last_recv_opcode === 'function' ? Module._wyd_socket_last_recv_opcode() : null,
           drawCalls: typeof Module._wyd_d3d9_draw_calls === 'function' ? Module._wyd_d3d9_draw_calls() : null,
           primitives: typeof Module._wyd_d3d9_primitives === 'function' ? Module._wyd_d3d9_primitives() : null,
           texDecodeSuccess: typeof Module._wyd_d3d9_tex_decode_success === 'function' ? Module._wyd_d3d9_tex_decode_success() : null,
@@ -393,8 +514,12 @@
       else window.startAutoTick();
     });
 
-    setSelectServerBtn.addEventListener('click', () => {
-      window.setSelectServerState();
+    setStateBtn.addEventListener('click', () => {
+      window.setGameState(Number(screenSelect.value || 7));
+    });
+
+    dummyLoginBtn.addEventListener('click', () => {
+      window.runDummyLogin();
     });
 
     statsBtn.addEventListener('click', () => {
@@ -409,6 +534,7 @@
 
     window.Module = {
       canvas: canvasEl,
+      wydSocketProxyUrl: autoConfig.socketProxyUrl,
       print: (txt) => write(`[stdout] ${txt}`),
       printErr: (txt) => write(`[stderr] ${txt}`, 'err'),
       onRuntimeInitialized() {
@@ -422,11 +548,7 @@
         }
         const boot = window.bootClient();
         if (boot) {
-          if (typeof Module._wyd_set_game_state === 'function') {
-            Module._wyd_set_game_state(autoConfig.state);
-          } else {
-            window.setSelectServerState();
-          }
+          window.setGameState(autoConfig.state);
           if (typeof Module._wyd_d3d9_set_debug_flags === 'function') {
             Module._wyd_d3d9_set_debug_flags(autoConfig.debugFlags >>> 0);
           }
