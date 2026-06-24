@@ -1,0 +1,17 @@
+{
+  "name": "webclient",
+  "version": "1.0.0",
+  "description": "Este diretório contém a base inicial do port web com foco em:",
+  "private": true,
+  "scripts": {
+    "build:wasm": "./tools/build_wasm.sh",
+    "probe:runtime": "node ./tools/playwright_runtime_probe.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.54.2"
+  }
+}

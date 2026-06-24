@@ -1,0 +1,234 @@
+{
+  "generatedAt": "2026-04-10T13:24:54.509125+00:00",
+  "files": [
+    {
+      "requestPath": "Config.bin",
+      "normalizedPath": "Config.bin",
+      "resolvedPath": "Config.bin",
+      "size": 32
+    },
+    {
+      "requestPath": "serverlist.bin",
+      "normalizedPath": "serverlist.bin",
+      "resolvedPath": "serverlist.bin",
+      "size": 7040
+    },
+    {
+      "requestPath": "sn.bin",
+      "normalizedPath": "sn.bin",
+      "resolvedPath": "sn.bin",
+      "size": 143
+    },
+    {
+      "requestPath": "ItemList.bin",
+      "normalizedPath": "ItemList.bin",
+      "resolvedPath": "ItemList.bin",
+      "size": 1066004
+    },
+    {
+      "requestPath": "Itemname.bin",
+      "normalizedPath": "Itemname.bin",
+      "resolvedPath": "Itemname.bin",
+      "size": 214880
+    },
+    {
+      "requestPath": "SkillData.bin",
+      "normalizedPath": "SkillData.bin",
+      "resolvedPath": "SkillData.bin",
+      "size": 25796
+    },
+    {
+      "requestPath": "object.bin",
+      "normalizedPath": "object.bin",
+      "resolvedPath": "object.bin",
+      "size": 524292
+    },
+    {
+      "requestPath": "sound\\soundlist.txt",
+      "normalizedPath": "sound/soundlist.txt",
+      "resolvedPath": "Sound/soundlist.txt",
+      "size": 11451
+    },
+    {
+      "requestPath": "UI\\UITextureListN.bin",
+      "normalizedPath": "UI/UITextureListN.bin",
+      "resolvedPath": "UI/UITextureListN.bin",
+      "size": 270336
+    },
+    {
+      "requestPath": "UI\\UITextureSetList.txt",
+      "normalizedPath": "UI/UITextureSetList.txt",
+      "resolvedPath": "UI/UITextureSetList.txt",
+      "size": 74251
+    },
+    {
+      "requestPath": "UI\\UIString.txt",
+      "normalizedPath": "UI/UIString.txt",
+      "resolvedPath": "UI/UIString.txt",
+      "size": 4264
+    },
+    {
+      "requestPath": "UI\\strdef.bin",
+      "normalizedPath": "UI/strdef.bin",
+      "resolvedPath": "UI/strdef.bin",
+      "size": 256004
+    },
+    {
+      "requestPath": "UI\\SelServerScene2.bin",
+      "normalizedPath": "UI/SelServerScene2.bin",
+      "resolvedPath": "UI/SelServerScene2.bin",
+      "size": 1352
+    },
+    {
+      "requestPath": "UI\\SelCharScene2.bin",
+      "normalizedPath": "UI/SelCharScene2.bin",
+      "resolvedPath": "UI/SelCharScene2.bin",
+      "size": 5956
+    },
+    {
+      "requestPath": "Effect\\EffectTextureList.bin",
+      "normalizedPath": "Effect/EffectTextureList.bin",
+      "resolvedPath": "Effect/EffectTextureList.bin",
+      "size": 316800
+    },
+    {
+      "requestPath": "Mesh\\MeshTextureList.bin",
+      "normalizedPath": "Mesh/MeshTextureList.bin",
+      "resolvedPath": "Mesh/MeshTextureList.bin",
+      "size": 1584000
+    },
+    {
+      "requestPath": "Mesh\\MeshList.txt",
+      "normalizedPath": "Mesh/MeshList.txt",
+      "resolvedPath": "Mesh/MeshList.txt",
+      "size": 39929
+    },
+    {
+      "requestPath": "Mesh\\ValidIndex.bin",
+      "normalizedPath": "Mesh/ValidIndex.bin",
+      "resolvedPath": "Mesh/ValidIndex.bin",
+      "size": 74400
+    },
+    {
+      "requestPath": "Mesh\\BoneAni4.txt",
+      "normalizedPath": "Mesh/BoneAni4.txt",
+      "resolvedPath": "Mesh/BoneAni4.txt",
+      "size": 1347
+    },
+    {
+      "requestPath": "Env\\EnvTextureList3.bin",
+      "normalizedPath": "Env/EnvTextureList3.bin",
+      "resolvedPath": "Env/EnvTextureList3.bin",
+      "size": 270336
+    },
+    {
+      "requestPath": "Shader\\skinmesh1.bin",
+      "normalizedPath": "Shader/skinmesh1.bin",
+      "resolvedPath": "shader/skinmesh1.bin",
+      "size": 468
+    },
+    {
+      "requestPath": "Shader\\skinmesh2.bin",
+      "normalizedPath": "Shader/skinmesh2.bin",
+      "resolvedPath": "shader/skinmesh2.bin",
+      "size": 616
+    },
+    {
+      "requestPath": "Shader\\skinmesh3.bin",
+      "normalizedPath": "Shader/skinmesh3.bin",
+      "resolvedPath": "shader/skinmesh3.bin",
+      "size": 700
+    },
+    {
+      "requestPath": "Shader\\skinmesh4.bin",
+      "normalizedPath": "Shader/skinmesh4.bin",
+      "resolvedPath": "shader/skinmesh4.bin",
+      "size": 784
+    },
+    {
+      "requestPath": "Shader\\skinmesh5.bin",
+      "normalizedPath": "Shader/skinmesh5.bin",
+      "resolvedPath": "shader/skinmesh5.bin",
+      "size": 464
+    },
+    {
+      "requestPath": "Shader\\skinmesh6.bin",
+      "normalizedPath": "Shader/skinmesh6.bin",
+      "resolvedPath": "shader/skinmesh6.bin",
+      "size": 612
+    },
+    {
+      "requestPath": "Shader\\skinmesh7.bin",
+      "normalizedPath": "Shader/skinmesh7.bin",
+      "resolvedPath": "shader/skinmesh7.bin",
+      "size": 696
+    },
+    {
+      "requestPath": "Shader\\skinmesh8.bin",
+      "normalizedPath": "Shader/skinmesh8.bin",
+      "resolvedPath": "shader/skinmesh8.bin",
+      "size": 780
+    },
+    {
+      "requestPath": "Shader\\vseffect1.bin",
+      "normalizedPath": "Shader/vseffect1.bin",
+      "resolvedPath": "shader/vseffect1.bin",
+      "size": 644
+    },
+    {
+      "requestPath": "Shader\\vseffect2.bin",
+      "normalizedPath": "Shader/vseffect2.bin",
+      "resolvedPath": "shader/vseffect2.bin",
+      "size": 748
+    },
+    {
+      "requestPath": "Shader\\vseffect3.bin",
+      "normalizedPath": "Shader/vseffect3.bin",
+      "resolvedPath": "shader/vseffect3.bin",
+      "size": 252
+    },
+    {
+      "requestPath": "Shader\\vseffect4.bin",
+      "normalizedPath": "Shader/vseffect4.bin",
+      "resolvedPath": "shader/vseffect4.bin",
+      "size": 236
+    },
+    {
+      "requestPath": "Shader\\pseffect1.bin",
+      "normalizedPath": "Shader/pseffect1.bin",
+      "resolvedPath": "shader/pseffect1.bin",
+      "size": 112
+    },
+    {
+      "requestPath": "Shader\\pseffect2.bin",
+      "normalizedPath": "Shader/pseffect2.bin",
+      "resolvedPath": "shader/pseffect2.bin",
+      "size": 140
+    },
+    {
+      "requestPath": "Shader\\pseffect3.bin",
+      "normalizedPath": "Shader/pseffect3.bin",
+      "resolvedPath": "shader/pseffect3.bin",
+      "size": 256
+    },
+    {
+      "requestPath": "Shader\\pseffect4.bin",
+      "normalizedPath": "Shader/pseffect4.bin",
+      "resolvedPath": "shader/pseffect4.bin",
+      "size": 184
+    },
+    {
+      "requestPath": "Shader\\pseffect5.bin",
+      "normalizedPath": "Shader/pseffect5.bin",
+      "resolvedPath": "shader/pseffect5.bin",
+      "size": 112
+    },
+    {
+      "requestPath": "Shader\\pseffect6.bin",
+      "normalizedPath": "Shader/pseffect6.bin",
+      "resolvedPath": "shader/pseffect6.bin",
+      "size": 116
+    }
+  ],
+  "missing": []
+}

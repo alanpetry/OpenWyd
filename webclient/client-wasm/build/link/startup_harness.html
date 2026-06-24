@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>WYD TMProject WASM Startup Harness</title>
+  <style>
+    :root {
+      --panel-bg: #141414;
+      --panel-border: #2a2a2a;
+      --text: #e2e2e2;
+    }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      font-family: monospace;
+      background: #0e0e0e;
+      color: var(--text);
+      overflow: hidden;
+    }
+    .layout {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 12px;
+      width: 100%;
+      height: 100%;
+      padding: 12px;
+    }
+    body.capture .layout {
+      display: block;
+      padding: 0;
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    body.capture .panel {
+      display: none;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    #log {
+      white-space: pre-wrap;
+      line-height: 1.35;
+      overflow: auto;
+      min-height: 0;
+      flex: 1;
+      border-top: 1px solid var(--panel-border);
+      padding-top: 8px;
+    }
+    #status { color: #a0cfff; margin-bottom: 8px; }
+    .canvas-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: #070707;
+      overflow: hidden;
+      min-height: 0;
+    }
+    body.capture .canvas-wrap {
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      border-radius: 0;
+    }
+    #canvas {
+      width: 1280px;
+      height: 720px;
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+      background: #000;
+      image-rendering: pixelated;
+    }
+    .ok { color: #7CFC7C; }
+    .err { color: #ff7070; }
+    h3 { margin: 0 0 10px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="panel">
+      <h3>TMProject Startup Harness (_wyd_start_client)</h3>
+      <div id="status">status: loading runtime...</div>
+      <div class="controls">
+        <button id="boot-btn">Boot Client</button>
+        <button id="tick-btn">Tick Once</button>
+        <button id="tick120-btn">Tick 120 Frames</button>
+        <button id="auto-btn">Toggle Auto Tick</button>
+        <button id="set-selectserver-btn">Set State: SelectServer</button>
+        <button id="stats-btn">Read Runtime Stats</button>
+        <button id="shutdown-btn">Shutdown Client</button>
+      </div>
+      <div id="log">loading...</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="1280" height="720"></canvas>
+    </div>
+  </div>
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const canvasEl = document.getElementById('canvas');
+    const bootBtn = document.getElementById('boot-btn');
+    const tickBtn = document.getElementById('tick-btn');
+    const tick120Btn = document.getElementById('tick120-btn');
+    const autoBtn = document.getElementById('auto-btn');
+    const setSelectServerBtn = document.getElementById('set-selectserver-btn');
+    const statsBtn = document.getElementById('stats-btn');
+    const shutdownBtn = document.getElementById('shutdown-btn');
+    const MAX_LOG_LINES = 800;
+    let lineCount = 0;
+    let autoTickRunning = false;
+    let autoTickFrames = 0;
+    window.__runtimeReady = false;
+    const query = new URLSearchParams(window.location.search);
+    const parseSize = (value) => {
+      const match = String(value || '').match(/^(\d+)x(\d+)$/i);
+      if (!match) return null;
+      const width = Number.parseInt(match[1], 10);
+      const height = Number.parseInt(match[2], 10);
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+      return { width, height };
+    };
+    const autoConfig = {
+      state: Number.parseInt(query.get('state') || '7', 10) || 7,
+      debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
+      skipFvf: Number.parseInt(query.get('skipFvf') || '0', 10) || 0,
+      tickBurst: Number.parseInt(query.get('tickBurst') || '0', 10) || 0,
+      tickMs: Number.parseInt(query.get('tickMs') || '100', 10) || 0,
+      autoboot: query.get('autoboot') !== '0',
+      autostart: query.get('autostart') !== '0',
+      quiet: query.get('quiet') === '1',
+      layout: query.get('layout') || 'panel',
+      fit: query.get('fit') || 'actual',
+      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 1280, height: 720 }
+    };
+    if (autoConfig.layout === 'capture') {
+      document.body.classList.add('capture');
+    }
+
+    const syncCanvasSize = () => {
+      const logical = autoConfig.logicalSize;
+      if (canvasEl.width !== logical.width || canvasEl.height !== logical.height) {
+        canvasEl.width = logical.width;
+        canvasEl.height = logical.height;
+      }
+
+      const wrap = canvasEl.parentElement;
+      const rect = wrap ? wrap.getBoundingClientRect() : { width: logical.width, height: logical.height };
+      const maxWidth = Math.max(1, rect.width);
+      const maxHeight = Math.max(1, rect.height);
+      const aspect = logical.width / logical.height;
+      let displayWidth = logical.width;
+      let displayHeight = logical.height;
+
+      const shouldContain = autoConfig.fit === 'contain';
+      if (shouldContain || displayWidth > maxWidth || displayHeight > maxHeight) {
+        displayWidth = maxWidth;
+        displayHeight = displayWidth / aspect;
+        if (displayHeight > maxHeight) {
+          displayHeight = maxHeight;
+          displayWidth = displayHeight * aspect;
+        }
+      }
+
+      canvasEl.style.width = `${Math.round(displayWidth)}px`;
+      canvasEl.style.height = `${Math.round(displayHeight)}px`;
+    };
+
+    window.addEventListener('resize', syncCanvasSize);
+
+    const setStatus = (msg) => {
+      statusEl.textContent = `status: ${msg}`;
+    };
+
+    const write = (msg, cls = '') => {
+      if (autoConfig.quiet) return;
+      const line = document.createElement('div');
+      if (cls) line.className = cls;
+      line.textContent = msg;
+      logEl.appendChild(line);
+      lineCount += 1;
+      while (lineCount > MAX_LOG_LINES && logEl.firstChild) {
+        logEl.removeChild(logEl.firstChild);
+        lineCount -= 1;
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    logEl.textContent = '';
+    syncCanvasSize();
+
+    window.__wydHarnessConfig = {
+      logicalWidth: autoConfig.logicalSize.width,
+      logicalHeight: autoConfig.logicalSize.height,
+      fit: autoConfig.fit,
+      tickMs: autoConfig.tickMs
+    };
+
+    const advanceTickTime = () => {
+      if (autoConfig.tickMs > 0 && typeof Module?._wyd_debug_advance_fake_time === 'function') {
+        Module._wyd_debug_advance_fake_time(autoConfig.tickMs >>> 0);
+      }
+    };
+
+    window.startClient = () => {
+      try {
+        setStatus('running _wyd_start_client (blocking)');
+        const ret = Module._wyd_start_client();
+        write(`_wyd_start_client returned: ${ret}`, 'ok');
+        setStatus(`_wyd_start_client returned ${ret}`);
+      } catch (err) {
+        write(`_wyd_start_client threw: ${err?.message || err}`, 'err');
+        setStatus('_wyd_start_client failed');
+      }
+    };
+
+    window.bootClient = () => {
+      try {
+        const ret = Module._wyd_boot_client(1);
+        write(`_wyd_boot_client returned: ${ret}`, ret ? 'ok' : 'err');
+        setStatus(`boot=${ret}`);
+        return ret;
+      } catch (err) {
+        write(`_wyd_boot_client threw: ${err?.message || err}`, 'err');
+        setStatus('boot failed');
+        return 0;
+      }
+    };
+
+    window.tickClient = (silent = false, advanceTime = true) => {
+      try {
+        if (advanceTime) advanceTickTime();
+        const ret = Module._wyd_tick_client();
+        if (!silent) write(`_wyd_tick_client returned: ${ret}`, ret >= 0 ? 'ok' : 'err');
+        setStatus(`tick=${ret}`);
+        return ret;
+      } catch (err) {
+        write(`_wyd_tick_client threw: ${err?.message || err}`, 'err');
+        setStatus('tick failed');
+        return -1;
+      }
+    };
+
+    window.runTickBurstSync = (count) => {
+      let failures = 0;
+      for (let i = 0; i < count; i += 1) {
+        const rc = window.tickClient(true, true);
+        if (rc < 0) failures += 1;
+      }
+      write(`tick burst sync finished (${count}), failures=${failures}`, failures ? 'err' : 'ok');
+      setStatus(`tick burst sync complete, failures=${failures}`);
+      return failures;
+    };
+
+    const autoTickStep = () => {
+      if (!autoTickRunning) return;
+      const rc = window.tickClient(true, true);
+      autoTickFrames += 1;
+      if (rc < 0) {
+        write(`auto tick failed at frame=${autoTickFrames} rc=${rc}`, 'err');
+        autoTickRunning = false;
+        autoBtn.textContent = 'Start Auto Tick';
+        setStatus(`auto tick stopped rc=${rc}`);
+        return;
+      }
+      if ((autoTickFrames % 120) === 0) {
+        setStatus(`auto tick running frame=${autoTickFrames}`);
+      }
+      requestAnimationFrame(autoTickStep);
+    };
+
+    window.startAutoTick = () => {
+      if (autoTickRunning) return;
+      autoTickRunning = true;
+      autoBtn.textContent = 'Stop Auto Tick';
+      setStatus('auto tick running');
+      requestAnimationFrame(autoTickStep);
+    };
+
+    window.stopAutoTick = () => {
+      autoTickRunning = false;
+      autoBtn.textContent = 'Start Auto Tick';
+      setStatus('auto tick stopped');
+    };
+
+    window.shutdownClient = () => {
+      try {
+        const ret = Module._wyd_shutdown_client();
+        write(`_wyd_shutdown_client returned: ${ret}`, ret ? 'ok' : 'err');
+        setStatus(`shutdown=${ret}`);
+      } catch (err) {
+        write(`_wyd_shutdown_client threw: ${err?.message || err}`, 'err');
+        setStatus('shutdown failed');
+      }
+    };
+
+    window.setSelectServerState = () => {
+      try {
+        if (typeof Module._wyd_set_game_state !== 'function') {
+          write('_wyd_set_game_state export unavailable', 'err');
+          return;
+        }
+        const ret = Module._wyd_set_game_state(7);
+        write(`_wyd_set_game_state(7) returned: ${ret}`, ret ? 'ok' : 'err');
+        setStatus(`set_state=${ret}`);
+      } catch (err) {
+        write(`_wyd_set_game_state threw: ${err?.message || err}`, 'err');
+      }
+    };
+
+    window.readRuntimeStats = () => {
+      try {
+        const stats = {
+          gameState: typeof Module._wyd_get_game_state === 'function' ? Module._wyd_get_game_state() : null,
+          drawCalls: typeof Module._wyd_d3d9_draw_calls === 'function' ? Module._wyd_d3d9_draw_calls() : null,
+          primitives: typeof Module._wyd_d3d9_primitives === 'function' ? Module._wyd_d3d9_primitives() : null,
+          texDecodeSuccess: typeof Module._wyd_d3d9_tex_decode_success === 'function' ? Module._wyd_d3d9_tex_decode_success() : null,
+          texDecodeFail: typeof Module._wyd_d3d9_tex_decode_fail === 'function' ? Module._wyd_d3d9_tex_decode_fail() : null,
+          texUploads: typeof Module._wyd_d3d9_tex_uploads === 'function' ? Module._wyd_d3d9_tex_uploads() : null,
+          texturedDraws: typeof Module._wyd_d3d9_textured_draws === 'function' ? Module._wyd_d3d9_textured_draws() : null,
+          vsUniqueShaders: typeof Module._wyd_d3d9_vs_unique_shaders === 'function' ? Module._wyd_d3d9_vs_unique_shaders() : null,
+          psUniqueShaders: typeof Module._wyd_d3d9_ps_unique_shaders === 'function' ? Module._wyd_d3d9_ps_unique_shaders() : null,
+          vsBindCalls: typeof Module._wyd_d3d9_vs_bind_calls === 'function' ? Module._wyd_d3d9_vs_bind_calls() : null,
+          psBindCalls: typeof Module._wyd_d3d9_ps_bind_calls === 'function' ? Module._wyd_d3d9_ps_bind_calls() : null,
+          drawsWithVs: typeof Module._wyd_d3d9_draws_with_vs === 'function' ? Module._wyd_d3d9_draws_with_vs() : null,
+          drawsWithPs: typeof Module._wyd_d3d9_draws_with_ps === 'function' ? Module._wyd_d3d9_draws_with_ps() : null,
+          shaderFileOpenAttempts: typeof Module._wyd_d3d9_shader_file_open_attempts === 'function' ? Module._wyd_d3d9_shader_file_open_attempts() : null,
+          shaderFileOpenSuccess: typeof Module._wyd_d3d9_shader_file_open_success === 'function' ? Module._wyd_d3d9_shader_file_open_success() : null,
+          shaderFileOpenFail: typeof Module._wyd_d3d9_shader_file_open_fail === 'function' ? Module._wyd_d3d9_shader_file_open_fail() : null,
+          shaderFileOpenSkinmesh: typeof Module._wyd_d3d9_shader_file_open_skinmesh === 'function' ? Module._wyd_d3d9_shader_file_open_skinmesh() : null,
+          shaderFileOpenVsEffect: typeof Module._wyd_d3d9_shader_file_open_vseffect === 'function' ? Module._wyd_d3d9_shader_file_open_vseffect() : null,
+          shaderFileOpenPsEffect: typeof Module._wyd_d3d9_shader_file_open_pseffect === 'function' ? Module._wyd_d3d9_shader_file_open_pseffect() : null,
+          activeVsHashLo: typeof Module._wyd_d3d9_active_vs_hash_lo === 'function' ? Module._wyd_d3d9_active_vs_hash_lo() : null,
+          activeVsHashHi: typeof Module._wyd_d3d9_active_vs_hash_hi === 'function' ? Module._wyd_d3d9_active_vs_hash_hi() : null,
+          activePsHashLo: typeof Module._wyd_d3d9_active_ps_hash_lo === 'function' ? Module._wyd_d3d9_active_ps_hash_lo() : null,
+          activePsHashHi: typeof Module._wyd_d3d9_active_ps_hash_hi === 'function' ? Module._wyd_d3d9_active_ps_hash_hi() : null,
+          fogEnabledDraws: typeof Module._wyd_d3d9_fog_enabled_draws === 'function' ? Module._wyd_d3d9_fog_enabled_draws() : null,
+          wireframeDraws: typeof Module._wyd_d3d9_wireframe_draws === 'function' ? Module._wyd_d3d9_wireframe_draws() : null,
+          materialSetCalls: typeof Module._wyd_d3d9_material_set_calls === 'function' ? Module._wyd_d3d9_material_set_calls() : null,
+          lightSetCalls: typeof Module._wyd_d3d9_light_set_calls === 'function' ? Module._wyd_d3d9_light_set_calls() : null,
+          lightEnableCalls: typeof Module._wyd_d3d9_light_enable_calls === 'function' ? Module._wyd_d3d9_light_enable_calls() : null,
+          lightedVertices: typeof Module._wyd_d3d9_lighted_vertices === 'function' ? Module._wyd_d3d9_lighted_vertices() : null
+        };
+        write(`runtime stats: ${JSON.stringify(stats)}`, 'ok');
+      } catch (err) {
+        write(`read stats failed: ${err?.message || err}`, 'err');
+      }
+    };
+
+    bootBtn.addEventListener('click', () => {
+      write('invoking _wyd_boot_client ...');
+      window.bootClient();
+    });
+
+    tickBtn.addEventListener('click', () => {
+      window.tickClient();
+    });
+
+    tick120Btn.addEventListener('click', () => {
+      let left = 120;
+      let failures = 0;
+      const step = () => {
+        if (left <= 0) {
+          write(`tick burst finished (120), failures=${failures}`, failures ? 'err' : 'ok');
+          setStatus(`tick burst complete, failures=${failures}`);
+          return;
+        }
+        left -= 1;
+        const rc = window.tickClient(true, true);
+        if (rc < 0) failures += 1;
+        requestAnimationFrame(step);
+      };
+      write('starting tick burst (120) ...');
+      step();
+    });
+
+    autoBtn.addEventListener('click', () => {
+      if (autoTickRunning) window.stopAutoTick();
+      else window.startAutoTick();
+    });
+
+    setSelectServerBtn.addEventListener('click', () => {
+      window.setSelectServerState();
+    });
+
+    statsBtn.addEventListener('click', () => {
+      window.readRuntimeStats();
+    });
+
+    shutdownBtn.addEventListener('click', () => {
+      write('invoking _wyd_shutdown_client ...');
+      window.stopAutoTick();
+      window.shutdownClient();
+    });
+
+    window.Module = {
+      canvas: canvasEl,
+      print: (txt) => write(`[stdout] ${txt}`),
+      printErr: (txt) => write(`[stderr] ${txt}`, 'err'),
+      onRuntimeInitialized() {
+        window.__runtimeReady = true;
+        write('runtime initialized', 'ok');
+        setStatus('runtime initialized; booting client');
+        syncCanvasSize();
+        if (!autoConfig.autoboot) {
+          setStatus('runtime initialized; autoboot disabled');
+          return;
+        }
+        const boot = window.bootClient();
+        if (boot) {
+          if (typeof Module._wyd_set_game_state === 'function') {
+            Module._wyd_set_game_state(autoConfig.state);
+          } else {
+            window.setSelectServerState();
+          }
+          if (typeof Module._wyd_d3d9_set_debug_flags === 'function') {
+            Module._wyd_d3d9_set_debug_flags(autoConfig.debugFlags >>> 0);
+          }
+          if (typeof Module._wyd_d3d9_set_debug_skip_fvf === 'function') {
+            Module._wyd_d3d9_set_debug_skip_fvf(autoConfig.skipFvf >>> 0);
+          }
+          if (typeof Module._wyd_d3d9_reset_debug_counters === 'function') {
+            Module._wyd_d3d9_reset_debug_counters();
+          }
+          if (autoConfig.tickBurst > 0) {
+            window.runTickBurstSync(autoConfig.tickBurst);
+          }
+          if (autoConfig.autostart) {
+            window.startAutoTick();
+          } else {
+            setStatus('runtime initialized; autostart disabled');
+          }
+        }
+      }
+    };
+  </script>
+  <script src="./tmproject_startup.js"></script>
+</body>
+</html>
