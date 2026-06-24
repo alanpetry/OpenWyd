@@ -29,6 +29,11 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
+# Select-server demo assets used by m_nDemoType = 1. Keep these explicit so
+# camera, poses, weapons, mounts, and timing do not depend only on broad UI globs.
+v769ClientRelease/UI/demo2.bin@/UI/demo2.bin
+v769ClientRelease/UI/DemoCamAction2.bin@/UI/DemoCamAction2.bin
+
 # Environment maps/textures (select-server map uses Env/Character.*).
 v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
