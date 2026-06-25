@@ -1303,14 +1303,17 @@ class DummyD3DXSprite final : public ID3DXSprite, private ComRefBase {
       *out_y = translation.y + rotation_center.y * scaling.y + ry;
     };
 
+    const float src_w = static_cast<float>(src.right - src.left);
+    const float src_h = static_cast<float>(src.bottom - src.top);
+
     float x0 = 0.0f, y0 = 0.0f;
     float x1 = 0.0f, y1 = 0.0f;
     float x2 = 0.0f, y2 = 0.0f;
     float x3 = 0.0f, y3 = 0.0f;
-    transform_point(static_cast<float>(src.left), static_cast<float>(src.top), &x0, &y0);
-    transform_point(static_cast<float>(src.right), static_cast<float>(src.top), &x1, &y1);
-    transform_point(static_cast<float>(src.right), static_cast<float>(src.bottom), &x2, &y2);
-    transform_point(static_cast<float>(src.left), static_cast<float>(src.bottom), &x3, &y3);
+    transform_point(0.0f, 0.0f, &x0, &y0);
+    transform_point(src_w, 0.0f, &x1, &y1);
+    transform_point(src_w, src_h, &x2, &y2);
+    transform_point(0.0f, src_h, &x3, &y3);
 
     const float u0 = static_cast<float>(src.left) / tex_w;
     const float v0 = static_cast<float>(src.top) / tex_h;
