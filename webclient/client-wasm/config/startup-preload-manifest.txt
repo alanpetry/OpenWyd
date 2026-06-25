@@ -29,12 +29,8 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
-# Environment maps/textures (select-server map uses Env/Character.*).
-v769ClientRelease/Env/*.bin@/Env/
-v769ClientRelease/Env/*.trn@/Env/
-v769ClientRelease/Env/*.dat@/Env/
-v769ClientRelease/Env/*.map@/Env/
-v769ClientRelease/Env/*.wys@/Env/
+# Environment assets used by select-server terrain, sky, water, and lightmaps.
+v769ClientRelease/Env/*@/Env/
 
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
