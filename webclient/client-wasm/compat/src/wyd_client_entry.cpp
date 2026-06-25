@@ -10,6 +10,9 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/console.h>
+#include <emscripten/emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
 #endif
 
 bool CheckOS();
@@ -137,17 +140,17 @@ extern "C" int wyd_get_game_state() {
   return static_cast<int>(g_pObjectManager->m_eCurrentState);
 }
 
-extern "C" int wyd_selserver_human_moving(unsigned int index) {
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_moving(unsigned int index) {
   TMHuman* human = WydSelectServerHuman(index);
   return human ? human->m_bMoveing : 0;
 }
 
-extern "C" int wyd_selserver_human_last_route_index(unsigned int index) {
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_last_route_index(unsigned int index) {
   TMHuman* human = WydSelectServerHuman(index);
   return human ? human->m_nLastRouteIndex : 0;
 }
 
-extern "C" int wyd_selserver_human_max_route_index(unsigned int index) {
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_max_route_index(unsigned int index) {
   TMHuman* human = WydSelectServerHuman(index);
   return human ? human->m_nMaxRouteIndex : 0;
 }
