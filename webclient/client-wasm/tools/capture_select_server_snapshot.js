@@ -176,6 +176,25 @@ async function callOptional(page, name, args = []) {
   );
 }
 
+function routeStallCandidate(human) {
+  if (!human.present) {
+    return false;
+  }
+  const movingIntent =
+    Boolean(human.moving) ||
+    Boolean(human.sliding) ||
+    Math.abs(Number(human.progress_rate) || 0) > 0 ||
+    Number(human.max_speed) > 0;
+  const hasRoute =
+    Number(human.max_route_index) > 0 ||
+    Number(human.last_route_index) > 0 ||
+    Number(human.target_x) !== 0 ||
+    Number(human.target_y) !== 0;
+  const delta =
+    Math.abs(Number(human.delta_x) || 0) + Math.abs(Number(human.delta_y) || 0);
+  return movingIntent && hasRoute && delta < 0.0001;
+}
+
 async function readTelemetry(page) {
   const scalarNames = [
     "wyd_get_game_state",
@@ -221,6 +240,14 @@ async function readTelemetry(page) {
       "wyd_selserver_human_skin_ani",
       "wyd_selserver_human_demo_ani",
       "wyd_selserver_human_weapon_type_index",
+      "wyd_selserver_human_moving",
+      "wyd_selserver_human_sliding",
+      "wyd_selserver_human_last_route_index",
+      "wyd_selserver_human_max_route_index",
+      "wyd_selserver_human_max_speed",
+      "wyd_selserver_human_progress_rate",
+      "wyd_selserver_human_target_x",
+      "wyd_selserver_human_target_y",
       "wyd_selserver_human_delta_x",
       "wyd_selserver_human_delta_y",
     ]) {
@@ -229,8 +256,13 @@ async function readTelemetry(page) {
         human[name.replace("wyd_selserver_human_", "")] = result.value;
       }
     }
+    human.route_stall_candidate = routeStallCandidate(human);
     telemetry.humans.push(human);
   }
+
+  telemetry.route_stall_candidates = telemetry.humans
+    .filter((human) => human.route_stall_candidate)
+    .map((human) => human.index);
 
   return telemetry;
 }
