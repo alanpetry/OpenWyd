@@ -18,6 +18,8 @@
 
 #if defined(__EMSCRIPTEN__)
 #include "RenderDevice.h"
+#include "TMRain.h"
+#include "TMSnow.h"
 #include <emscripten/console.h>
 #include <cstring>
 #include <cstdio>
@@ -404,6 +406,35 @@ extern "C" int wyd_field_ground_water_at(int x, int y)
 
 	float waterHeight = 0.0f;
 	return g_pCurrentScene->GroundIsInWater2(TMVector2(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f), &waterHeight);
+}
+
+extern "C" int wyd_field_weather_active()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ? g_nWeather : -1;
+}
+
+extern "C" int wyd_field_rain_visible()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
+		return 0;
+	auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+	return pScene->m_pRain && pScene->m_pRain->m_bVisible ? 1 : 0;
+}
+
+extern "C" int wyd_field_snow_visible()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
+		return 0;
+	auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+	return pScene->m_pSnow && pScene->m_pSnow->m_bVisible ? 1 : 0;
+}
+
+extern "C" int wyd_field_snow2_visible()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
+		return 0;
+	auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+	return pScene->m_pSnow2 && pScene->m_pSnow2->m_bVisible ? 1 : 0;
 }
 
 extern "C" float wyd_field_ground_height_under_player()

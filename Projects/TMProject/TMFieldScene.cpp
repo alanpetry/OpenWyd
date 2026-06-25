@@ -55,6 +55,36 @@
 #include "TMGate.h"
 #include <WinInet.h>
 
+#if defined(__EMSCRIPTEN__)
+static int g_wydDebugWeatherMode = 0;
+
+extern "C" int wyd_debug_get_weather_mode()
+{
+	return g_wydDebugWeatherMode;
+}
+
+extern "C" void wyd_debug_set_weather_mode(int mode)
+{
+	g_wydDebugWeatherMode = mode;
+}
+
+static void WydApplyFieldDebugWeather(TMFieldScene* scene)
+{
+	if (!scene || g_wydDebugWeatherMode <= 0 || g_wydDebugWeatherMode > 3)
+		return;
+
+	g_nWeather = g_wydDebugWeatherMode;
+	if (scene->m_pSky)
+		scene->m_pSky->SetWeatherState(11);
+	if (scene->m_pRain)
+		scene->m_pRain->m_bVisible = (g_wydDebugWeatherMode == 1) ? 1 : 0;
+	if (scene->m_pSnow)
+		scene->m_pSnow->m_bVisible = (g_wydDebugWeatherMode == 2 || g_wydDebugWeatherMode == 3) ? 1 : 0;
+	if (scene->m_pSnow2)
+		scene->m_pSnow2->m_bVisible = (g_wydDebugWeatherMode == 3) ? 1 : 0;
+}
+#endif
+
 RECT TMFieldScene::m_rectWarning[7] =
 {
   { 2255, 1535, 2263, 1538 },
@@ -1942,6 +1972,10 @@ int TMFieldScene::InitializeScene()
 	m_pMsgPanel->SetVisible(0);
 
 	SetWeather(g_nWeather);
+
+#if defined(__EMSCRIPTEN__)
+	WydApplyFieldDebugWeather(this);
+#endif
 
 	if (m_pHelpList[3])
 	{
@@ -7706,6 +7740,9 @@ int TMFieldScene::FrameMove(unsigned int dwServerTime)
 			m_dwWeatherTime = g_pTimerManager->GetServerTime();
 		}
 	}
+#if defined(__EMSCRIPTEN__)
+	WydApplyFieldDebugWeather(this);
+#endif
 	if ((int)m_pMyHuman->m_vecPosition.x >> 7 > 26 && (int)m_pMyHuman->m_vecPosition.x >> 7 < 31 && 
 		(int)m_pMyHuman->m_vecPosition.y >> 7 > 20 && (int)m_pMyHuman->m_vecPosition.y >> 7 < 25)
 	{

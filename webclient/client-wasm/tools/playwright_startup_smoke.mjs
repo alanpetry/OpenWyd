@@ -49,6 +49,7 @@ function parseArgs(argv) {
     layout: null,
     fit: null,
     fieldMode: "real",
+    weatherMode: 0,
     fieldCaptureTicks: null,
     fieldCaptureDir: "webclient/client-wasm/build/reports/field-captures",
     socketProxy: null,
@@ -156,6 +157,11 @@ function parseArgs(argv) {
     }
     if (a === "--field-mode" && argv[i + 1]) {
       opts.fieldMode = String(argv[i + 1] || "real").toLowerCase();
+      i += 1;
+      continue;
+    }
+    if (a === "--weather-mode" && argv[i + 1]) {
+      opts.weatherMode = Number.parseInt(argv[i + 1], 10) || 0;
       i += 1;
       continue;
     }
@@ -649,15 +655,16 @@ try {
   result.step = "boot";
   result.boot = await page.evaluate(() => Module._wyd_boot_client(0));
   result.step = "configure-state";
-  await page.evaluate(({ state, debugFlags, debugSkipFvf, fieldMode }) => {
+  await page.evaluate(({ state, debugFlags, debugSkipFvf, fieldMode, weatherMode }) => {
     if (typeof Module._wyd_set_field_mode === "function") Module._wyd_set_field_mode(fieldMode === "placeholder" ? 0 : 1);
     if (typeof Module._wyd_d3d9_set_debug_flags === "function") Module._wyd_d3d9_set_debug_flags(debugFlags >>> 0);
     if (typeof Module._wyd_d3d9_set_debug_skip_fvf === "function") Module._wyd_d3d9_set_debug_skip_fvf(debugSkipFvf >>> 0);
+    if (typeof Module._wyd_debug_set_weather_mode === "function") Module._wyd_debug_set_weather_mode(weatherMode >>> 0);
     if (typeof Module._wyd_set_game_state === "function") Module._wyd_set_game_state(state);
     if (typeof Module._wyd_d3d9_reset_debug_counters === "function") Module._wyd_d3d9_reset_debug_counters();
     if (typeof Module._wyd_sky_reset_debug_counters === "function") Module._wyd_sky_reset_debug_counters();
     if (typeof Module._wyd_sun_reset_debug_counters === "function") Module._wyd_sun_reset_debug_counters();
-  }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf, fieldMode: opts.fieldMode });
+  }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf, fieldMode: opts.fieldMode, weatherMode: opts.weatherMode });
   result.debugFlagsEarly = await page.evaluate(() => (
     typeof Module._wyd_d3d9_get_debug_flags === "function" ? Module._wyd_d3d9_get_debug_flags() : null
   ));
@@ -2318,6 +2325,11 @@ try {
       groundNormalX: call("_wyd_field_ground_normal_under_player_x"),
       groundNormalY: call("_wyd_field_ground_normal_under_player_y"),
       groundNormalZ: call("_wyd_field_ground_normal_under_player_z"),
+      debugWeatherMode: call("_wyd_debug_get_weather_mode"),
+      weatherActive: call("_wyd_field_weather_active"),
+      rainVisible: call("_wyd_field_rain_visible"),
+      snowVisible: call("_wyd_field_snow_visible"),
+      snow2Visible: call("_wyd_field_snow2_visible"),
       objects: {
         count: call("_wyd_field_object_count"),
         failed: call("_wyd_field_object_failed"),

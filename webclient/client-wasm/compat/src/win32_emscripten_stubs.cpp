@@ -9395,6 +9395,22 @@ HRESULT WydD3D9Device_GetRenderTarget(IDirect3DDevice9*, DWORD render_target_ind
   return S_OK;
 }
 
+HRESULT WydD3D9Device_GetBackBuffer(
+    IDirect3DDevice9*,
+    UINT swap_chain,
+    UINT back_buffer,
+    D3DBACKBUFFER_TYPE type,
+    IDirect3DSurface9** pp_back_buffer) {
+  if (!pp_back_buffer) return E_POINTER;
+  *pp_back_buffer = nullptr;
+  if (swap_chain != 0 || back_buffer != 0 || type != D3DBACKBUFFER_TYPE_MONO) return D3DERR_INVALIDCALL;
+  HRESULT hr = EnsureDefaultRenderSurfaces();
+  if (FAILED(hr)) return hr;
+  g_default_color_surface->AddRef();
+  *pp_back_buffer = g_default_color_surface;
+  return S_OK;
+}
+
 HRESULT WydD3D9Device_GetDepthStencilSurface(IDirect3DDevice9*, IDirect3DSurface9** pp_z_stencil_surface) {
   if (!pp_z_stencil_surface) return E_POINTER;
   *pp_z_stencil_surface = nullptr;

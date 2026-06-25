@@ -457,6 +457,12 @@ HRESULT WydD3D9Device_Clear(
     float z,
     DWORD stencil);
 HRESULT WydD3D9Device_GetDeviceCaps(IDirect3DDevice9* device, D3DCAPS9* caps);
+HRESULT WydD3D9Device_GetBackBuffer(
+    IDirect3DDevice9* device,
+    UINT swap_chain,
+    UINT back_buffer,
+    D3DBACKBUFFER_TYPE type,
+    IDirect3DSurface9** pp_back_buffer);
 HRESULT WydD3D9Device_SetViewport(IDirect3DDevice9* device, const D3DVIEWPORT9* vp);
 HRESULT WydD3D9Device_SetMaterial(IDirect3DDevice9* device, const D3DMATERIAL9* material);
 HRESULT WydD3D9Device_GetMaterial(IDirect3DDevice9* device, D3DMATERIAL9* material);
@@ -651,8 +657,13 @@ struct IDirect3DDevice9 : public IUnknown {
     return WydD3D9Device_Clear(this, Count, pRects, Flags, Color, Z, Stencil);
   }
   HRESULT GetDeviceCaps(D3DCAPS9* pCaps) { return WydD3D9Device_GetDeviceCaps(this, pCaps); }
-  template <typename... Args>
-  HRESULT GetBackBuffer(Args...) { return E_NOTIMPL; }
+  HRESULT GetBackBuffer(
+      UINT iSwapChain,
+      UINT BackBuffer,
+      D3DBACKBUFFER_TYPE Type,
+      IDirect3DSurface9** ppBackBuffer) {
+    return WydD3D9Device_GetBackBuffer(this, iSwapChain, BackBuffer, Type, ppBackBuffer);
+  }
   HRESULT GetDepthStencilSurface(IDirect3DSurface9** ppZStencilSurface) {
     return WydD3D9Device_GetDepthStencilSurface(this, ppZStencilSurface);
   }
