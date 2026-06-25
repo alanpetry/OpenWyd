@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import playwrightPkg from "../../node_modules/playwright/index.js";
 import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
 
 const { chromium } = playwrightPkg;
 const GAME_STATE_SELECT_SERVER = 7;
+const ALL_GAME_STATES = [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const SCREEN_STATES = {
-  selectserver: 7,
-  server: 7,
+  none: -1,
+  field: 0,
+  test2: 1,
+  sea: 2,
+  login: 3,
+  createid: 4,
+  createaccount: 4,
   selectchar: 5,
   char: 5,
-  login: 3,
+  createchar: 6,
+  selectserver: 7,
+  server: 7,
+  demo: 8,
+  field2: 9,
 };
 
 function parseArgs(argv) {
@@ -35,12 +46,15 @@ function parseArgs(argv) {
     logical: null,
     layout: null,
     fit: null,
+    fieldMode: "real",
     socketProxy: null,
     host: null,
     account: "OPENWYD01",
     password: "TEST1234",
     dummyLogin: false,
     loginTicks: 120,
+    allStates: false,
+    summaryOnly: false,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -51,7 +65,8 @@ function parseArgs(argv) {
       continue;
     }
     if (a === "--state" && argv[i + 1]) {
-      opts.state = Number.parseInt(argv[i + 1], 10) || opts.state;
+      const parsed = Number.parseInt(argv[i + 1], 10);
+      if (Number.isFinite(parsed)) opts.state = parsed;
       i += 1;
       continue;
     }
@@ -125,6 +140,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (a === "--field-mode" && argv[i + 1]) {
+      opts.fieldMode = String(argv[i + 1] || "real").toLowerCase();
+      i += 1;
+      continue;
+    }
     if (a === "--socket-proxy" && argv[i + 1]) {
       opts.socketProxy = argv[i + 1];
       i += 1;
@@ -152,6 +172,14 @@ function parseArgs(argv) {
     if (a === "--login-ticks" && argv[i + 1]) {
       opts.loginTicks = Number.parseInt(argv[i + 1], 10) || opts.loginTicks;
       i += 1;
+      continue;
+    }
+    if (a === "--all-states") {
+      opts.allStates = true;
+      continue;
+    }
+    if (a === "--summary-only") {
+      opts.summaryOnly = true;
       continue;
     }
     if (a === "--trace") {
@@ -204,6 +232,7 @@ function harnessUrl(opts) {
   const logical = opts.logical || opts.canvas;
   if (logical) url.searchParams.set("logical", `${logical.width}x${logical.height}`);
   if (opts.fit) url.searchParams.set("fit", opts.fit);
+  if (opts.fieldMode) url.searchParams.set("fieldMode", opts.fieldMode);
   if (opts.socketProxy) url.searchParams.set("socketProxy", opts.socketProxy);
   if (opts.host) url.searchParams.set("host", opts.host);
   if (opts.account) url.searchParams.set("account", opts.account);
@@ -258,6 +287,75 @@ function materializeTraceProbes(opts, width, height) {
 }
 
 const opts = parseArgs(process.argv);
+if (opts.allStates) {
+  const passthrough = [];
+  for (let i = 2; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+    if (arg === "--all-states") continue;
+    if (arg === "--summary-only") continue;
+    if (arg === "--state" || arg === "--screen" || arg === "--screenshot") {
+      i += 1;
+      continue;
+    }
+    passthrough.push(arg);
+  }
+
+  const states = [];
+  for (const state of ALL_GAME_STATES) {
+    const screenshotState = state < 0 ? "neg1" : String(state);
+    const screenshot = `webclient/client-wasm/build/reports/startup-canvas-state-${screenshotState}.png`;
+    const child = spawnSync(
+      process.execPath,
+      [
+        new URL(import.meta.url).pathname,
+        ...passthrough,
+        "--state",
+        String(state),
+        "--screenshot",
+        screenshot,
+        "--summary-only",
+      ],
+      { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+    );
+    let parsed = null;
+    try {
+      parsed = JSON.parse(child.stdout || "{}");
+    } catch (err) {
+      parsed = {
+        ok: false,
+        error: `failed to parse child JSON: ${err?.message || err}`,
+        stdout: child.stdout,
+        stderr: child.stderr,
+      };
+    }
+    states.push({
+      state,
+      ok: child.status === 0 && parsed?.ok === true,
+      status: child.status,
+      gameState: parsed?.gameState ?? null,
+      sceneType: parsed?.stateDebug?.sceneType ?? null,
+      placeholder: parsed?.stateDebug?.placeholder ?? null,
+      label: parsed?.stateDebug?.label ?? null,
+      field: parsed?.field ?? null,
+      glErrorTotal: parsed?.glErrorTotal ?? null,
+      consoleErrorCount: parsed?.consoleErrorCount ?? null,
+      screenshot: parsed?.screenshot ?? screenshot,
+      error: parsed?.error ?? null,
+    });
+  }
+
+  const aggregate = {
+    ok: states.every((entry) => (
+      entry.ok &&
+      entry.gameState === entry.state &&
+      entry.glErrorTotal === 0 &&
+      entry.consoleErrorCount === 0
+    )),
+    states,
+  };
+  console.log(JSON.stringify(aggregate, null, 2));
+  process.exit(aggregate.ok ? 0 : 1);
+}
 const browser = await chromium.launch(chromiumLaunchOptions({ headless: true }));
 const page = await browser.newPage({ viewport: opts.viewport });
 const consoleLog = [];
@@ -452,8 +550,10 @@ let result = {
   drawTraceTop: [],
   font2: null,
   gameState: null,
+  stateDebug: null,
   screen: opts.screen,
   selChar: null,
+  field: null,
   socket: null,
   dummyLoginReturn: null,
   pixel: null,
@@ -498,13 +598,14 @@ try {
   result.step = "boot";
   result.boot = await page.evaluate(() => Module._wyd_boot_client(0));
   result.step = "configure-state";
-  await page.evaluate(({ state, debugFlags, debugSkipFvf }) => {
+  await page.evaluate(({ state, debugFlags, debugSkipFvf, fieldMode }) => {
+    if (typeof Module._wyd_set_field_mode === "function") Module._wyd_set_field_mode(fieldMode === "placeholder" ? 0 : 1);
     if (typeof Module._wyd_d3d9_set_debug_flags === "function") Module._wyd_d3d9_set_debug_flags(debugFlags >>> 0);
     if (typeof Module._wyd_d3d9_set_debug_skip_fvf === "function") Module._wyd_d3d9_set_debug_skip_fvf(debugSkipFvf >>> 0);
     if (typeof Module._wyd_set_game_state === "function") Module._wyd_set_game_state(state);
     if (typeof Module._wyd_d3d9_reset_debug_counters === "function") Module._wyd_d3d9_reset_debug_counters();
     if (typeof Module._wyd_sky_reset_debug_counters === "function") Module._wyd_sky_reset_debug_counters();
-  }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf });
+  }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf, fieldMode: opts.fieldMode });
   result.debugFlagsEarly = await page.evaluate(() => (
     typeof Module._wyd_d3d9_get_debug_flags === "function" ? Module._wyd_d3d9_get_debug_flags() : null
   ));
@@ -1892,6 +1993,47 @@ try {
     }
     return null;
   });
+  result.stateDebug = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    const str = (name, ...args) => {
+      if (typeof M[name] !== "function" || typeof M.UTF8ToString !== "function") return null;
+      const ptr = M[name](...args);
+      return ptr ? M.UTF8ToString(ptr >>> 0) : "";
+    };
+    return {
+      gameState: call("_wyd_get_game_state"),
+      sceneType: call("_wyd_get_scene_type"),
+      placeholder: call("_wyd_state_is_placeholder"),
+      label: str("_wyd_get_state_debug_label"),
+      stateName: str("_wyd_get_state_name", call("_wyd_get_game_state") ?? -999),
+    };
+  });
+  result.field = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name) => (typeof M[name] === "function" ? M[name]() : null);
+    return {
+      mode: call("_wyd_get_field_mode"),
+      debugFixtureUsed: call("_wyd_field_debug_fixture_used"),
+      initialized: call("_wyd_field_initialized"),
+      hasGround: call("_wyd_field_has_ground"),
+      hasMyHuman: call("_wyd_field_has_my_human"),
+      criticalError: call("_wyd_field_critical_error"),
+      mapX: call("_wyd_field_map_x"),
+      mapY: call("_wyd_field_map_y"),
+      myHumanX: call("_wyd_field_myhuman_x"),
+      myHumanY: call("_wyd_field_myhuman_y"),
+      lastCritical: {
+        type: call("_wyd_debug_last_critical_type"),
+        id: call("_wyd_debug_last_critical_id"),
+        mesh: call("_wyd_debug_last_critical_mesh"),
+        x: call("_wyd_debug_last_critical_x"),
+        y: call("_wyd_debug_last_critical_y"),
+        mobX: call("_wyd_debug_last_critical_mob_x"),
+        mobY: call("_wyd_debug_last_critical_mob_y"),
+      },
+    };
+  });
   result.selChar = await page.evaluate(() => {
     const M = window.Module || {};
     const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
@@ -1940,13 +2082,15 @@ try {
 
   result.shutdown = await page.evaluate(() => Module._wyd_shutdown_client());
 
+  const isPlaceholder = result.stateDebug?.placeholder === 1;
   result.ok =
     result.boot === 1 &&
     result.shutdown === 1 &&
     result.renderVisible === true &&
+    (typeof result.glErrorTotal !== "number" || result.glErrorTotal === 0) &&
     (typeof result.drawCalls !== "number" || result.drawCalls > 0) &&
-    (typeof result.texturedDraws !== "number" || result.texturedDraws > 0) &&
-    (typeof result.texDecodeSuccess !== "number" || result.texDecodeSuccess > 0) &&
+    (isPlaceholder || typeof result.texturedDraws !== "number" || result.texturedDraws > 0) &&
+    (isPlaceholder || typeof result.texDecodeSuccess !== "number" || result.texDecodeSuccess > 0) &&
     (result.gameState === null || result.gameState === opts.state) &&
     Array.isArray(result.ticks) &&
     result.ticks.length === opts.ticks &&
@@ -1959,6 +2103,19 @@ result.consoleTail = consoleLog.slice(-40);
 result.consoleErrorCount = consoleLog.filter((line) => line.startsWith("[error]") || line.startsWith("[pageerror]")).length;
 result.consoleWarnCount = consoleLog.filter((line) => line.startsWith("[warning]")).length;
 result.consoleTotal = consoleLog.length;
-console.log(JSON.stringify(result, null, 2));
+
+const output = opts.summaryOnly
+  ? {
+      ok: result.ok,
+      gameState: result.gameState,
+      stateDebug: result.stateDebug,
+      field: result.field,
+      glErrorTotal: result.glErrorTotal,
+      consoleErrorCount: result.consoleErrorCount,
+      screenshot: result.screenshot,
+      error: result.error,
+    }
+  : result;
+console.log(JSON.stringify(output, null, 2));
 browser.close().catch(() => {});
 process.exit(result.ok ? 0 : 1);

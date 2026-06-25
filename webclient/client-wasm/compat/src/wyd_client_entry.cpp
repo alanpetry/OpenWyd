@@ -139,14 +139,6 @@ extern "C" int wyd_set_game_state(int state) {
       state > static_cast<int>(ObjectManager::TM_GAME_STATE::TM_FIELD2_STATE)) {
     return 0;
   }
-  if (state == static_cast<int>(ObjectManager::TM_GAME_STATE::TM_DEMO_STATE)) {
-    // The current wasm bridge does not provide full compatibility for demo-scene
-    // startup dependencies yet, and entering this state can trap the runtime.
-    // Keep the client alive by redirecting to select-server for now.
-    WydBootLog("[wyd_set_state] TM_DEMO_STATE blocked, redirecting to TM_SELECTSERVER_STATE");
-    g_pObjectManager->SetCurrentState(ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE);
-    return 1;
-  }
   g_pObjectManager->SetCurrentState(static_cast<ObjectManager::TM_GAME_STATE>(state));
   return 1;
 }

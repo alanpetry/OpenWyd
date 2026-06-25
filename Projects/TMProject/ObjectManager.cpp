@@ -16,12 +16,20 @@
 #include "TMItem.h"
 
 #if defined(__EMSCRIPTEN__)
+#include "RenderDevice.h"
 #include <emscripten/console.h>
+#include <cstring>
 #include <cstdio>
 #endif
 
 #if defined(__EMSCRIPTEN__)
 namespace {
+bool g_wasmStateIsPlaceholder = false;
+ESCENE_TYPE g_wasmStateSceneType = ESCENE_TYPE::ESCENE_NONE;
+char g_wasmStateDebugLabel[128] = "None";
+int g_wasmFieldMode = 1;
+bool g_wasmFieldDebugFixtureUsed = false;
+
 void WasmStateLog(const char* msg)
 {
 	emscripten_console_log(msg ? msg : "(null)");
@@ -33,7 +41,369 @@ void WasmStateLogValue(const char* prefix, int value)
 	std::snprintf(buf, sizeof(buf), "%s%d", prefix ? prefix : "", value);
 	emscripten_console_log(buf);
 }
+
+const char* WasmStateName(ObjectManager::TM_GAME_STATE state)
+{
+	switch (state)
+	{
+	case ObjectManager::TM_GAME_STATE::TM_NONE_STATE:
+		return "None";
+	case ObjectManager::TM_GAME_STATE::TM_FIELD_STATE:
+		return "Field";
+	case ObjectManager::TM_GAME_STATE::TM_TEST2_STATE:
+		return "Test2";
+	case ObjectManager::TM_GAME_STATE::TM_SEA_STATE:
+		return "Sea";
+	case ObjectManager::TM_GAME_STATE::TM_LOGIN_STATE:
+		return "Login";
+	case ObjectManager::TM_GAME_STATE::TM_CREATEID_STATE:
+		return "Create ID";
+	case ObjectManager::TM_GAME_STATE::TM_SELECTCHAR_STATE:
+		return "Select Character";
+	case ObjectManager::TM_GAME_STATE::TM_CREATECHAR_STATE:
+		return "Create Character";
+	case ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE:
+		return "Select Server";
+	case ObjectManager::TM_GAME_STATE::TM_DEMO_STATE:
+		return "Demo";
+	case ObjectManager::TM_GAME_STATE::TM_FIELD2_STATE:
+		return "Field2";
+	default:
+		return "Unknown";
+	}
+}
+
+ESCENE_TYPE WasmSceneTypeForState(ObjectManager::TM_GAME_STATE state)
+{
+	switch (state)
+	{
+	case ObjectManager::TM_GAME_STATE::TM_FIELD_STATE:
+		return g_wasmFieldMode == 0 ? ESCENE_TYPE::ESCENE_NONE : ESCENE_TYPE::ESCENE_FIELD;
+	case ObjectManager::TM_GAME_STATE::TM_SELECTCHAR_STATE:
+	case ObjectManager::TM_GAME_STATE::TM_CREATECHAR_STATE:
+		return ESCENE_TYPE::ESCENE_SELCHAR;
+	case ObjectManager::TM_GAME_STATE::TM_LOGIN_STATE:
+		return ESCENE_TYPE::ESCENE_LOGIN;
+	case ObjectManager::TM_GAME_STATE::TM_CREATEID_STATE:
+		return ESCENE_TYPE::ESCENE_CREATE_ACCOUNT;
+	case ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE:
+		return ESCENE_TYPE::ESCENE_SELECT_SERVER;
+	case ObjectManager::TM_GAME_STATE::TM_DEMO_STATE:
+		return ESCENE_TYPE::ESCENE_DEMO;
+	default:
+		return ESCENE_TYPE::ESCENE_NONE;
+	}
+}
+
+void WasmRecordStateDebug(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneType, bool placeholder)
+{
+	g_wasmStateIsPlaceholder = placeholder;
+	g_wasmStateSceneType = sceneType;
+	std::snprintf(
+		g_wasmStateDebugLabel,
+		sizeof(g_wasmStateDebugLabel),
+		"%s%s",
+		placeholder ? "DEBUG PLACEHOLDER - " : "",
+		WasmStateName(state));
+}
+
+class TMWasmDebugStateScene final : public TMScene
+{
+public:
+	TMWasmDebugStateScene(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneType)
+		: TMScene()
+		, m_eDebugState(state)
+		, m_eDebugSceneType(sceneType)
+		, m_pTitleText(nullptr)
+		, m_pDetailText(nullptr)
+	{
+		m_eSceneType = sceneType;
+		m_dwID = static_cast<unsigned int>(sceneType);
+		std::snprintf(m_szTitle, sizeof(m_szTitle), "DEBUG PLACEHOLDER - %s", WasmStateName(state));
+		std::snprintf(
+			m_szDetail,
+			sizeof(m_szDetail),
+			"state=%d sceneType=%d",
+			static_cast<int>(state),
+			static_cast<int>(sceneType));
+	}
+
+	int InitializeScene() override
+	{
+		m_eSceneType = m_eDebugSceneType;
+		m_dwID = static_cast<unsigned int>(m_eDebugSceneType);
+
+		if (m_pControlContainer)
+		{
+			m_pTitleText = new SText(
+				-2,
+				m_szTitle,
+				0xFFFFFFFF,
+				140.0f,
+				260.0f,
+				520.0f,
+				24.0f,
+				0,
+				0,
+				SText::TEXT_TYPE_SHADOW,
+				SText::TEXT_ALIGN_CENTER);
+			m_pDetailText = new SText(
+				-2,
+				m_szDetail,
+				0xFFBBDDEE,
+				140.0f,
+				288.0f,
+				520.0f,
+				18.0f,
+				0,
+				0,
+				SText::TEXT_TYPE_SHADOW,
+				SText::TEXT_ALIGN_CENTER);
+			m_pControlContainer->AddItem(static_cast<SControl*>(m_pTitleText));
+			m_pControlContainer->AddItem(static_cast<SControl*>(m_pDetailText));
+		}
+
+		return 1;
+	}
+
+	int OnControlEvent(unsigned int idwControlID, unsigned int idwEvent) override
+	{
+		return 0;
+	}
+
+	int Render() override
+	{
+		if (!g_pDevice)
+			return 1;
+
+		g_pDevice->SetMatrixForUI();
+		g_pDevice->SetRenderStateBlock(0);
+		g_pDevice->RenderRectNoTex(
+			0.0f,
+			0.0f,
+			static_cast<float>(g_pDevice->m_dwScreenWidth),
+			static_cast<float>(g_pDevice->m_dwScreenHeight),
+			0xFF101820,
+			0);
+
+		const float panelW = 560.0f * RenderDevice::m_fWidthRatio;
+		const float panelH = 170.0f * RenderDevice::m_fHeightRatio;
+		const float panelX = (static_cast<float>(g_pDevice->m_dwScreenWidth) - panelW) * 0.5f;
+		const float panelY = (static_cast<float>(g_pDevice->m_dwScreenHeight) - panelH) * 0.5f;
+		g_pDevice->RenderRectNoTex(panelX, panelY, panelW, panelH, 0xFF243447, 0);
+		g_pDevice->RenderRectNoTex(panelX + 2.0f, panelY + 2.0f, panelW - 4.0f, 2.0f, 0xFF6FA8CC, 0);
+		return 1;
+	}
+
+private:
+	ObjectManager::TM_GAME_STATE m_eDebugState;
+	ESCENE_TYPE m_eDebugSceneType;
+	SText* m_pTitleText;
+	SText* m_pDetailText;
+	char m_szTitle[96];
+	char m_szDetail[96];
+};
+
+TMScene* WasmCreateDebugScene(ObjectManager::TM_GAME_STATE state)
+{
+	return new TMWasmDebugStateScene(state, WasmSceneTypeForState(state));
+}
+
+void WasmEnsureFieldDebugMobData(ObjectManager* objectManager)
+{
+	g_wasmFieldDebugFixtureUsed = false;
+
+	if (!objectManager)
+		return;
+
+	const bool missingMob = objectManager->m_stMobData.MobName[0] == 0;
+	const bool missingMap = objectManager->m_stMobData.HomeTownX == 0 || objectManager->m_stMobData.HomeTownY == 0;
+	const bool missingSlot = objectManager->m_cCharacterSlot < 0 || objectManager->m_cCharacterSlot >= 4;
+
+	if (!missingMob && !missingMap && !missingSlot)
+		return;
+
+	g_wasmFieldDebugFixtureUsed = true;
+
+	if (missingMob)
+	{
+		std::memset(&objectManager->m_stMobData, 0, sizeof(objectManager->m_stMobData));
+		std::memset(&objectManager->m_stSelCharData, 0, sizeof(objectManager->m_stSelCharData));
+		std::memset(objectManager->m_stItemCargo, 0, sizeof(objectManager->m_stItemCargo));
+
+		std::snprintf(objectManager->m_stMobData.MobName, sizeof(objectManager->m_stMobData.MobName), "OpenWYD");
+		objectManager->m_stMobData.Class = 0;
+		objectManager->m_stMobData.Coin = 1000;
+		objectManager->m_stMobData.Exp = 0;
+
+		objectManager->m_stMobData.CurrentScore.Level = 0;
+		objectManager->m_stMobData.CurrentScore.Ac = 12;
+		objectManager->m_stMobData.CurrentScore.Damage = 18;
+		objectManager->m_stMobData.CurrentScore.AttackRun = 3;
+		objectManager->m_stMobData.CurrentScore.MaxHp = 320;
+		objectManager->m_stMobData.CurrentScore.Hp = 320;
+		objectManager->m_stMobData.CurrentScore.MaxMp = 140;
+		objectManager->m_stMobData.CurrentScore.Mp = 140;
+		objectManager->m_stMobData.CurrentScore.Str = 12;
+		objectManager->m_stMobData.CurrentScore.Int = 10;
+		objectManager->m_stMobData.CurrentScore.Dex = 12;
+		objectManager->m_stMobData.CurrentScore.Con = 10;
+		objectManager->m_stMobData.BaseScore = objectManager->m_stMobData.CurrentScore;
+
+		objectManager->m_stMobData.Equip[0].sIndex = 6;
+		objectManager->m_stMobData.Equip[1].sIndex = 1417;
+		objectManager->m_stMobData.Equip[2].sIndex = 1230;
+		objectManager->m_stMobData.Equip[3].sIndex = 1230;
+		objectManager->m_stMobData.Equip[4].sIndex = 1230;
+		objectManager->m_stMobData.Equip[5].sIndex = 1230;
+		objectManager->m_stMobData.Equip[6].sIndex = 3605;
+		objectManager->m_stMobData.Equip[7].sIndex = 0;
+
+		std::memset(objectManager->m_stMobData.ShortSkill, -1, sizeof(objectManager->m_stMobData.ShortSkill));
+		for (int i = 0; i < 20; ++i)
+			objectManager->m_cShortSkill[i] = -1;
+	}
+
+	objectManager->m_cCharacterSlot = 0;
+	objectManager->m_dwCharID = objectManager->m_dwCharID ? objectManager->m_dwCharID : 1;
+	objectManager->m_nServerGroupIndex = objectManager->m_nServerGroupIndex < 0 ? 0 : objectManager->m_nServerGroupIndex;
+	objectManager->m_nServerIndex = objectManager->m_nServerIndex < 0 ? 0 : objectManager->m_nServerIndex;
+	objectManager->m_usWarGuild = 0xFFFF;
+	objectManager->m_usAllyGuild = 0;
+
+	objectManager->m_stMobData.HomeTownX = 2096;
+	objectManager->m_stMobData.HomeTownY = 2092;
+
+	std::snprintf(
+		objectManager->m_stSelCharData.MobName[0],
+		sizeof(objectManager->m_stSelCharData.MobName[0]),
+		"%s",
+		objectManager->m_stMobData.MobName);
+	objectManager->m_stSelCharData.HomeTownX[0] = objectManager->m_stMobData.HomeTownX;
+	objectManager->m_stSelCharData.HomeTownY[0] = objectManager->m_stMobData.HomeTownY;
+	objectManager->m_stSelCharData.Score[0] = objectManager->m_stMobData.CurrentScore;
+	std::memcpy(
+		objectManager->m_stSelCharData.Equip[0],
+		objectManager->m_stMobData.Equip,
+		sizeof(objectManager->m_stSelCharData.Equip[0]));
+	objectManager->m_stSelCharData.Guild[0] = objectManager->m_stMobData.Guild;
+	objectManager->m_stSelCharData.Coin[0] = objectManager->m_stMobData.Coin;
+	objectManager->m_stSelCharData.Exp[0] = objectManager->m_stMobData.Exp;
+
+	WasmStateLog("[obj:field] using WASM debug login fixture for real TMFieldScene");
+}
 } // namespace
+
+extern "C" int wyd_get_scene_type()
+{
+	if (g_pCurrentScene)
+		return static_cast<int>(g_pCurrentScene->GetSceneType());
+	return static_cast<int>(g_wasmStateSceneType);
+}
+
+extern "C" int wyd_state_is_placeholder()
+{
+	return g_wasmStateIsPlaceholder ? 1 : 0;
+}
+
+extern "C" const char* wyd_get_state_debug_label()
+{
+	return g_wasmStateDebugLabel;
+}
+
+extern "C" const char* wyd_get_state_name(int state)
+{
+	if (state < static_cast<int>(ObjectManager::TM_GAME_STATE::TM_NONE_STATE) ||
+		state > static_cast<int>(ObjectManager::TM_GAME_STATE::TM_FIELD2_STATE))
+	{
+		return "Unknown";
+	}
+	return WasmStateName(static_cast<ObjectManager::TM_GAME_STATE>(state));
+}
+
+extern "C" void wyd_set_field_mode(int mode)
+{
+	g_wasmFieldMode = mode == 0 ? 0 : 1;
+}
+
+extern "C" int wyd_get_field_mode()
+{
+	return g_wasmFieldMode;
+}
+
+extern "C" int wyd_field_debug_fixture_used()
+{
+	return g_wasmFieldDebugFixtureUsed ? 1 : 0;
+}
+
+extern "C" int wyd_field_initialized()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ? 1 : 0;
+}
+
+extern "C" int wyd_field_has_ground()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pGround ? 1 : 0;
+}
+
+extern "C" int wyd_field_has_my_human()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman ? 1 : 0;
+}
+
+extern "C" int wyd_field_critical_error()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ? g_pCurrentScene->m_bCriticalError : 0;
+}
+
+extern "C" int wyd_field_map_x()
+{
+	return g_pObjectManager ? static_cast<int>(g_pObjectManager->m_stMobData.HomeTownX) >> 7 : -1;
+}
+
+extern "C" int wyd_field_map_y()
+{
+	return g_pObjectManager ? static_cast<int>(g_pObjectManager->m_stMobData.HomeTownY) >> 7 : -1;
+}
+
+extern "C" float wyd_field_myhuman_x()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecPosition.x
+		: 0.0f;
+}
+
+extern "C" float wyd_field_myhuman_y()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecPosition.y
+		: 0.0f;
+}
+
+extern "C" int wyd_field_ground_mask_at(int x, int y)
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround)
+		return -9999;
+
+	return g_pCurrentScene->GroundGetMask(TMVector2(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f));
+}
+
+extern "C" float wyd_field_ground_height_at(int x, int y)
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround)
+		return 0.0f;
+
+	return g_pCurrentScene->GroundGetHeight(TMVector2(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f));
+}
+
+extern "C" int wyd_field_ground_water_at(int x, int y)
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround)
+		return -1;
+
+	float waterHeight = 0.0f;
+	return g_pCurrentScene->GroundIsInWater2(TMVector2(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f), &waterHeight);
+}
 #endif
 
 ObjectManager::ObjectManager()
@@ -718,8 +1088,12 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 {
 #if defined(__EMSCRIPTEN__)
 	WasmStateLogValue("[obj:set-state] request=", static_cast<int>(ieNewState));
-#endif
 
+	if (m_eCurrentState == ieNewState && g_pCurrentScene != nullptr)
+		return;
+
+	m_eCurrentState = ieNewState;
+#else
 	if (ieNewState == TM_GAME_STATE::TM_FIELD2_STATE)
 	{
 		m_eCurrentState = TM_GAME_STATE::TM_NONE_STATE;
@@ -731,6 +1105,7 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 
 		m_eCurrentState = ieNewState;
 	}
+#endif
 
 	if (m_pCamera)
 		m_pCamera->InitCamera();
@@ -740,14 +1115,29 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #endif
 
 	TMScene* pScene = nullptr;
+#if defined(__EMSCRIPTEN__)
+	bool bWasmPlaceholderScene = false;
+#endif
 
 	switch (m_eCurrentState)
 	{
 	case TM_GAME_STATE::TM_FIELD_STATE:
 #if defined(__EMSCRIPTEN__)
-		WasmStateLog("[obj:set-state] new TMFieldScene");
-#endif
+		if (g_wasmFieldMode == 0)
+		{
+			WasmStateLog("[obj:set-state] new wasm debug field placeholder scene");
+			pScene = WasmCreateDebugScene(m_eCurrentState);
+			bWasmPlaceholderScene = true;
+		}
+		else
+		{
+			WasmEnsureFieldDebugMobData(this);
+			WasmStateLog("[obj:set-state] new real TMFieldScene");
+			pScene = new TMFieldScene();
+		}
+#else
 		pScene = new TMFieldScene();
+#endif
 		break;
 	case TM_GAME_STATE::TM_SELECTCHAR_STATE:
 #if defined(__EMSCRIPTEN__)
@@ -773,9 +1163,19 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 	break;
 	case TM_GAME_STATE::TM_DEMO_STATE:
 #if defined(__EMSCRIPTEN__)
-		WasmStateLog("[obj:set-state] new TMDemoScene");
-#endif
+		WasmStateLog("[obj:set-state] new wasm debug demo scene");
+		pScene = WasmCreateDebugScene(m_eCurrentState);
+		bWasmPlaceholderScene = true;
+#else
 		pScene = new TMDemoScene();
+#endif
+		break;
+	default:
+#if defined(__EMSCRIPTEN__)
+		WasmStateLog("[obj:set-state] new wasm debug placeholder scene");
+		pScene = WasmCreateDebugScene(m_eCurrentState);
+		bWasmPlaceholderScene = true;
+#endif
 		break;
 	}
 
@@ -803,6 +1203,7 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 
 #if defined(__EMSCRIPTEN__)
 		WasmStateLog("[obj:set-state] InitializeScene ok");
+		WasmRecordStateDebug(m_eCurrentState, pScene->GetSceneType(), bWasmPlaceholderScene);
 #endif
 		m_pRoot->AddChild(pScene);
 	}

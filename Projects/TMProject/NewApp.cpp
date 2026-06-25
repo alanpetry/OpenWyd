@@ -58,6 +58,24 @@ void WasmApplyCanvasResolution(unsigned int& width, unsigned int& height, unsign
 	snprintf(msg, sizeof(msg), "[newapp:init] wasm canvas resolution %ux%u", width, height);
 	WasmInitLog(msg);
 }
+
+void WasmActivatePostMeshScene(ObjectManager* objectManager)
+{
+	if (!objectManager)
+		return;
+
+	SAFE_DELETE(g_pApp->m_pAviPlayer);
+
+	if (objectManager->m_eCurrentState == ObjectManager::TM_GAME_STATE::TM_NONE_STATE || g_pCurrentScene == nullptr)
+	{
+		WasmInitLog("[newapp:tick] wasm post-mesh fallback state selectserver");
+		objectManager->SetCurrentState(ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE);
+	}
+	else
+	{
+		WasmInitLog("[newapp:tick] wasm post-mesh preserving requested state");
+	}
+}
 #endif
 
 } // namespace
@@ -745,10 +763,7 @@ DWORD NewApp::RunTick(MSG* pMsg)
 					else
 					{
 						WasmInitLog("[newapp:tick] wasm mesh manager initialized before frame move");
-						SAFE_DELETE(m_pAviPlayer);
-						WasmInitLog("[newapp:tick] wasm switch state selectserver");
-						m_pObjectManager->SetCurrentState(ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE);
-						WasmInitLog("[newapp:tick] wasm selectserver state active");
+						WasmActivatePostMeshScene(m_pObjectManager);
 					}
 				}
 #endif
@@ -807,10 +822,7 @@ DWORD NewApp::RunTick(MSG* pMsg)
 					else
 					{
 						WasmInitLog("[newapp:tick] wasm mesh manager initialized");
-						SAFE_DELETE(m_pAviPlayer);
-						WasmInitLog("[newapp:tick] wasm switch state selectserver");
-						m_pObjectManager->SetCurrentState(ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE);
-						WasmInitLog("[newapp:tick] wasm selectserver state active");
+						WasmActivatePostMeshScene(m_pObjectManager);
 					}
 				}
 #else

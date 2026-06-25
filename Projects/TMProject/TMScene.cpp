@@ -37,6 +37,13 @@ static float g_wydDebugCameraY = 0.0f;
 static float g_wydDebugCameraZ = 0.0f;
 static float g_wydDebugCameraH = 0.0f;
 static float g_wydDebugCameraV = 0.0f;
+static int g_wydLastCriticalType = 0;
+static int g_wydLastCriticalID = 0;
+static int g_wydLastCriticalMesh = 0;
+static int g_wydLastCriticalX = 0;
+static int g_wydLastCriticalY = 0;
+static int g_wydLastCriticalMobX = 0;
+static int g_wydLastCriticalMobY = 0;
 
 static void WydRecordDebugCamera(TMCamera* pCamera)
 {
@@ -76,6 +83,13 @@ extern "C" float wyd_debug_camera_y() { return g_wydDebugCameraY; }
 extern "C" float wyd_debug_camera_z() { return g_wydDebugCameraZ; }
 extern "C" float wyd_debug_camera_h() { return g_wydDebugCameraH; }
 extern "C" float wyd_debug_camera_v() { return g_wydDebugCameraV; }
+extern "C" int wyd_debug_last_critical_type() { return g_wydLastCriticalType; }
+extern "C" int wyd_debug_last_critical_id() { return g_wydLastCriticalID; }
+extern "C" int wyd_debug_last_critical_mesh() { return g_wydLastCriticalMesh; }
+extern "C" int wyd_debug_last_critical_x() { return g_wydLastCriticalX; }
+extern "C" int wyd_debug_last_critical_y() { return g_wydLastCriticalY; }
+extern "C" int wyd_debug_last_critical_mob_x() { return g_wydLastCriticalMobX; }
+extern "C" int wyd_debug_last_critical_mob_y() { return g_wydLastCriticalMobY; }
 #endif
 
 TMScene::TMScene() : TreeNode(0)
@@ -2749,14 +2763,23 @@ void TMScene::CheckPKNonePK(int nServerIndex)
 
 void TMScene::LogMsgCriticalError(int Type, int ID, int nMesh, int X, int Y)
 {
+#if defined(__EMSCRIPTEN__)
+	g_wydLastCriticalType = Type;
+	g_wydLastCriticalID = ID;
+	g_wydLastCriticalMesh = nMesh;
+	g_wydLastCriticalX = X;
+	g_wydLastCriticalY = Y;
+	g_wydLastCriticalMobX = m_pMyHuman ? static_cast<int>(m_pMyHuman->m_vecPosition.x) : 0;
+	g_wydLastCriticalMobY = m_pMyHuman ? static_cast<int>(m_pMyHuman->m_vecPosition.y) : 0;
+#endif
 	MSG_MessageLog stLog{};
-	stLog.Header.ID = m_pMyHuman->m_dwID;
+	stLog.Header.ID = m_pMyHuman ? m_pMyHuman->m_dwID : 0;
 	stLog.Header.Type = MSG_MessageLog_Opcode;
 
 	if(Type == 10)
 		sprintf(stLog.String, "00000000 , Load Tile Map Fail");
 	else
-		sprintf(stLog.String, "%08d , Critical Data Err Cl,%d,%d,%d,%d,%d, %d", ID,	nMesh, (int)m_pMyHuman->m_vecPosition.x, (int)m_pMyHuman->m_vecPosition.y,
+		sprintf(stLog.String, "%08d , Critical Data Err Cl,%d,%d,%d,%d,%d, %d", ID,	nMesh, m_pMyHuman ? (int)m_pMyHuman->m_vecPosition.x : 0, m_pMyHuman ? (int)m_pMyHuman->m_vecPosition.y : 0,
 			X,
 			Y,
 			Type);

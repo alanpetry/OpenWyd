@@ -78,6 +78,7 @@
       padding-top: 8px;
     }
     #status { color: #a0cfff; margin-bottom: 8px; }
+    #state-info { color: #b8d8ff; margin-bottom: 8px; font-size: 12px; line-height: 1.35; }
     .canvas-wrap {
       display: flex;
       align-items: center;
@@ -113,15 +114,24 @@
     <div class="panel">
       <h3>TMProject Startup Harness (_wyd_start_client)</h3>
       <div id="status">status: loading runtime...</div>
+      <div id="state-info">state: unavailable</div>
       <div class="controls">
         <button id="boot-btn">Boot Client</button>
         <button id="tick-btn">Tick Once</button>
         <button id="tick120-btn">Tick 120 Frames</button>
         <button id="auto-btn">Toggle Auto Tick</button>
         <select id="screen-select">
-          <option value="7">Select Server</option>
-          <option value="5">Select Character</option>
+          <option value="-1">None</option>
+          <option value="0">Field</option>
+          <option value="1">Test2</option>
+          <option value="2">Sea</option>
           <option value="3">Login</option>
+          <option value="4">Create ID</option>
+          <option value="5">Select Character</option>
+          <option value="6">Create Character</option>
+          <option value="7">Select Server</option>
+          <option value="8">Demo</option>
+          <option value="9">Field2</option>
         </select>
         <button id="set-state-btn">Set State</button>
         <button id="stats-btn">Read Runtime Stats</button>
@@ -153,6 +163,7 @@
   <script>
     const logEl = document.getElementById('log');
     const statusEl = document.getElementById('status');
+    const stateInfoEl = document.getElementById('state-info');
     const canvasEl = document.getElementById('canvas');
     const bootBtn = document.getElementById('boot-btn');
     const tickBtn = document.getElementById('tick-btn');
@@ -174,11 +185,20 @@
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
     const screenStates = {
-      selectserver: 7,
-      server: 7,
+      none: -1,
+      field: 0,
+      test2: 1,
+      sea: 2,
+      login: 3,
+      createid: 4,
+      createaccount: 4,
       selectchar: 5,
       char: 5,
-      login: 3
+      createchar: 6,
+      selectserver: 7,
+      server: 7,
+      demo: 8,
+      field2: 9
     };
     const queryScreen = (query.get('screen') || '').toLowerCase();
     const queryState = Number.parseInt(query.get('state') || '', 10);
@@ -191,7 +211,9 @@
       return { width, height };
     };
     const autoConfig = {
-      state: Number.isFinite(queryState) ? queryState : (screenStates[queryScreen] || 7),
+      state: Number.isFinite(queryState)
+        ? queryState
+        : (Object.prototype.hasOwnProperty.call(screenStates, queryScreen) ? screenStates[queryScreen] : 7),
       debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
       skipFvf: Number.parseInt(query.get('skipFvf') || '0', 10) || 0,
       tickBurst: Number.parseInt(query.get('tickBurst') || '0', 10) || 0,
@@ -201,6 +223,7 @@
       quiet: query.get('quiet') === '1',
       layout: query.get('layout') || 'panel',
       fit: query.get('fit') || 'actual',
+      fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
       logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 1280, height: 720 },
       socketProxyUrl: query.get('socketProxy') || 'ws://127.0.0.1:8282/',
       debugHost: query.get('host') || '',
@@ -251,6 +274,39 @@
       statusEl.textContent = `status: ${msg}`;
     };
 
+    const moduleString = (name, ...args) => {
+      if (!window.Module || typeof Module[name] !== 'function' || typeof Module.UTF8ToString !== 'function') return null;
+      const ptr = Module[name](...args);
+      return ptr ? Module.UTF8ToString(ptr >>> 0) : '';
+    };
+
+    const readStateDebug = () => {
+      const M = window.Module || {};
+      return {
+        requestedState: Number(screenSelect.value),
+        gameState: typeof M._wyd_get_game_state === 'function' ? M._wyd_get_game_state() : null,
+        sceneType: typeof M._wyd_get_scene_type === 'function' ? M._wyd_get_scene_type() : null,
+        placeholder: typeof M._wyd_state_is_placeholder === 'function' ? M._wyd_state_is_placeholder() : null,
+        label: moduleString('_wyd_get_state_debug_label'),
+        fieldMode: typeof M._wyd_get_field_mode === 'function' ? M._wyd_get_field_mode() : null,
+        fieldFixture: typeof M._wyd_field_debug_fixture_used === 'function' ? M._wyd_field_debug_fixture_used() : null,
+        fieldGround: typeof M._wyd_field_has_ground === 'function' ? M._wyd_field_has_ground() : null,
+        fieldHuman: typeof M._wyd_field_has_my_human === 'function' ? M._wyd_field_has_my_human() : null,
+        fieldMapX: typeof M._wyd_field_map_x === 'function' ? M._wyd_field_map_x() : null,
+        fieldMapY: typeof M._wyd_field_map_y === 'function' ? M._wyd_field_map_y() : null,
+        criticalType: typeof M._wyd_debug_last_critical_type === 'function' ? M._wyd_debug_last_critical_type() : null
+      };
+    };
+
+    const refreshStateInfo = () => {
+      const info = readStateDebug();
+      const field = info.gameState === 0 || info.fieldFixture
+        ? ` fieldMode=${info.fieldMode} fixture=${info.fieldFixture} ground=${info.fieldGround} human=${info.fieldHuman} map=${info.fieldMapX},${info.fieldMapY} critical=${info.criticalType}`
+        : '';
+      stateInfoEl.textContent = `state: requested=${info.requestedState} actual=${info.gameState} scene=${info.sceneType} placeholder=${info.placeholder} ${info.label || ''}${field}`;
+      return info;
+    };
+
     const write = (msg, cls = '') => {
       if (autoConfig.quiet) return;
       const line = document.createElement('div');
@@ -267,12 +323,19 @@
 
     logEl.textContent = '';
     syncCanvasSize();
+    refreshStateInfo();
 
     window.__wydHarnessConfig = {
       logicalWidth: autoConfig.logicalSize.width,
       logicalHeight: autoConfig.logicalSize.height,
       fit: autoConfig.fit,
-      tickMs: autoConfig.tickMs
+      tickMs: autoConfig.tickMs,
+      fieldMode: autoConfig.fieldMode
+    };
+
+    const applyFieldMode = () => {
+      if (!window.Module || typeof Module._wyd_set_field_mode !== 'function') return;
+      Module._wyd_set_field_mode(autoConfig.fieldMode === 'placeholder' ? 0 : 1);
     };
 
     const advanceTickTime = () => {
@@ -298,6 +361,7 @@
         const ret = Module._wyd_boot_client(1);
         write(`_wyd_boot_client returned: ${ret}`, ret ? 'ok' : 'err');
         setStatus(`boot=${ret}`);
+        refreshStateInfo();
         return ret;
       } catch (err) {
         write(`_wyd_boot_client threw: ${err?.message || err}`, 'err');
@@ -312,6 +376,7 @@
         const ret = Module._wyd_tick_client();
         if (!silent) write(`_wyd_tick_client returned: ${ret}`, ret >= 0 ? 'ok' : 'err');
         setStatus(`tick=${ret}`);
+        if (!silent) refreshStateInfo();
         return ret;
       } catch (err) {
         write(`_wyd_tick_client threw: ${err?.message || err}`, 'err');
@@ -379,11 +444,13 @@
           write('_wyd_set_game_state export unavailable', 'err');
           return;
         }
+        applyFieldMode();
         const requested = Number.isFinite(Number(state)) ? Number(state) : Number(screenSelect.value || 7);
         const ret = Module._wyd_set_game_state(requested);
         screenSelect.value = String(requested);
         write(`_wyd_set_game_state(${requested}) returned: ${ret}`, ret ? 'ok' : 'err');
-        setStatus(`state=${requested} rc=${ret}`);
+        const info = refreshStateInfo();
+        setStatus(`state=${requested} actual=${info.gameState} rc=${ret}`);
       } catch (err) {
         write(`_wyd_set_game_state threw: ${err?.message || err}`, 'err');
       }
@@ -426,6 +493,32 @@
         };
         const stats = {
           gameState: typeof Module._wyd_get_game_state === 'function' ? Module._wyd_get_game_state() : null,
+          sceneType: typeof Module._wyd_get_scene_type === 'function' ? Module._wyd_get_scene_type() : null,
+          statePlaceholder: typeof Module._wyd_state_is_placeholder === 'function' ? Module._wyd_state_is_placeholder() : null,
+          stateDebugLabel: str('_wyd_get_state_debug_label'),
+          fieldMode: typeof Module._wyd_get_field_mode === 'function' ? Module._wyd_get_field_mode() : null,
+          fieldDebugFixtureUsed: typeof Module._wyd_field_debug_fixture_used === 'function' ? Module._wyd_field_debug_fixture_used() : null,
+          fieldInitialized: typeof Module._wyd_field_initialized === 'function' ? Module._wyd_field_initialized() : null,
+          fieldHasGround: typeof Module._wyd_field_has_ground === 'function' ? Module._wyd_field_has_ground() : null,
+          fieldHasMyHuman: typeof Module._wyd_field_has_my_human === 'function' ? Module._wyd_field_has_my_human() : null,
+          fieldCriticalError: typeof Module._wyd_field_critical_error === 'function' ? Module._wyd_field_critical_error() : null,
+          fieldMap: [
+            typeof Module._wyd_field_map_x === 'function' ? Module._wyd_field_map_x() : null,
+            typeof Module._wyd_field_map_y === 'function' ? Module._wyd_field_map_y() : null
+          ],
+          fieldMyHuman: [
+            typeof Module._wyd_field_myhuman_x === 'function' ? Module._wyd_field_myhuman_x() : null,
+            typeof Module._wyd_field_myhuman_y === 'function' ? Module._wyd_field_myhuman_y() : null
+          ],
+          lastCritical: {
+            type: typeof Module._wyd_debug_last_critical_type === 'function' ? Module._wyd_debug_last_critical_type() : null,
+            id: typeof Module._wyd_debug_last_critical_id === 'function' ? Module._wyd_debug_last_critical_id() : null,
+            mesh: typeof Module._wyd_debug_last_critical_mesh === 'function' ? Module._wyd_debug_last_critical_mesh() : null,
+            x: typeof Module._wyd_debug_last_critical_x === 'function' ? Module._wyd_debug_last_critical_x() : null,
+            y: typeof Module._wyd_debug_last_critical_y === 'function' ? Module._wyd_debug_last_critical_y() : null,
+            mobX: typeof Module._wyd_debug_last_critical_mob_x === 'function' ? Module._wyd_debug_last_critical_mob_x() : null,
+            mobY: typeof Module._wyd_debug_last_critical_mob_y === 'function' ? Module._wyd_debug_last_critical_mob_y() : null
+          },
           selCharInitialized: typeof Module._wyd_selchar_initialized === 'function' ? Module._wyd_selchar_initialized() : null,
           selCharCount: typeof Module._wyd_selchar_char_count === 'function' ? Module._wyd_selchar_char_count() : null,
           selCharNames: [0, 1, 2, 3].map((slot) => str('_wyd_selchar_name', slot)),
@@ -542,6 +635,7 @@
         write('runtime initialized', 'ok');
         setStatus('runtime initialized; booting client');
         syncCanvasSize();
+        applyFieldMode();
         if (!autoConfig.autoboot) {
           setStatus('runtime initialized; autoboot disabled');
           return;
@@ -549,6 +643,7 @@
         const boot = window.bootClient();
         if (boot) {
           window.setGameState(autoConfig.state);
+          refreshStateInfo();
           if (typeof Module._wyd_d3d9_set_debug_flags === 'function') {
             Module._wyd_d3d9_set_debug_flags(autoConfig.debugFlags >>> 0);
           }
