@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 import playwrightPkg from "../../node_modules/playwright/index.js";
 import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
@@ -47,6 +49,8 @@ function parseArgs(argv) {
     layout: null,
     fit: null,
     fieldMode: "real",
+    fieldCaptureTicks: null,
+    fieldCaptureDir: "webclient/client-wasm/build/reports/field-captures",
     socketProxy: null,
     host: null,
     account: "OPENWYD01",
@@ -137,6 +141,16 @@ function parseArgs(argv) {
     }
     if (a === "--fit" && argv[i + 1]) {
       opts.fit = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (a === "--field-capture-ticks" && argv[i + 1]) {
+      opts.fieldCaptureTicks = parseTickList(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (a === "--field-capture-dir" && argv[i + 1]) {
+      opts.fieldCaptureDir = String(argv[i + 1] || "webclient/client-wasm/build/reports/field-captures");
       i += 1;
       continue;
     }
@@ -239,6 +253,14 @@ function harnessUrl(opts) {
   if (opts.password) url.searchParams.set("password", opts.password);
   if (Number.isFinite(opts.tickMs)) url.searchParams.set("tickMs", `${opts.tickMs}`);
   return url.toString();
+}
+
+function parseTickList(value) {
+  return String(value || "")
+    .split(",")
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .sort((a, b) => a - b);
 }
 
 function parseCameraOffset(value) {
@@ -396,6 +418,9 @@ let result = {
   alphaTestEnabledDraws: null,
   alphaTestDisabledDraws: null,
   blendEnabledDraws: null,
+  vegetationAlphaMaskDraws: null,
+  vegetationAlphaBlendDraws: null,
+  vegetationDraws: null,
   depthTestDisabledDraws: null,
   depthWriteDisabledDraws: null,
   depthWriteGuardForcedDraws: null,
@@ -451,7 +476,17 @@ let result = {
   textureDrawsSky: null,
   textureDrawsWater: null,
   textureDrawsBright: null,
+  waterStage1DisableDraws: null,
+  waterStage1ModulateDraws: null,
+  waterStage1Modulate2xDraws: null,
+  waterStage1AddDraws: null,
+  waterBlendEnabledDraws: null,
+  waterBlendDisabledDraws: null,
+  waterDepthWriteDisabledDraws: null,
+  waterFogDisabledDraws: null,
   fvf322BrightDraws: null,
+  effectDraws: null,
+  fvf322EffectDraws: null,
   stage0ColorOp8Draws: null,
   stage0ColorOp8WithTexture: null,
   stage0ColorOp8WithoutTexture: null,
@@ -506,6 +541,18 @@ let result = {
   skyLastMeshFaceCount: null,
   skyLastMeshVertexCount: null,
   skyLastMeshRenderResult: null,
+  sunRenderCalls: null,
+  sunHiddenReturnsBg: null,
+  sunHiddenReturnsSelf: null,
+  sunOutOfViewport: null,
+  sunFlareDraws: null,
+  sunLastHide: null,
+  sunLastDefSize: null,
+  sunLastInViewport: null,
+  sunLastFlareCount: null,
+  sunLastScreenX: null,
+  sunLastScreenY: null,
+  sunLastScreenZ: null,
   fvf322AutoClipWDraws: null,
   fvf322AutoClipWRejectDraws: null,
   fvf530AutoClipWDraws: null,
@@ -540,6 +587,7 @@ let result = {
   clipWEmptySignatures: [],
   drawOrder: null,
   fvf322ClassCounts: [],
+  fvf322ClassCountMax: null,
   skinSuspiciousTextureDraws: null,
   skinSuspiciousTextureSamples: [],
   selServerHumans: [],
@@ -554,6 +602,9 @@ let result = {
   screen: opts.screen,
   selChar: null,
   field: null,
+  fieldVisual: null,
+  fieldCaptures: null,
+  fieldCapturesDir: null,
   socket: null,
   dummyLoginReturn: null,
   pixel: null,
@@ -605,6 +656,7 @@ try {
     if (typeof Module._wyd_set_game_state === "function") Module._wyd_set_game_state(state);
     if (typeof Module._wyd_d3d9_reset_debug_counters === "function") Module._wyd_d3d9_reset_debug_counters();
     if (typeof Module._wyd_sky_reset_debug_counters === "function") Module._wyd_sky_reset_debug_counters();
+    if (typeof Module._wyd_sun_reset_debug_counters === "function") Module._wyd_sun_reset_debug_counters();
   }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf, fieldMode: opts.fieldMode });
   result.debugFlagsEarly = await page.evaluate(() => (
     typeof Module._wyd_d3d9_get_debug_flags === "function" ? Module._wyd_d3d9_get_debug_flags() : null
@@ -687,16 +739,96 @@ try {
     }, { probes: traceProbes });
   }
   result.step = "ticks";
-  result.ticks = await page.evaluate(({ count, tickMs }) => {
-    const out = [];
-    for (let i = 0; i < count; i += 1) {
-      if (tickMs > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
-        Module._wyd_debug_advance_fake_time(tickMs >>> 0);
+  result.ticks = [];
+  const canvas = page.locator("#canvas");
+  if (opts.fieldCaptureTicks && opts.fieldCaptureTicks.length > 0) {
+    const captureTicks = opts.fieldCaptureTicks;
+    const maxTicks = Math.max(...captureTicks, opts.ticks);
+    let tickOffset = 0;
+    const captures = [];
+    const dir = opts.fieldCaptureDir;
+    fs.mkdirSync(dir, { recursive: true });
+    result.fieldCapturesDir = dir;
+
+    for (let ci = 0; ci < captureTicks.length; ci += 1) {
+      const targetTick = captureTicks[ci];
+      const batchSize = targetTick - tickOffset;
+      if (batchSize > 0) {
+        const batchResults = await page.evaluate(({ count, tickMs }) => {
+          const out = [];
+          for (let i = 0; i < count; i += 1) {
+            if (tickMs > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
+              Module._wyd_debug_advance_fake_time(tickMs >>> 0);
+            }
+            out.push(Module._wyd_tick_client());
+          }
+          return out;
+        }, { count: batchSize, tickMs: opts.tickMs });
+        for (const v of batchResults) result.ticks.push(v);
+        tickOffset = targetTick;
       }
-      out.push(Module._wyd_tick_client());
+
+      const screenshotPath = path.join(dir, `field-tick-${String(targetTick).padStart(4, "0")}.png`);
+      await canvas.screenshot({ path: screenshotPath });
+
+      const snapshot = await page.evaluate(() => {
+        const M = window.Module || {};
+        const call = (name) => (typeof M[name] === "function" ? M[name]() : null);
+        return {
+          glErrorTotal: call("_wyd_d3d9_gl_error_total"),
+          glErrorDrawCalls: call("_wyd_d3d9_gl_error_draw_calls"),
+          drawCalls: call("_wyd_d3d9_draw_calls"),
+          texturedDraws: call("_wyd_d3d9_textured_draws"),
+          texDecodeSuccess: call("_wyd_d3d9_tex_decode_success"),
+          texDecodeFail: call("_wyd_d3d9_tex_decode_fail"),
+          fieldInitialized: call("_wyd_field_initialized"),
+          fieldHasGround: call("_wyd_field_has_ground"),
+          fieldHasMyHuman: call("_wyd_field_has_my_human"),
+          fieldCriticalError: call("_wyd_field_critical_error"),
+          cameraX: call("_wyd_debug_camera_x"),
+          cameraY: call("_wyd_debug_camera_y"),
+          cameraZ: call("_wyd_debug_camera_z"),
+          cameraH: call("_wyd_debug_camera_h"),
+          cameraV: call("_wyd_debug_camera_v"),
+        };
+      });
+      captures.push({
+        tick: targetTick,
+        screenshot: screenshotPath,
+        ...snapshot,
+      });
     }
-    return out;
-  }, { count: opts.ticks, tickMs: opts.tickMs });
+
+    const remaining = maxTicks - tickOffset;
+    if (remaining > 0) {
+      const batchResults = await page.evaluate(({ count, tickMs }) => {
+        const out = [];
+        for (let i = 0; i < count; i += 1) {
+          if (tickMs > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
+            Module._wyd_debug_advance_fake_time(tickMs >>> 0);
+          }
+          out.push(Module._wyd_tick_client());
+        }
+        return out;
+      }, { count: remaining, tickMs: opts.tickMs });
+      for (const v of batchResults) result.ticks.push(v);
+    }
+
+    result.fieldCaptures = captures;
+    const summaryPath = path.join(dir, "field-captures.json");
+    fs.writeFileSync(summaryPath, JSON.stringify(captures, null, 2), "utf-8");
+  } else {
+    result.ticks = await page.evaluate(({ count, tickMs }) => {
+      const out = [];
+      for (let i = 0; i < count; i += 1) {
+        if (tickMs > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
+          Module._wyd_debug_advance_fake_time(tickMs >>> 0);
+        }
+        out.push(Module._wyd_tick_client());
+      }
+      return out;
+    }, { count: opts.ticks, tickMs: opts.tickMs });
+  }
   await page.waitForTimeout(120);
   if (opts.trace) {
     result.step = "trace-readback";
@@ -1250,6 +1382,24 @@ try {
     }
     return null;
   });
+  result.vegetationAlphaMaskDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_vegetation_alpha_mask_draws === "function") {
+      return Module._wyd_d3d9_vegetation_alpha_mask_draws();
+    }
+    return null;
+  });
+  result.vegetationAlphaBlendDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_vegetation_alpha_blend_draws === "function") {
+      return Module._wyd_d3d9_vegetation_alpha_blend_draws();
+    }
+    return null;
+  });
+  result.vegetationDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_vegetation_draws === "function") {
+      return Module._wyd_d3d9_vegetation_draws();
+    }
+    return null;
+  });
   result.depthTestDisabledDraws = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_depth_test_disabled_draws === "function") {
       return Module._wyd_d3d9_depth_test_disabled_draws();
@@ -1306,6 +1456,7 @@ try {
       lastPresentDepthWrite: call("_wyd_d3d9_last_present_depth_write"),
       currentZFunc: call("_wyd_d3d9_current_z_func"),
       lastPresentAlphaTest: call("_wyd_d3d9_last_present_alpha_test"),
+      lastPresentFog: call("_wyd_d3d9_last_present_fog"),
     };
   }));
   result.fogEnabledDraws = await page.evaluate(() => {
@@ -1321,6 +1472,7 @@ try {
       start: call("_wyd_d3d9_fog_start"),
       end: call("_wyd_d3d9_fog_end"),
       color: call("_wyd_d3d9_fog_color"),
+      skinDraws: call("_wyd_d3d9_fog_skin_draws"),
     };
   });
   result.wireframeDraws = await page.evaluate(() => {
@@ -1350,6 +1502,30 @@ try {
   result.lightedVertices = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_lighted_vertices === "function") {
       return Module._wyd_d3d9_lighted_vertices();
+    }
+    return null;
+  });
+  result.directionalLightedVertices = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_directional_lighted_vertices === "function") {
+      return Module._wyd_d3d9_directional_lighted_vertices();
+    }
+    return null;
+  });
+  result.pointLightedVertices = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_point_lighted_vertices === "function") {
+      return Module._wyd_d3d9_point_lighted_vertices();
+    }
+    return null;
+  });
+  result.spotLightedVertices = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_spot_lighted_vertices === "function") {
+      return Module._wyd_d3d9_spot_lighted_vertices();
+    }
+    return null;
+  });
+  result.specularLightedVertices = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_specular_lighted_vertices === "function") {
+      return Module._wyd_d3d9_specular_lighted_vertices();
     }
     return null;
   });
@@ -1509,6 +1685,54 @@ try {
     }
     return null;
   });
+  result.waterStage1DisableDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_stage1_disable_draws === "function") {
+      return Module._wyd_d3d9_water_stage1_disable_draws();
+    }
+    return null;
+  });
+  result.waterStage1ModulateDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_stage1_modulate_draws === "function") {
+      return Module._wyd_d3d9_water_stage1_modulate_draws();
+    }
+    return null;
+  });
+  result.waterStage1Modulate2xDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_stage1_modulate2x_draws === "function") {
+      return Module._wyd_d3d9_water_stage1_modulate2x_draws();
+    }
+    return null;
+  });
+  result.waterStage1AddDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_stage1_add_draws === "function") {
+      return Module._wyd_d3d9_water_stage1_add_draws();
+    }
+    return null;
+  });
+  result.waterBlendEnabledDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_blend_enabled_draws === "function") {
+      return Module._wyd_d3d9_water_blend_enabled_draws();
+    }
+    return null;
+  });
+  result.waterBlendDisabledDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_blend_disabled_draws === "function") {
+      return Module._wyd_d3d9_water_blend_disabled_draws();
+    }
+    return null;
+  });
+  result.waterDepthWriteDisabledDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_depth_write_disabled_draws === "function") {
+      return Module._wyd_d3d9_water_depth_write_disabled_draws();
+    }
+    return null;
+  });
+  result.waterFogDisabledDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_water_fog_disabled_draws === "function") {
+      return Module._wyd_d3d9_water_fog_disabled_draws();
+    }
+    return null;
+  });
   result.textureDrawsBright = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_texture_draws_bright === "function") {
       return Module._wyd_d3d9_texture_draws_bright();
@@ -1518,6 +1742,18 @@ try {
   result.fvf322BrightDraws = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_fvf322_bright_draws === "function") {
       return Module._wyd_d3d9_fvf322_bright_draws();
+    }
+    return null;
+  });
+  result.effectDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_effect_draws === "function") {
+      return Module._wyd_d3d9_effect_draws();
+    }
+    return null;
+  });
+  result.fvf322EffectDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_d3d9_fvf322_effect_draws === "function") {
+      return Module._wyd_d3d9_fvf322_effect_draws();
     }
     return null;
   });
@@ -1682,6 +1918,54 @@ try {
     if (typeof Module._wyd_sky_last_mesh_render_result === "function") return Module._wyd_sky_last_mesh_render_result();
     return null;
   });
+  result.sunRenderCalls = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_render_calls === "function") return Module._wyd_sun_render_calls();
+    return null;
+  });
+  result.sunHiddenReturnsBg = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_hidden_returns_bg === "function") return Module._wyd_sun_hidden_returns_bg();
+    return null;
+  });
+  result.sunHiddenReturnsSelf = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_hidden_returns_self === "function") return Module._wyd_sun_hidden_returns_self();
+    return null;
+  });
+  result.sunOutOfViewport = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_out_of_viewport === "function") return Module._wyd_sun_out_of_viewport();
+    return null;
+  });
+  result.sunFlareDraws = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_flare_draws === "function") return Module._wyd_sun_flare_draws();
+    return null;
+  });
+  result.sunLastHide = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_hide === "function") return Module._wyd_sun_last_hide();
+    return null;
+  });
+  result.sunLastDefSize = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_def_size === "function") return Module._wyd_sun_last_def_size();
+    return null;
+  });
+  result.sunLastInViewport = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_in_viewport === "function") return Module._wyd_sun_last_in_viewport();
+    return null;
+  });
+  result.sunLastFlareCount = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_flare_count === "function") return Module._wyd_sun_last_flare_count();
+    return null;
+  });
+  result.sunLastScreenX = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_screen_x === "function") return Module._wyd_sun_last_screen_x();
+    return null;
+  });
+  result.sunLastScreenY = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_screen_y === "function") return Module._wyd_sun_last_screen_y();
+    return null;
+  });
+  result.sunLastScreenZ = await page.evaluate(() => {
+    if (typeof Module._wyd_sun_last_screen_z === "function") return Module._wyd_sun_last_screen_z();
+    return null;
+  });
   result.fvf322AutoClipWDraws = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_fvf322_auto_clipw_draws === "function") {
       return Module._wyd_d3d9_fvf322_auto_clipw_draws();
@@ -1797,8 +2081,10 @@ try {
       }
     }
 
+    const fvf322ClassMax = call("_wyd_d3d9_fvf322_class_max");
     const fvf322ClassCounts = [];
-    for (let i = 0; i < 7; i += 1) {
+    const maxClassId = Number.isFinite(fvf322ClassMax) ? (fvf322ClassMax >>> 0) : 8;
+    for (let i = 0; i < maxClassId; i += 1) {
       fvf322ClassCounts.push({
         id: i,
         name: text(call("_wyd_d3d9_fvf322_class_name", i >>> 0)),
@@ -1936,6 +2222,7 @@ try {
         },
       },
       fvf322ClassCounts,
+      fvf322ClassCountMax: fvf322ClassMax,
       skinSuspiciousTextureDraws: call("_wyd_d3d9_skin_suspicious_texture_draws"),
       skinSuspiciousTextureSamples,
       selServerHumanVersion: call("_wyd_selserver_human_version"),
@@ -2023,6 +2310,28 @@ try {
       mapY: call("_wyd_field_map_y"),
       myHumanX: call("_wyd_field_myhuman_x"),
       myHumanY: call("_wyd_field_myhuman_y"),
+      groundHeightUnderPlayer: call("_wyd_field_ground_height_under_player"),
+      groundMaskUnderPlayer: call("_wyd_field_ground_mask_under_player"),
+      myHumanHeight: call("_wyd_field_myhuman_height"),
+      myHumanWantHeight: call("_wyd_field_myhuman_want_height"),
+      heightDelta: call("_wyd_field_myhuman_height_delta"),
+      groundNormalX: call("_wyd_field_ground_normal_under_player_x"),
+      groundNormalY: call("_wyd_field_ground_normal_under_player_y"),
+      groundNormalZ: call("_wyd_field_ground_normal_under_player_z"),
+      objects: {
+        count: call("_wyd_field_object_count"),
+        failed: call("_wyd_field_object_failed"),
+        checksumFailed: call("_wyd_field_object_checksum_failed"),
+        sea: call("_wyd_field_object_sea_count"),
+        tree: call("_wyd_field_object_tree_count"),
+        house: call("_wyd_field_object_house_count"),
+        light: call("_wyd_field_object_light_count"),
+        generic: call("_wyd_field_object_generic_count"),
+        lastMaskIndex: call("_wyd_field_object_last_mask_index"),
+        staticDraws: call("_wyd_field_static_object_draws"),
+      },
+      objectCount: call("_wyd_field_object_count"),
+      staticObjectDraws: call("_wyd_field_static_object_draws"),
       lastCritical: {
         type: call("_wyd_debug_last_critical_type"),
         id: call("_wyd_debug_last_critical_id"),
@@ -2032,6 +2341,42 @@ try {
         mobX: call("_wyd_debug_last_critical_mob_x"),
         mobY: call("_wyd_debug_last_critical_mob_y"),
       },
+    };
+  });
+  result.fieldVisual = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    return {
+      totalDraws: call("_wyd_field_visual_total_draws"),
+      terrainDraws: call("_wyd_field_visual_terrain_draws"),
+      groundDraws: call("_wyd_field_visual_ground_draws"),
+      waterDraws: call("_wyd_field_visual_water_draws"),
+      skyDraws: call("_wyd_field_visual_sky_draws"),
+      humanDraws: call("_wyd_field_visual_human_draws"),
+      objectDraws: call("_wyd_field_visual_object_draws"),
+      effectDraws: call("_wyd_field_visual_effect_draws"),
+      hudDraws: call("_wyd_field_visual_hud_draws"),
+      hudArtDraws: call("_wyd_field_visual_hud_art_draws"),
+      texBuckets: {
+        env: call("_wyd_field_visual_tex_bucket_env"),
+        effect: call("_wyd_field_visual_tex_bucket_effect"),
+        ui: call("_wyd_field_visual_tex_bucket_ui"),
+        char: call("_wyd_field_visual_tex_bucket_char"),
+        sky: call("_wyd_field_visual_tex_bucket_sky"),
+        water: call("_wyd_field_visual_tex_bucket_water"),
+        other: call("_wyd_field_visual_tex_bucket_other"),
+      },
+      fvfBuckets: (() => {
+        const size = call("_wyd_field_visual_fvf_bucket_size") || 0;
+        const arr = [];
+        for (let i = 0; i < size && i < 32; ++i) {
+          arr.push({
+            fvf: call("_wyd_field_visual_fvf_bucket_code", i),
+            count: call("_wyd_field_visual_fvf_bucket_count", i),
+          });
+        }
+        return arr;
+      })(),
     };
   });
   result.selChar = await page.evaluate(() => {
@@ -2076,13 +2421,31 @@ try {
     };
   });
 
-  const canvas = page.locator("#canvas");
   await canvas.screenshot({ path: opts.screenshot });
   result.screenshot = opts.screenshot;
 
   result.shutdown = await page.evaluate(() => Module._wyd_shutdown_client());
 
   const isPlaceholder = result.stateDebug?.placeholder === 1;
+  const expectedTickCount =
+    opts.fieldCaptureTicks && opts.fieldCaptureTicks.length > 0
+      ? Math.max(...opts.fieldCaptureTicks, opts.ticks)
+      : opts.ticks;
+  const fieldCapturesAllOk =
+    !result.fieldCaptures ||
+    result.fieldCaptures.every((c) => typeof c.glErrorTotal !== "number" || c.glErrorTotal === 0);
+  const shouldValidateFieldGround = result.field?.initialized === 1;
+  const fieldGroundOk =
+    !shouldValidateFieldGround ||
+    result.field.groundHeightUnderPlayer == null ||
+    result.field.groundHeightUnderPlayer > -100;
+  const fieldCriticalOk =
+    result.field == null || result.field.criticalError === 0 || result.field.criticalError == null;
+  const fieldHeightDeltaOk =
+    !shouldValidateFieldGround ||
+    result.field.heightDelta == null ||
+    result.field.heightDelta === -9999 ||
+    Math.abs(result.field.heightDelta) < 100;
   result.ok =
     result.boot === 1 &&
     result.shutdown === 1 &&
@@ -2093,8 +2456,12 @@ try {
     (isPlaceholder || typeof result.texDecodeSuccess !== "number" || result.texDecodeSuccess > 0) &&
     (result.gameState === null || result.gameState === opts.state) &&
     Array.isArray(result.ticks) &&
-    result.ticks.length === opts.ticks &&
-    result.ticks.every((v) => v >= 0);
+    result.ticks.length === expectedTickCount &&
+    result.ticks.every((v) => v >= 0) &&
+    fieldGroundOk &&
+    fieldCriticalOk &&
+    fieldHeightDeltaOk &&
+    fieldCapturesAllOk;
 } catch (err) {
   result.error = err?.message || String(err);
 }
@@ -2110,9 +2477,12 @@ const output = opts.summaryOnly
       gameState: result.gameState,
       stateDebug: result.stateDebug,
       field: result.field,
+      fieldVisual: result.fieldVisual,
       glErrorTotal: result.glErrorTotal,
       consoleErrorCount: result.consoleErrorCount,
       screenshot: result.screenshot,
+      fieldCaptures: result.fieldCaptures,
+      fieldCapturesDir: result.fieldCapturesDir,
       error: result.error,
     }
   : result;

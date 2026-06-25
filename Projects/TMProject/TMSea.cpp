@@ -5,6 +5,12 @@
 #include "TMGlobal.h"
 #include "TMLog.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <cstdio>
+extern "C" void wyd_d3d9_set_draw_scope(const char* label);
+extern "C" void wyd_d3d9_clear_draw_scope();
+#endif
+
 TMSea::TMSea()
     : TMObject()
 {
@@ -164,7 +170,23 @@ int TMSea::Render()
         g_pDevice->m_pd3dDevice->SetTransform((D3DTRANSFORMSTATETYPE)256, &matPosition);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
+#if defined(__EMSCRIPTEN__)
+        char debugScope[256]{};
+        std::snprintf(
+            debugScope,
+            sizeof(debugScope),
+            "TMObject/Sea type=%u pos=%.2f,%.2f h=%.2f angle=%.3f",
+            static_cast<unsigned int>(m_dwObjType),
+            m_vecPosition.x,
+            m_vecPosition.y,
+            m_fHeight,
+            m_fAngle);
+        wyd_d3d9_set_draw_scope(debugScope);
+#endif
         m_pMesh->Render(0, 0);
+#if defined(__EMSCRIPTEN__)
+        wyd_d3d9_clear_draw_scope();
+#endif
         g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
         g_pDevice->SetTextureStageState(1u, D3DTSS_ALPHAOP, 2u);
         g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);

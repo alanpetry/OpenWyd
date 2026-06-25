@@ -14,6 +14,7 @@
 #include "TMDemoScene.h"
 #include "TMMesh.h"
 #include "TMItem.h"
+#include "TMGround.h"
 
 #if defined(__EMSCRIPTEN__)
 #include "RenderDevice.h"
@@ -404,6 +405,106 @@ extern "C" int wyd_field_ground_water_at(int x, int y)
 	float waterHeight = 0.0f;
 	return g_pCurrentScene->GroundIsInWater2(TMVector2(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f), &waterHeight);
 }
+
+extern "C" float wyd_field_ground_height_under_player()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	return g_pCurrentScene->GroundGetHeight(TMVector2(
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.x,
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.y));
+}
+
+extern "C" float wyd_field_myhuman_height()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	return g_pCurrentScene->m_pMyHuman->m_fHeight;
+}
+
+extern "C" float wyd_field_myhuman_want_height()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	return g_pCurrentScene->m_pMyHuman->m_fWantHeight;
+}
+
+extern "C" int wyd_field_ground_mask_under_player()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999;
+
+	return g_pCurrentScene->GroundGetMask(TMVector2(
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.x,
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.y));
+}
+
+extern "C" float wyd_field_myhuman_height_delta()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	float groundHeight = g_pCurrentScene->GroundGetHeight(TMVector2(
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.x,
+		g_pCurrentScene->m_pMyHuman->m_vecPosition.y));
+
+	if (groundHeight <= -9000.0f)
+		return -9999.0f;
+
+	return g_pCurrentScene->m_pMyHuman->m_fHeight - groundHeight;
+}
+
+extern "C" float wyd_field_ground_normal_under_player_x()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	TMGround* pGround = g_pCurrentScene->m_pGround;
+	int nTileX = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.x - pGround->m_vecOffset.x) / 2.0f);
+	int nTileY = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.y - pGround->m_vecOffset.y) / 2.0f);
+
+	if (nTileX < 0 || nTileX > 64 || nTileY < 0 || nTileY > 64)
+		return -9999.0f;
+
+	TMVector3 normal = pGround->GetNormalInGround(nTileX, nTileY);
+	return normal.x;
+}
+
+extern "C" float wyd_field_ground_normal_under_player_y()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	TMGround* pGround = g_pCurrentScene->m_pGround;
+	int nTileX = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.x - pGround->m_vecOffset.x) / 2.0f);
+	int nTileY = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.y - pGround->m_vecOffset.y) / 2.0f);
+
+	if (nTileX < 0 || nTileX > 64 || nTileY < 0 || nTileY > 64)
+		return -9999.0f;
+
+	TMVector3 normal = pGround->GetNormalInGround(nTileX, nTileY);
+	return normal.y;
+}
+
+extern "C" float wyd_field_ground_normal_under_player_z()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCurrentScene->m_pMyHuman)
+		return -9999.0f;
+
+	TMGround* pGround = g_pCurrentScene->m_pGround;
+	int nTileX = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.x - pGround->m_vecOffset.x) / 2.0f);
+	int nTileY = static_cast<int>((g_pCurrentScene->m_pMyHuman->m_vecPosition.y - pGround->m_vecOffset.y) / 2.0f);
+
+	if (nTileX < 0 || nTileX > 64 || nTileY < 0 || nTileY > 64)
+		return -9999.0f;
+
+	TMVector3 normal = pGround->GetNormalInGround(nTileX, nTileY);
+	return normal.z;
+}
+
 #endif
 
 ObjectManager::ObjectManager()

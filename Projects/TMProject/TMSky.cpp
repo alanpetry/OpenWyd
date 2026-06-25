@@ -398,24 +398,6 @@ int TMSky::Render()
        g_pDevice->m_pd3dDevice->SetTransform(D3DTS_WORLD, &mat);
        g_pDevice->SetRenderState(D3DRS_LIGHTING, 0);
        g_pDevice->SetRenderState(D3DRS_FOGENABLE, 0);
-
-       if (g_pDevice->m_bVoodoo == 1)
-       {
-           g_pDevice->SetTextureStageState(1u, D3DTSS_TEXCOORDINDEX, 1u);
-           g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 1u);
-       }
-       else
-       {
-           g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, 8u);
-           g_pDevice->SetTextureStageState(1u, D3DTSS_TEXCOORDINDEX, 0);
-           if (m_nState / 10)
-               g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 0xCu);
-           else
-               g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 1u);
-
-           g_pDevice->SetTexture(1u, g_pTextureManager->GetEffectTexture(m_nTextureIndex, 5000));
-       }
-
        g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
        TMMesh* pMesh = g_pMeshManager->GetCommonMesh(m_dwObjType, 1, 3_min);
        if (pMesh == nullptr)

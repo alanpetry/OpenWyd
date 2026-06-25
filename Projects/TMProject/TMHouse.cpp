@@ -7,6 +7,13 @@
 #include "TMGround.h"
 #include "TMEffectParticle.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <cstdio>
+extern "C" unsigned int wyd_d3d9_get_debug_flags();
+extern "C" void wyd_d3d9_set_draw_scope(const char* label);
+extern "C" void wyd_d3d9_clear_draw_scope();
+#endif
+
 unsigned int TMHouse::m_dwVisibleWaterFall;
 
 TMHouse::TMHouse(char cHouseType)
@@ -96,6 +103,20 @@ int TMHouse::Render()
 
     g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 0);
 
+#if defined(__EMSCRIPTEN__)
+    char debugScope[256]{};
+    std::snprintf(
+        debugScope,
+        sizeof(debugScope),
+        "TMObject/House type=%u pos=%.2f,%.2f h=%.2f angle=%.3f houseType=%d",
+        static_cast<unsigned int>(m_dwObjType),
+        m_vecPosition.x,
+        m_vecPosition.y,
+        m_fHeight,
+        m_fAngle,
+        static_cast<int>(m_cHouseType));
+#endif
+
     auto pCamera = g_pObjectManager->m_pCamera;
     if (m_cHouseType == 11)
     {
@@ -117,7 +138,13 @@ int TMHouse::Render()
         if (!pMesh)
             return 0;
 
+#if defined(__EMSCRIPTEN__)
+        wyd_d3d9_set_draw_scope(debugScope);
+#endif
         pMesh->Render(m_vecPosition.x, m_fHeight, m_vecPosition.y, m_fAngle, 0, 0, 0, 0);
+#if defined(__EMSCRIPTEN__)
+        wyd_d3d9_clear_draw_scope();
+#endif
 
         if (bAlpha == 1)
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6);
@@ -129,10 +156,18 @@ int TMHouse::Render()
 
     if (m_bVisible == 1)
     {
+#if defined(__EMSCRIPTEN__)
+        wyd_d3d9_set_draw_scope(debugScope);
+#endif
         if (m_cHouseType == 0)
         {
             if (!pCamera->m_pFocusedObject)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 1;
+            }
 
             if (!m_cOpenHouse)
             {
@@ -149,7 +184,12 @@ int TMHouse::Render()
 
                 auto pMesh = g_pMeshManager->GetCommonMesh(m_dwObjType + 1, 0, 180000);
                 if (!pMesh)
+                {
+#if defined(__EMSCRIPTEN__)
+                    wyd_d3d9_clear_draw_scope();
+#endif
                     return 0;
+                }
 
                 pMesh->Render(m_vecPosition.x, m_fHeight, m_vecPosition.y, m_fAngle, 0, 0, 0, 0);
 
@@ -161,7 +201,12 @@ int TMHouse::Render()
         {
             auto pMesh = g_pMeshManager->GetCommonMesh(m_dwObjType + 1, 0, 180000);
             if (!pMesh)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             pMesh->Render(m_vecPosition.x, m_fHeight + 5.2199998f, m_vecPosition.y, m_fAngle - 1.5707964f, m_fWindMillAngle, 1.5707964f, 0, 0);
         }
@@ -190,7 +235,12 @@ int TMHouse::Render()
 
             auto pMesh = g_pMeshManager->GetCommonMesh(m_sWaterIndex, 0, 180000);
             if (!pMesh)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             if (RenderDevice::m_bDungeon && RenderDevice::m_bDungeon != 3 && RenderDevice::m_bDungeon != 4)
             {
@@ -251,10 +301,13 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 1, 0, 180000);
             auto pMesh2 = g_pMeshManager->GetCommonMesh(m_dwObjType + 2, 0, 180000);
-            if (!pMesh1)
+            if (!pMesh1 || !pMesh2)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
-            if (!pMesh2)
-                return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x,
@@ -290,10 +343,13 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 1, 0, 180000);
             auto pMesh2 = g_pMeshManager->GetCommonMesh(m_dwObjType + 2, 0, 180000);
-            if (!pMesh1)
+            if (!pMesh1 || !pMesh2)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
-            if (!pMesh2)
-                return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x + m_vecPos1.x,
@@ -327,7 +383,12 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 1, 0, 180000);
             if (!pMesh1)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x,
@@ -343,7 +404,12 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 20, 0, 180000);
             if (!pMesh1)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x,
@@ -359,7 +425,12 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 32, 0, 180000);
             if (!pMesh1)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x,
@@ -375,7 +446,12 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType + 61, 0, 180000);
             if (!pMesh1)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
 
             pMesh1->Render(
                 m_vecPosition.x,
@@ -391,7 +467,12 @@ int TMHouse::Render()
         {
             auto pMesh1 = g_pMeshManager->GetCommonMesh(m_dwObjType, 0, 180000);
             if (!pMesh1)
+            {
+#if defined(__EMSCRIPTEN__)
+                wyd_d3d9_clear_draw_scope();
+#endif
                 return 0;
+            }
             g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 2u);
             g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
@@ -423,6 +504,9 @@ int TMHouse::Render()
             g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
         }
+#if defined(__EMSCRIPTEN__)
+        wyd_d3d9_clear_draw_scope();
+#endif
     }
     g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1);
     return 1;

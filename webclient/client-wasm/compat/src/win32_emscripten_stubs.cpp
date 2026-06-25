@@ -357,6 +357,9 @@ uint64_t g_fvf_3d_vertices_in_clip = 0;
 uint64_t g_draw_alpha_test_enabled = 0;
 uint64_t g_draw_alpha_test_disabled = 0;
 uint64_t g_draw_blend_enabled = 0;
+uint64_t g_draw_vegetation_alpha_mask = 0;
+uint64_t g_draw_vegetation_alpha_blend = 0;
+uint64_t g_draw_vegetation_total = 0;
 uint64_t g_draw_depth_test_disabled = 0;
 uint64_t g_draw_depth_write_disabled = 0;
 uint64_t g_depth_write_guard_forced_draws = 0;
@@ -399,7 +402,12 @@ uint64_t g_material_set_calls = 0;
 uint64_t g_light_set_calls = 0;
 uint64_t g_light_enable_calls = 0;
 uint64_t g_lighted_vertices = 0;
+uint64_t g_directional_lighted_vertices = 0;
+uint64_t g_point_lighted_vertices = 0;
+uint64_t g_spot_lighted_vertices = 0;
+uint64_t g_specular_lighted_vertices = 0;
 uint64_t g_draw_fog_enabled = 0;
+uint64_t g_fog_skin_draws = 0;
 uint64_t g_draw_wireframe = 0;
 uint64_t g_debug_skip_fvf_draws = 0;
 uint64_t g_fvf322_draw_primitive_up = 0;
@@ -537,13 +545,25 @@ uint32_t g_debug_last_present_blend_enabled = 0;
 uint32_t g_debug_last_present_depth_enabled = 0;
 uint32_t g_debug_last_present_depth_write = 0;
 uint32_t g_debug_last_present_alpha_test = 0;
+uint32_t g_debug_last_present_fog = 0;
 uint32_t g_debug_last_present_src_blend = 0;
 uint32_t g_debug_last_present_dst_blend = 0;
 uint64_t g_texture_draws_sky = 0;
 uint64_t g_texture_draws_water = 0;
 uint64_t g_texture_draws_bright = 0;
+uint64_t g_draw_water_stage1_disable = 0;
+uint64_t g_draw_water_stage1_modulate = 0;
+uint64_t g_draw_water_stage1_modulate2x = 0;
+uint64_t g_draw_water_stage1_add = 0;
+uint64_t g_draw_water_blend_enabled = 0;
+uint64_t g_draw_water_blend_disabled = 0;
+uint64_t g_draw_water_depth_write_disabled = 0;
+uint64_t g_draw_water_fog_disabled = 0;
 uint64_t g_fvf322_bright_draws = 0;
-constexpr size_t kFvf322ClassCount = 7;
+uint64_t g_effect_draws = 0;
+uint64_t g_fvf322_effect_draws = 0;
+uint64_t g_static_object_draws = 0;
+constexpr size_t kFvf322ClassCount = 8;
 std::array<uint64_t, kFvf322ClassCount> g_fvf322_class_draws{};
 uint64_t g_fvf322_screenlike_replay_suppressed = 0;
 uint64_t g_stage0_colorop8_draws = 0;
@@ -556,6 +576,10 @@ uint32_t g_stage0_colorop8_last_height = 0;
 uint32_t g_stage0_colorop8_last_path_len = 0;
 uint64_t g_set_stage0_colorop8_calls = 0;
 uint64_t g_set_stage0_colorop4_calls = 0;
+uint64_t g_terrain_stage1_modulate_draws = 0;
+uint64_t g_terrain_stage1_modulate2x_draws = 0;
+uint64_t g_terrain_stage1_disable_draws = 0;
+uint64_t g_fvf322_lightmap_heuristic_draws = 0;
 uint32_t g_set_stage0_colorop_last_value = 0;
 uint64_t g_set_texture_stage0_sky_calls = 0;
 uint64_t g_set_texture_stage1_sky_calls = 0;
@@ -589,6 +613,29 @@ std::vector<std::string> g_clipw_empty_signature_export_cache;
 uint64_t g_skin_suspicious_texture_draws = 0;
 std::vector<std::string> g_skin_suspicious_texture_samples;
 std::unordered_set<std::string> g_skin_suspicious_texture_seen;
+
+uint64_t g_field_visual_frame_total = 0;
+uint64_t g_field_visual_frame_terrain = 0;
+uint64_t g_field_visual_frame_ground = 0;
+uint64_t g_field_visual_frame_water = 0;
+uint64_t g_field_visual_frame_sky = 0;
+uint64_t g_field_visual_frame_human = 0;
+uint64_t g_field_visual_frame_object = 0;
+uint64_t g_field_visual_frame_effect = 0;
+uint64_t g_field_visual_frame_hud = 0;
+uint64_t g_field_visual_frame_hud_art = 0;
+
+uint64_t g_field_visual_tex_bucket_env = 0;
+uint64_t g_field_visual_tex_bucket_effect = 0;
+uint64_t g_field_visual_tex_bucket_ui = 0;
+uint64_t g_field_visual_tex_bucket_char = 0;
+uint64_t g_field_visual_tex_bucket_sky = 0;
+uint64_t g_field_visual_tex_bucket_water = 0;
+uint64_t g_field_visual_tex_bucket_other = 0;
+
+std::unordered_map<uint32_t, uint64_t> g_field_visual_fvf_histogram;
+std::vector<std::pair<uint32_t, uint64_t>> g_field_visual_fvf_export_cache;
+bool g_field_visual_fvf_cache_dirty = true;
 
 constexpr uint32_t kDebugDisableAlphaTest = 1u << 0;
 constexpr uint32_t kDebugDisableDepthTest = 1u << 1;
@@ -3711,7 +3758,7 @@ struct WasmD3D9State {
   DWORD alpha_test_enable = 0;
   DWORD alpha_ref = 0;
   DWORD alpha_func = D3DCMP_ALWAYS;
-  DWORD lighting_enable = 0;
+  DWORD lighting_enable = 1;
   DWORD fill_mode = D3DFILL_SOLID;
   DWORD shade_mode = D3DSHADE_GOURAUD;
   DWORD specular_enable = 0;
@@ -3723,6 +3770,7 @@ struct WasmD3D9State {
   DWORD vertex_blend = 0;
   DWORD indexed_vertex_blend_enable = 0;
   DWORD normalize_normals = 0;
+  DWORD local_viewer = 0;
   DWORD fog_enable = 0;
   DWORD fog_vertex_mode = D3DFOG_NONE;
   DWORD fog_table_mode = D3DFOG_NONE;
@@ -3912,6 +3960,7 @@ HRESULT WydD3D9Device_Present(IDirect3DDevice9*, const RECT*, const RECT*, HWND,
   g_debug_last_present_depth_enabled = g_wasm_d3d9_state.z_enable ? 1u : 0u;
   g_debug_last_present_depth_write = g_wasm_d3d9_state.z_write_enable ? 1u : 0u;
   g_debug_last_present_alpha_test = g_wasm_d3d9_state.alpha_test_enable ? 1u : 0u;
+  g_debug_last_present_fog = g_wasm_d3d9_state.fog_enable ? 1u : 0u;
   g_debug_last_present_src_blend = g_wasm_d3d9_state.src_blend;
   g_debug_last_present_dst_blend = g_wasm_d3d9_state.dst_blend;
   glFlush();
@@ -4134,6 +4183,9 @@ HRESULT WydD3D9Device_SetRenderState(IDirect3DDevice9*, D3DRENDERSTATETYPE state
       break;
     case D3DRS_NORMALIZENORMALS:
       g_wasm_d3d9_state.normalize_normals = value;
+      break;
+    case D3DRS_LOCALVIEWER:
+      g_wasm_d3d9_state.local_viewer = value;
       break;
     case D3DRS_FOGENABLE:
       g_wasm_d3d9_state.fog_enable = value;
@@ -4387,8 +4439,11 @@ void EnsureFFPStateInitialized() {
   for (int i = 0; i < kMaxTextureStages; ++i) {
     g_ffp_state.tex_stage[i].fill(0);
     g_ffp_state.sampler[i].fill(0);
-    g_ffp_state.sampler[i][D3DSAMP_ADDRESSU] = 1;
-    g_ffp_state.sampler[i][D3DSAMP_ADDRESSV] = 1;
+    g_ffp_state.sampler[i][D3DSAMP_ADDRESSU] = D3DTADDRESS_WRAP;
+    g_ffp_state.sampler[i][D3DSAMP_ADDRESSV] = D3DTADDRESS_WRAP;
+    g_ffp_state.sampler[i][D3DSAMP_MAGFILTER] = D3DTEXF_LINEAR;
+    g_ffp_state.sampler[i][D3DSAMP_MINFILTER] = D3DTEXF_LINEAR;
+    g_ffp_state.sampler[i][D3DSAMP_MIPFILTER] = D3DTEXF_LINEAR;
     g_ffp_state.tex_stage[i][D3DTSS_COLORARG1] = D3DTA_TEXTURE;
     g_ffp_state.tex_stage[i][D3DTSS_COLORARG2] = D3DTA_CURRENT;
     g_ffp_state.tex_stage[i][D3DTSS_ALPHAARG1] = D3DTA_TEXTURE;
@@ -4512,6 +4567,13 @@ bool CurrentDrawUsesSnowBillboardTexture() {
   return CurrentDrawUsesTexturePath("effect/bright.wys");
 }
 
+bool CurrentDrawUsesEffectTexture() {
+  // All billboard/particle effect textures live under Effect/ directory.
+  // Their local vertices may look screen-like, but the world matrix carries
+  // the camera-facing rotation and must not be bypassed by screen-like replay.
+  return CurrentDrawUsesTexturePath("effect/");
+}
+
 bool CurrentDrawUsesSkyTexture() {
   // TMSky is also FVF322 and can look screen-like in raw local coordinates.
   // Replaying it as 2D screen geometry expands the sky dome into huge planes.
@@ -4522,16 +4584,22 @@ void TrackSpecialTextureDraws(DWORD active_fvf) {
   bool saw_sky = false;
   bool saw_water = false;
   bool saw_bright = false;
+  bool saw_effect = false;
   for (auto* texture : g_ffp_state.textures) {
     saw_sky = saw_sky || TexturePathContains(texture, "sky");
     saw_water = saw_water || TexturePathContains(texture, "water");
     saw_bright = saw_bright || TexturePathContains(texture, "effect/bright.wys");
+    saw_effect = saw_effect || TexturePathContains(texture, "effect/");
   }
   if (saw_sky) g_texture_draws_sky += 1;
   if (saw_water) g_texture_draws_water += 1;
   if (saw_bright) {
     g_texture_draws_bright += 1;
     if (active_fvf == 322u) g_fvf322_bright_draws += 1;
+  }
+  if (saw_effect) {
+    g_effect_draws += 1;
+    if (active_fvf == 322u) g_fvf322_effect_draws += 1;
   }
 }
 
@@ -4743,7 +4811,8 @@ enum Fvf322Class : uint32_t {
   kFvf322ClassRain = 3,
   kFvf322ClassBright = 4,
   kFvf322ClassPattern = 5,
-  kFvf322ClassOther = 6,
+  kFvf322ClassBillboard = 6,
+  kFvf322ClassOther = 7,
 };
 
 const char* Fvf322ClassName(uint32_t class_id) {
@@ -4754,6 +4823,7 @@ const char* Fvf322ClassName(uint32_t class_id) {
     case kFvf322ClassRain: return "rain";
     case kFvf322ClassBright: return "bright";
     case kFvf322ClassPattern: return "pattern";
+    case kFvf322ClassBillboard: return "billboard";
     case kFvf322ClassOther: return "other";
     default: return "unknown";
   }
@@ -4770,6 +4840,24 @@ uint32_t ClassifyFvf322Draw() {
   if (combined.find("rain") != std::string::npos) return kFvf322ClassRain;
   if (combined.find("bright") != std::string::npos) return kFvf322ClassBright;
   if (combined.find("pattern") != std::string::npos) return kFvf322ClassPattern;
+  if (combined.find("billboard") != std::string::npos) return kFvf322ClassBillboard;
+
+  // Ground-projected lightmap decals (TMShade) render through FVF 322 with
+  // DESTBLEND=ONE (additive).  When the texture path does not contain a
+  // recognised keyword, fall back to render-state heuristics.
+  const DWORD stage0_alpha_op = StageStateValue(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+  const DWORD stage0_color_op = StageStateValue(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+  if (g_wasm_d3d9_state.dst_blend == D3DBLEND_ONE &&
+      g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
+      stage0_alpha_op == D3DTOP_SELECTARG1 &&
+      stage0_color_op == D3DTOP_MODULATE &&
+      !stage0_path.empty()) {
+    return kFvf322ClassLightmap;
+  }
+
+  if (stage0_path.find("effect/") != std::string::npos ||
+      stage1_path.find("effect/") != std::string::npos ||
+      label.find("effect/") != std::string::npos) return kFvf322ClassBillboard;
   return kFvf322ClassOther;
 }
 
@@ -4796,6 +4884,29 @@ void ResetDrawOrderFrame() {
   g_draw_order_frame_count_water578 = 0;
   g_draw_order_frame_count_fvf530 = 0;
   g_draw_order_frame_count_fvf322 = 0;
+}
+
+void ResetFieldVisualFrame() {
+  g_field_visual_frame_total = 0;
+  g_field_visual_frame_terrain = 0;
+  g_field_visual_frame_ground = 0;
+  g_field_visual_frame_water = 0;
+  g_field_visual_frame_sky = 0;
+  g_field_visual_frame_human = 0;
+  g_field_visual_frame_object = 0;
+  g_field_visual_frame_effect = 0;
+  g_field_visual_frame_hud = 0;
+  g_field_visual_frame_hud_art = 0;
+  g_field_visual_tex_bucket_env = 0;
+  g_field_visual_tex_bucket_effect = 0;
+  g_field_visual_tex_bucket_ui = 0;
+  g_field_visual_tex_bucket_char = 0;
+  g_field_visual_tex_bucket_sky = 0;
+  g_field_visual_tex_bucket_water = 0;
+  g_field_visual_tex_bucket_other = 0;
+  g_field_visual_fvf_histogram.clear();
+  g_field_visual_fvf_export_cache.clear();
+  g_field_visual_fvf_cache_dirty = true;
 }
 
 void TrackDrawOrder(uint64_t draw_serial, DWORD active_fvf, bool current_sky_texture_draw) {
@@ -4872,6 +4983,112 @@ void TrackSkinSuspiciousTexture(DWORD active_fvf, uint64_t draw_serial) {
       static_cast<unsigned int>(StageStateValue(1, D3DTSS_COLOROP, D3DTOP_DISABLE)),
       label.empty() ? "(unlabeled)" : label.c_str());
   g_skin_suspicious_texture_samples.emplace_back(sample);
+}
+
+void TrackFieldVisualDraw(DWORD active_fvf, bool current_sky_texture_draw) {
+  g_field_visual_frame_total += 1;
+
+  g_field_visual_fvf_histogram[static_cast<uint32_t>(active_fvf)] += 1;
+  g_field_visual_fvf_cache_dirty = true;
+
+  bool saw_env = false;
+  bool saw_effect = false;
+  bool saw_ui = false;
+  bool saw_char = false;
+  bool saw_sky = false;
+  bool saw_water = false;
+  for (auto* texture : g_ffp_state.textures) {
+    if (!saw_env && (TexturePathContains(texture, "env/") || TexturePathContains(texture, "chao") ||
+        TexturePathContains(texture, "terra") || TexturePathContains(texture, "grama") ||
+        TexturePathContains(texture, "areia") || TexturePathContains(texture, "dirt") ||
+        TexturePathContains(texture, "sand") || TexturePathContains(texture, "neve") ||
+        TexturePathContains(texture, "snow") || TexturePathContains(texture, "lava") ||
+        TexturePathContains(texture, "mount") || TexturePathContains(texture, "wood") ||
+        TexturePathContains(texture, "stone") || TexturePathContains(texture, "tree") ||
+        TexturePathContains(texture, "house") || TexturePathContains(texture, "leaf"))) {
+      saw_env = true;
+    }
+    if (!saw_effect && TexturePathContains(texture, "effect/")) saw_effect = true;
+    if (!saw_ui && (TexturePathContains(texture, "ui/") || TexturePathContains(texture, "hud/") ||
+        TexturePathContains(texture, "panel") || TexturePathContains(texture, "interface") ||
+        TexturePathContains(texture, "button") || TexturePathContains(texture, "grid") ||
+        TexturePathContains(texture, "icon") || TexturePathContains(texture, "bar") ||
+        TexturePathContains(texture, "art/"))) {
+      saw_ui = true;
+    }
+    if (!saw_char && TexturePathContains(texture, "char/")) saw_char = true;
+    if (!saw_sky && TexturePathContains(texture, "sky")) saw_sky = true;
+    if (!saw_water && TexturePathContains(texture, "water")) saw_water = true;
+  }
+  if (saw_env) g_field_visual_tex_bucket_env += 1;
+  if (saw_effect) g_field_visual_tex_bucket_effect += 1;
+  if (saw_ui) g_field_visual_tex_bucket_ui += 1;
+  if (saw_char) g_field_visual_tex_bucket_char += 1;
+  if (saw_sky) g_field_visual_tex_bucket_sky += 1;
+  if (saw_water) g_field_visual_tex_bucket_water += 1;
+  if (!saw_env && !saw_effect && !saw_ui && !saw_char && !saw_sky && !saw_water) {
+    g_field_visual_tex_bucket_other += 1;
+  }
+
+  if (PositionHasRHW(active_fvf)) {
+    g_field_visual_frame_hud += 1;
+    bool has_ui_tex = false;
+    for (auto* texture : g_ffp_state.textures) {
+      if (TexturePathContains(texture, "ui") ||
+          TexturePathContains(texture, "hud") ||
+          TexturePathContains(texture, "panel") ||
+          TexturePathContains(texture, "interface") ||
+          TexturePathContains(texture, "button") ||
+          TexturePathContains(texture, "grid") ||
+          TexturePathContains(texture, "icon") ||
+          TexturePathContains(texture, "bar") ||
+          TexturePathContains(texture, "art/")) {
+        has_ui_tex = true;
+        break;
+      }
+    }
+    if (has_ui_tex) g_field_visual_frame_hud_art += 1;
+  } else if (active_fvf == 594u) {
+    g_field_visual_frame_terrain += 1;
+  } else if (active_fvf == 578u) {
+    g_field_visual_frame_water += 1;
+  } else if (current_sky_texture_draw) {
+    g_field_visual_frame_sky += 1;
+  } else if (ActiveFvfIsSkin(active_fvf)) {
+    g_field_visual_frame_human += 1;
+  } else if (active_fvf == 530u) {
+    bool is_ground = false;
+    for (auto* texture : g_ffp_state.textures) {
+      if (TexturePathContains(texture, "chao") ||
+          TexturePathContains(texture, "terra") ||
+          TexturePathContains(texture, "grama") ||
+          TexturePathContains(texture, "areia") ||
+          TexturePathContains(texture, "dirt") ||
+          TexturePathContains(texture, "sand") ||
+          TexturePathContains(texture, "neve") ||
+          TexturePathContains(texture, "snow") ||
+          TexturePathContains(texture, "lava") ||
+          TexturePathContains(texture, "mount") ||
+          TexturePathContains(texture, "wood") ||
+          TexturePathContains(texture, "stone")) {
+        is_ground = true;
+        break;
+      }
+    }
+    if (is_ground) g_field_visual_frame_ground += 1;
+    else g_field_visual_frame_object += 1;
+  } else if (active_fvf == 322u) {
+    const uint32_t cls = ClassifyFvf322Draw();
+    if (cls == kFvf322ClassShadow || cls == kFvf322ClassLightmap ||
+        cls == kFvf322ClassBright || cls == kFvf322ClassRain ||
+        cls == kFvf322ClassPattern) {
+      g_field_visual_frame_effect += 1;
+    } else {
+      g_field_visual_frame_object += 1;
+    }
+  } else {
+    g_field_visual_frame_object += 1;
+  }
 }
 
 void TrackClipWEmptySignature(DWORD active_fvf) {
@@ -5968,6 +6185,10 @@ void AccumulateLight(
     const D3DXVECTOR3& cam_nrm,
     const D3DCOLORVALUE& material_diffuse,
     const D3DCOLORVALUE& material_ambient,
+    const D3DCOLORVALUE& material_specular,
+    float material_power,
+    bool specular_enable,
+    bool local_viewer,
     float* out_r,
     float* out_g,
     float* out_b) {
@@ -5979,14 +6200,17 @@ void AccumulateLight(
 
   D3DXVECTOR3 to_light{};
   float attenuation = 1.0f;
+  float saved_distance = 0.0f;
 
   if (light.Type == D3DLIGHT_DIRECTIONAL) {
     D3DXVECTOR3 view_dir = Normalize3(TransformDirectionToView(light.Direction));
     to_light = Normalize3(D3DXVECTOR3(-view_dir.x, -view_dir.y, -view_dir.z));
+    g_directional_lighted_vertices += 1;
   } else {
     D3DXVECTOR3 view_pos = TransformPositionToView(light.Position);
     to_light = D3DXVECTOR3(view_pos.x - cam_pos.x, view_pos.y - cam_pos.y, view_pos.z - cam_pos.z);
     const float distance = std::sqrt(Dot3(to_light, to_light));
+    saved_distance = distance;
     if (light.Range > 0.0f && distance > light.Range) return;
     if (distance > 1.0e-6f) {
       to_light = D3DXVECTOR3(to_light.x / distance, to_light.y / distance, to_light.z / distance);
@@ -5997,12 +6221,55 @@ void AccumulateLight(
     const float denom =
         light.Attenuation0 + light.Attenuation1 * distance + light.Attenuation2 * distance * distance;
     if (denom > 1.0e-6f) attenuation = 1.0f / denom;
+
+    if (light.Type == D3DLIGHT_SPOT) {
+      D3DXVECTOR3 view_spot_dir = Normalize3(TransformDirectionToView(light.Direction));
+      const float cos_rho = Dot3(view_spot_dir, D3DXVECTOR3(-to_light.x, -to_light.y, -to_light.z));
+      const float cos_theta = std::cos(light.Theta * 0.5f);
+      const float cos_phi = std::cos(light.Phi * 0.5f);
+
+      float spot_factor = 1.0f;
+      if (cos_rho < cos_phi) {
+        spot_factor = 0.0f;
+      } else if (cos_rho < cos_theta) {
+        const float denom_spot = cos_theta - cos_phi;
+        if (denom_spot > 1.0e-6f) {
+          spot_factor = std::pow((cos_rho - cos_phi) / denom_spot, light.Falloff);
+        }
+      }
+      attenuation *= spot_factor;
+      g_spot_lighted_vertices += 1;
+    } else {
+      g_point_lighted_vertices += 1;
+    }
   }
 
-  const float ndotl = std::max(0.0f, Dot3(Normalize3(cam_nrm), to_light));
+  const D3DXVECTOR3 unit_nrm = Normalize3(cam_nrm);
+  const float ndotl = std::max(0.0f, Dot3(unit_nrm, to_light));
   *out_r += material_diffuse.r * light.Diffuse.r * ndotl * attenuation;
   *out_g += material_diffuse.g * light.Diffuse.g * ndotl * attenuation;
   *out_b += material_diffuse.b * light.Diffuse.b * ndotl * attenuation;
+
+  if (specular_enable && ndotl > 0.0f && material_power > 0.0f) {
+    D3DXVECTOR3 view_dir(0.0f, 0.0f, 1.0f);
+    if (local_viewer) {
+      const float neg_cam_len = std::sqrt(cam_pos.x * cam_pos.x + cam_pos.y * cam_pos.y + cam_pos.z * cam_pos.z);
+      if (neg_cam_len > 1.0e-6f) {
+        view_dir = D3DXVECTOR3(-cam_pos.x / neg_cam_len, -cam_pos.y / neg_cam_len, -cam_pos.z / neg_cam_len);
+      }
+    }
+    D3DXVECTOR3 half_vec = D3DXVECTOR3(
+        to_light.x + view_dir.x,
+        to_light.y + view_dir.y,
+        to_light.z + view_dir.z);
+    half_vec = Normalize3(half_vec);
+    const float ndoth = std::max(0.0f, Dot3(unit_nrm, half_vec));
+    const float spec = std::pow(ndoth, material_power);
+    *out_r += material_specular.r * light.Specular.r * spec * attenuation;
+    *out_g += material_specular.g * light.Specular.g * spec * attenuation;
+    *out_b += material_specular.b * light.Specular.b * spec * attenuation;
+    g_specular_lighted_vertices += 1;
+  }
 }
 
 void ApplyLegacyLightingToVertex(
@@ -6034,7 +6301,11 @@ void ApplyLegacyLightingToVertex(
       SelectMaterialSource(g_wasm_d3d9_state.ambient_material_source, material.Ambient, has_color1, color1);
   const D3DCOLORVALUE material_emissive =
       SelectMaterialSource(g_wasm_d3d9_state.emissive_material_source, material.Emissive, has_color1, color1);
+  const D3DCOLORVALUE material_specular =
+      SelectMaterialSource(g_wasm_d3d9_state.specular_material_source, material.Specular, has_color1, color1);
   const D3DCOLORVALUE global_ambient = ColorValueFromARGB(g_wasm_d3d9_state.ambient);
+  const bool specular_enable = (g_wasm_d3d9_state.specular_enable != 0);
+  const bool local_viewer = (g_wasm_d3d9_state.local_viewer != 0);
 
   float r = material_emissive.r + material_ambient.r * global_ambient.r;
   float g = material_emissive.g + material_ambient.g * global_ambient.g;
@@ -6042,7 +6313,8 @@ void ApplyLegacyLightingToVertex(
 
   for (size_t i = 0; i < g_wasm_d3d9_state.lights.size(); ++i) {
     if (!g_wasm_d3d9_state.light_enabled[i]) continue;
-    AccumulateLight(g_wasm_d3d9_state.lights[i], cam_pos, cam_nrm, material_diffuse, material_ambient, &r, &g, &b);
+    AccumulateLight(g_wasm_d3d9_state.lights[i], cam_pos, cam_nrm, material_diffuse, material_ambient,
+                    material_specular, material.Power, specular_enable, local_viewer, &r, &g, &b);
   }
 
   const float alpha = (material_diffuse.a > 0.0f) ? material_diffuse.a : ColorValueFromVertex(*out_vertex).a;
@@ -6764,22 +7036,48 @@ void BuildGLTextureRGBA(const DummyDirect3DTexture9* tex, std::vector<uint8_t>* 
   }
 }
 
-void ApplyTextureSamplerState(DWORD stage) {
+bool IsPowerOfTwo(UINT value) {
+  return value != 0u && (value & (value - 1u)) == 0u;
+}
+
+GLint D3DAddressToGL(DWORD addr) {
+  if (addr == D3DTADDRESS_WRAP) return GL_REPEAT;
+  if (addr == D3DTADDRESS_MIRROR) return GL_MIRRORED_REPEAT;
+  return GL_CLAMP_TO_EDGE;
+}
+
+GLint D3DFilterToGLMag(DWORD mag_filter) {
+  return mag_filter == D3DTEXF_POINT ? GL_NEAREST : GL_LINEAR;
+}
+
+GLint D3DFilterToGLMin(DWORD min_filter, DWORD mip_filter, bool mipmaps_available) {
+  const bool point_min = min_filter == D3DTEXF_POINT;
+  if (!mipmaps_available || mip_filter == D3DTEXF_NONE) {
+    return point_min ? GL_NEAREST : GL_LINEAR;
+  }
+  if (point_min) {
+    return mip_filter == D3DTEXF_POINT ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_LINEAR;
+  }
+  return mip_filter == D3DTEXF_POINT ? GL_LINEAR_MIPMAP_NEAREST : GL_LINEAR_MIPMAP_LINEAR;
+}
+
+void ApplyTextureSamplerState(DWORD stage, const DummyDirect3DTexture9* tex) {
   if (stage >= kMaxTextureStages) return;
 
   const DWORD addr_u = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSU];
   const DWORD addr_v = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSV];
-  const GLint wrap_u = (addr_u == 1) ? GL_REPEAT : GL_CLAMP_TO_EDGE;
-  const GLint wrap_v = (addr_v == 1) ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+  const bool can_repeat =
+      tex && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
+  const GLint wrap_u = can_repeat ? D3DAddressToGL(addr_u) : GL_CLAMP_TO_EDGE;
+  const GLint wrap_v = can_repeat ? D3DAddressToGL(addr_v) : GL_CLAMP_TO_EDGE;
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_u);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_v);
 
   const DWORD min_filter = g_ffp_state.sampler[stage][D3DSAMP_MINFILTER];
   const DWORD mag_filter = g_ffp_state.sampler[stage][D3DSAMP_MAGFILTER];
-  const GLint gl_min = (min_filter == 1) ? GL_NEAREST : GL_LINEAR;
-  const GLint gl_mag = (mag_filter == 1) ? GL_NEAREST : GL_LINEAR;
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_min);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_mag);
+  const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, D3DFilterToGLMin(min_filter, mip_filter, can_repeat));
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, D3DFilterToGLMag(mag_filter));
 }
 
 bool BindTextureStage(DWORD stage) {
@@ -6794,7 +7092,7 @@ bool BindTextureStage(DWORD stage) {
 
   glActiveTexture(GL_TEXTURE0 + stage);
   glBindTexture(GL_TEXTURE_2D, tex->gl_texture);
-  ApplyTextureSamplerState(stage);
+  ApplyTextureSamplerState(stage, tex);
 
   if (tex->gl_dirty) {
     std::vector<uint8_t> rgba;
@@ -6810,6 +7108,9 @@ bool BindTextureStage(DWORD stage) {
         GL_RGBA,
         GL_UNSIGNED_BYTE,
         rgba.data());
+    if (IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height)) {
+      glGenerateMipmap(GL_TEXTURE_2D);
+    }
     tex->gl_dirty = false;
     g_tex_upload_count += 1;
   }
@@ -6926,11 +7227,10 @@ bool ApplyStageUniforms(
 
   if (color_op == D3DTOP_DISABLE) {
     alpha_op = D3DTOP_DISABLE;
-  } else if (alpha_op == D3DTOP_DISABLE) {
-    // D3D9 treats alpha-op disable with color-op enabled as undefined.
-    // Keep deterministic output by selecting arg1.
-    alpha_op = D3DTOP_SELECTARG1;
   }
+  // D3DTOP_DISABLE for alpha means the alpha value from the previous stage
+  // passes through unchanged (D3D9 spec).  The shader already handles this
+  // by skipping the alpha operation when uAlphaOp == 1.
 
   if (uni_use_texture >= 0) glUniform1i(uni_use_texture, has_texture ? 1 : 0);
   if (uni_color_op >= 0) glUniform1i(uni_color_op, static_cast<GLint>(color_op));
@@ -7017,6 +7317,26 @@ void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
     const uint32_t shader_debug_flags = g_debug_ffp_flags & kDebugForceOpaqueTextureAlpha;
     glUniform1i(g_ffp_program.uni_debug_flags, static_cast<GLint>(shader_debug_flags));
   }
+  DWORD effective_fog_vertex_mode = g_wasm_d3d9_state.fog_vertex_mode;
+  float effective_fog_start = g_wasm_d3d9_state.fog_start;
+  float effective_fog_end = g_wasm_d3d9_state.fog_end;
+
+  // Skin mesh fog override: when FFP vertex fog is disabled but a vertex shader
+  // is active, check VS register 6 for custom skin mesh fog parameters.
+  // CMesh::SetMaterial() sets reg 6 = {1.0f, fEnd, 1.0f/(fEnd-fStart), 0.0f}
+  // and CMesh::Draw() disables FOGVERTEXMODE for the skin mesh draw.
+  if (g_wasm_d3d9_state.fog_enable != 0 &&
+      effective_fog_vertex_mode == D3DFOG_NONE &&
+      g_ffp_state.vertex_shader != nullptr) {
+    const float skin_fog_flag = ShaderConst(6u, 0u);
+    if (skin_fog_flag >= 0.999f) {
+      effective_fog_vertex_mode = D3DFOG_LINEAR;
+      effective_fog_end = ShaderConst(6u, 1u);
+      const float skin_inv_distance = ShaderConst(6u, 2u);
+      effective_fog_start = effective_fog_end - ((skin_inv_distance > 1.0e-6f) ? (1.0f / skin_inv_distance) : 0.0f);
+    }
+  }
+
   if (g_ffp_program.uni_fog_color >= 0) {
     float fog_r = 0.0f, fog_g = 0.0f, fog_b = 0.0f, fog_a = 1.0f;
     DecodeD3DColor(g_wasm_d3d9_state.fog_color, &fog_r, &fog_g, &fog_b, &fog_a);
@@ -7025,18 +7345,18 @@ void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
   const bool fog_active =
       ((g_debug_ffp_flags & kDebugDisableFog) == 0u) &&
       (g_wasm_d3d9_state.fog_enable != 0) &&
-      (g_wasm_d3d9_state.fog_vertex_mode != D3DFOG_NONE);
+      (effective_fog_vertex_mode != D3DFOG_NONE);
   if (g_ffp_program.uni_fog_enable >= 0) {
     glUniform1i(g_ffp_program.uni_fog_enable, fog_active ? 1 : 0);
   }
   if (g_ffp_program.uni_fog_mode >= 0) {
-    glUniform1i(g_ffp_program.uni_fog_mode, static_cast<GLint>(g_wasm_d3d9_state.fog_vertex_mode));
+    glUniform1i(g_ffp_program.uni_fog_mode, static_cast<GLint>(effective_fog_vertex_mode));
   }
   if (g_ffp_program.uni_fog_start >= 0) {
-    glUniform1f(g_ffp_program.uni_fog_start, g_wasm_d3d9_state.fog_start);
+    glUniform1f(g_ffp_program.uni_fog_start, effective_fog_start);
   }
   if (g_ffp_program.uni_fog_end >= 0) {
-    glUniform1f(g_ffp_program.uni_fog_end, g_wasm_d3d9_state.fog_end);
+    glUniform1f(g_ffp_program.uni_fog_end, effective_fog_end);
   }
   if (g_ffp_program.uni_fog_density >= 0) {
     glUniform1f(g_ffp_program.uni_fog_density, g_wasm_d3d9_state.fog_density);
@@ -7722,6 +8042,9 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   TrackDrawOrder(draw_order_serial, active_fvf, current_sky_texture_draw);
   TrackFvf322ClassDraw(active_fvf);
   TrackSkinSuspiciousTexture(active_fvf, draw_order_serial);
+  if (!g_draw_trace_scope.empty() && g_draw_trace_scope.find("TMObject") != std::string::npos) {
+    g_static_object_draws += 1;
+  }
 
   if (active_fvf == 594u && ((g_debug_ffp_flags & kDebugTerrainDepthTestOff) != 0u)) {
     depth_test_enabled = false;
@@ -7733,11 +8056,7 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
     const bool skin_depth_guard =
         ActiveFvfIsSkin(active_fvf) &&
         ((g_debug_ffp_flags & kDebugGuardSkinDepthWrite) == 0u);
-    bool guard_depth_for_fvf =
-        (active_fvf == 322u ||
-         active_fvf == 530u ||
-         active_fvf == 594u ||
-         skin_depth_guard);
+    bool guard_depth_for_fvf = skin_depth_guard;
     if ((g_debug_ffp_flags & kDebugDepthGuardOnly322) != 0u) guard_depth_for_fvf = (active_fvf == 322u);
     if ((g_debug_ffp_flags & kDebugDepthGuardOnly594) != 0u) guard_depth_for_fvf = (active_fvf == 594u);
     if (depth_write_enabled && guard_depth_for_fvf) {
@@ -7747,10 +8066,10 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   }
   if (active_fvf == 322u) {
     const uint32_t fvf322_class = ClassifyFvf322Draw();
+    depth_write_enabled = false;
     if (fvf322_class == kFvf322ClassSky) {
       depth_test_enabled = false;
     }
-    depth_write_enabled = false;
   }
   if (active_fvf == 324u && !depth_write_enabled) {
     depth_test_enabled = false;
@@ -7883,8 +8202,26 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   if (blend_enabled) g_draw_blend_enabled += 1;
   if (!depth_test_enabled) g_draw_depth_test_disabled += 1;
   if (!depth_write_enabled) g_draw_depth_write_disabled += 1;
+
+  const bool is_vegetation_alpha_mask =
+      alpha_test_enabled &&
+      (g_wasm_d3d9_state.alpha_ref >= 0x80u && g_wasm_d3d9_state.alpha_ref <= 0xFFu);
+  const bool is_vegetation_alpha_blend =
+      blend_enabled &&
+      !alpha_test_enabled &&
+      g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
+      g_wasm_d3d9_state.dst_blend == D3DBLEND_INVSRCALPHA &&
+      !depth_write_enabled;
+  if (is_vegetation_alpha_mask) g_draw_vegetation_alpha_mask += 1;
+  if (is_vegetation_alpha_blend) g_draw_vegetation_alpha_blend += 1;
+  if (is_vegetation_alpha_mask || is_vegetation_alpha_blend) g_draw_vegetation_total += 1;
   if (g_wasm_d3d9_state.lighting_enable != 0) g_draw_lighting_enabled += 1;
   if (g_wasm_d3d9_state.fog_enable != 0 && g_wasm_d3d9_state.fog_vertex_mode != D3DFOG_NONE) g_draw_fog_enabled += 1;
+  // Skin mesh fog: vertex_mode is NONE but VS reg 6 carries fog constants
+  if (g_wasm_d3d9_state.fog_enable != 0 &&
+      g_wasm_d3d9_state.fog_vertex_mode == D3DFOG_NONE &&
+      g_ffp_state.vertex_shader != nullptr &&
+      ShaderConst(6u, 0u) >= 0.999f) g_fog_skin_draws += 1;
   if ((g_debug_ffp_flags & kDebugDisableCull) != 0u || g_wasm_d3d9_state.cull_mode == D3DCULL_NONE) g_draw_cull_none += 1;
   else if (g_wasm_d3d9_state.cull_mode == D3DCULL_CW) g_draw_cull_cw += 1;
   else g_draw_cull_ccw += 1;
@@ -7892,6 +8229,38 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   if (stage0_color_op == D3DTOP_MODULATE) g_draw_stage0_color_modulate += 1;
   if (stage0_alpha_op == D3DTOP_SELECTARG1) g_draw_stage0_alpha_selectarg1 += 1;
   if (stage0_alpha_op == D3DTOP_MODULATE) g_draw_stage0_alpha_modulate += 1;
+  if (active_fvf == 594u) {
+    const DWORD s1_co = StageStateValue(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+    if (s1_co == D3DTOP_MODULATE) g_terrain_stage1_modulate_draws += 1;
+    else if (s1_co == D3DTOP_MODULATE2X) g_terrain_stage1_modulate2x_draws += 1;
+    else if (s1_co == D3DTOP_DISABLE) g_terrain_stage1_disable_draws += 1;
+  }
+  if (active_fvf == 322u) {
+    const std::string path = ToLowerCopy(CurrentDrawTraceTexturePath(0));
+    const bool path_has_lightmap = (path.find("lightmap") != std::string::npos);
+    if (!path_has_lightmap &&
+        g_wasm_d3d9_state.dst_blend == D3DBLEND_ONE &&
+        g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
+        stage0_alpha_op == D3DTOP_SELECTARG1 &&
+        stage0_color_op == D3DTOP_MODULATE &&
+        !path.empty()) {
+      g_fvf322_lightmap_heuristic_draws += 1;
+    }
+  }
+
+  TrackFieldVisualDraw(active_fvf, current_sky_texture_draw);
+
+  if (active_fvf == 578u) {
+    const DWORD stage1_color_op = StageStateValue(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+    if (stage1_color_op == D3DTOP_DISABLE) g_draw_water_stage1_disable += 1;
+    else if (stage1_color_op == D3DTOP_MODULATE) g_draw_water_stage1_modulate += 1;
+    else if (stage1_color_op == D3DTOP_MODULATE2X) g_draw_water_stage1_modulate2x += 1;
+    else if (stage1_color_op == D3DTOP_ADD) g_draw_water_stage1_add += 1;
+    if (blend_enabled) g_draw_water_blend_enabled += 1;
+    else g_draw_water_blend_disabled += 1;
+    if (!depth_write_enabled) g_draw_water_depth_write_disabled += 1;
+    if (g_wasm_d3d9_state.fog_enable == 0) g_draw_water_fog_disabled += 1;
+  }
 
   glBindBuffer(GL_ARRAY_BUFFER, g_ffp_program.vbo);
 
@@ -8089,7 +8458,7 @@ HRESULT BuildVerticesFromLinearStream(
   bool forced_screen_like_draw = false;
   bool replay_fvf322_screenlike_draw = false;
   const bool suppress_fvf322_screenlike_replay =
-      (fvf == 322u) && (CurrentDrawUsesSnowBillboardTexture() || CurrentDrawUsesSkyTexture());
+      (fvf == 322u) && (CurrentDrawUsesEffectTexture() || CurrentDrawUsesSkyTexture());
   if (fvf == 322u &&
       !suppress_fvf322_screenlike_replay &&
       ((g_debug_ffp_flags & kDebugDisableFvf322ScreenlikeReplay) == 0u)) {
@@ -9560,6 +9929,18 @@ extern "C" uint32_t wyd_d3d9_blend_enabled_draws() {
   return static_cast<uint32_t>(g_draw_blend_enabled);
 }
 
+extern "C" uint32_t wyd_d3d9_vegetation_alpha_mask_draws() {
+  return static_cast<uint32_t>(g_draw_vegetation_alpha_mask);
+}
+
+extern "C" uint32_t wyd_d3d9_vegetation_alpha_blend_draws() {
+  return static_cast<uint32_t>(g_draw_vegetation_alpha_blend);
+}
+
+extern "C" uint32_t wyd_d3d9_vegetation_draws() {
+  return static_cast<uint32_t>(g_draw_vegetation_total);
+}
+
 extern "C" uint32_t wyd_d3d9_depth_test_disabled_draws() {
   return static_cast<uint32_t>(g_draw_depth_test_disabled);
 }
@@ -9692,6 +10073,14 @@ extern "C" uint32_t wyd_d3d9_fog_color() {
   return static_cast<uint32_t>(g_wasm_d3d9_state.fog_color);
 }
 
+extern "C" uint32_t wyd_d3d9_last_present_fog() {
+  return g_debug_last_present_fog;
+}
+
+extern "C" uint32_t wyd_d3d9_fog_skin_draws() {
+  return static_cast<uint32_t>(g_fog_skin_draws);
+}
+
 extern "C" uint32_t wyd_d3d9_wireframe_draws() {
   return static_cast<uint32_t>(g_draw_wireframe);
 }
@@ -9710,6 +10099,22 @@ extern "C" uint32_t wyd_d3d9_light_enable_calls() {
 
 extern "C" uint32_t wyd_d3d9_lighted_vertices() {
   return static_cast<uint32_t>(g_lighted_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_directional_lighted_vertices() {
+  return static_cast<uint32_t>(g_directional_lighted_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_point_lighted_vertices() {
+  return static_cast<uint32_t>(g_point_lighted_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_spot_lighted_vertices() {
+  return static_cast<uint32_t>(g_spot_lighted_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_specular_lighted_vertices() {
+  return static_cast<uint32_t>(g_specular_lighted_vertices);
 }
 
 extern "C" uint32_t wyd_d3d9_stage0_color_selectarg1_draws() {
@@ -9832,6 +10237,38 @@ extern "C" uint32_t wyd_d3d9_texture_draws_water() {
   return static_cast<uint32_t>(g_texture_draws_water);
 }
 
+extern "C" uint32_t wyd_d3d9_water_stage1_disable_draws() {
+  return static_cast<uint32_t>(g_draw_water_stage1_disable);
+}
+
+extern "C" uint32_t wyd_d3d9_water_stage1_modulate_draws() {
+  return static_cast<uint32_t>(g_draw_water_stage1_modulate);
+}
+
+extern "C" uint32_t wyd_d3d9_water_stage1_modulate2x_draws() {
+  return static_cast<uint32_t>(g_draw_water_stage1_modulate2x);
+}
+
+extern "C" uint32_t wyd_d3d9_water_stage1_add_draws() {
+  return static_cast<uint32_t>(g_draw_water_stage1_add);
+}
+
+extern "C" uint32_t wyd_d3d9_water_blend_enabled_draws() {
+  return static_cast<uint32_t>(g_draw_water_blend_enabled);
+}
+
+extern "C" uint32_t wyd_d3d9_water_blend_disabled_draws() {
+  return static_cast<uint32_t>(g_draw_water_blend_disabled);
+}
+
+extern "C" uint32_t wyd_d3d9_water_depth_write_disabled_draws() {
+  return static_cast<uint32_t>(g_draw_water_depth_write_disabled);
+}
+
+extern "C" uint32_t wyd_d3d9_water_fog_disabled_draws() {
+  return static_cast<uint32_t>(g_draw_water_fog_disabled);
+}
+
 extern "C" uint32_t wyd_d3d9_texture_draws_bright() {
   return static_cast<uint32_t>(g_texture_draws_bright);
 }
@@ -9840,9 +10277,25 @@ extern "C" uint32_t wyd_d3d9_fvf322_bright_draws() {
   return static_cast<uint32_t>(g_fvf322_bright_draws);
 }
 
+extern "C" uint32_t wyd_d3d9_effect_draws() {
+  return static_cast<uint32_t>(g_effect_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_effect_draws() {
+  return static_cast<uint32_t>(g_fvf322_effect_draws);
+}
+
+extern "C" uint32_t wyd_field_static_object_draws() {
+  return static_cast<uint32_t>(g_static_object_draws);
+}
+
 extern "C" uint32_t wyd_d3d9_fvf322_class_count(uint32_t class_id) {
   if (class_id >= g_fvf322_class_draws.size()) return 0u;
   return static_cast<uint32_t>(g_fvf322_class_draws[class_id]);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_class_max() {
+  return static_cast<uint32_t>(g_fvf322_class_draws.size());
 }
 
 extern "C" const char* wyd_d3d9_fvf322_class_name(uint32_t class_id) {
@@ -9900,6 +10353,22 @@ extern "C" uint32_t wyd_d3d9_set_stage0_colorop8_calls() {
 
 extern "C" uint32_t wyd_d3d9_set_stage0_colorop4_calls() {
   return static_cast<uint32_t>(g_set_stage0_colorop4_calls);
+}
+
+extern "C" uint32_t wyd_d3d9_terrain_stage1_modulate_draws() {
+  return static_cast<uint32_t>(g_terrain_stage1_modulate_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_terrain_stage1_modulate2x_draws() {
+  return static_cast<uint32_t>(g_terrain_stage1_modulate2x_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_terrain_stage1_disable_draws() {
+  return static_cast<uint32_t>(g_terrain_stage1_disable_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_lightmap_heuristic_draws() {
+  return static_cast<uint32_t>(g_fvf322_lightmap_heuristic_draws);
 }
 
 extern "C" uint32_t wyd_d3d9_set_stage0_colorop_last_value() {
@@ -10203,6 +10672,134 @@ extern "C" uint32_t wyd_d3d9_last_present_dst_blend() {
   return g_debug_last_present_dst_blend;
 }
 
+extern "C" uint32_t wyd_field_visual_total_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_total);
+}
+
+extern "C" uint32_t wyd_field_visual_terrain_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_terrain);
+}
+
+extern "C" uint32_t wyd_field_visual_ground_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_ground);
+}
+
+extern "C" uint32_t wyd_field_visual_water_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_water);
+}
+
+extern "C" uint32_t wyd_field_visual_sky_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_sky);
+}
+
+extern "C" uint32_t wyd_field_visual_human_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_human);
+}
+
+extern "C" uint32_t wyd_field_visual_object_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_object);
+}
+
+extern "C" uint32_t wyd_field_visual_effect_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_effect);
+}
+
+extern "C" uint32_t wyd_field_visual_hud_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_hud);
+}
+
+extern "C" uint32_t wyd_field_visual_hud_art_draws() {
+  return static_cast<uint32_t>(g_field_visual_frame_hud_art);
+}
+
+extern "C" void wyd_field_visual_reset() {
+  ResetFieldVisualFrame();
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_env() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_env);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_effect() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_effect);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_ui() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_ui);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_char() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_char);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_sky() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_sky);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_water() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_water);
+}
+
+extern "C" uint32_t wyd_field_visual_tex_bucket_other() {
+  return static_cast<uint32_t>(g_field_visual_tex_bucket_other);
+}
+
+extern "C" uint32_t wyd_field_visual_fvf_bucket_code(uint32_t rank) {
+  if (g_field_visual_fvf_cache_dirty) {
+    g_field_visual_fvf_export_cache.clear();
+    for (const auto& kv : g_field_visual_fvf_histogram) {
+      g_field_visual_fvf_export_cache.emplace_back(kv.first, kv.second);
+    }
+    std::sort(
+        g_field_visual_fvf_export_cache.begin(),
+        g_field_visual_fvf_export_cache.end(),
+        [](const std::pair<uint32_t, uint64_t>& a, const std::pair<uint32_t, uint64_t>& b) {
+          if (a.second != b.second) return a.second > b.second;
+          return a.first < b.first;
+        });
+    g_field_visual_fvf_cache_dirty = false;
+  }
+  if (rank >= g_field_visual_fvf_export_cache.size()) return 0;
+  return g_field_visual_fvf_export_cache[rank].first;
+}
+
+extern "C" uint32_t wyd_field_visual_fvf_bucket_count(uint32_t rank) {
+  if (g_field_visual_fvf_cache_dirty) {
+    g_field_visual_fvf_export_cache.clear();
+    for (const auto& kv : g_field_visual_fvf_histogram) {
+      g_field_visual_fvf_export_cache.emplace_back(kv.first, kv.second);
+    }
+    std::sort(
+        g_field_visual_fvf_export_cache.begin(),
+        g_field_visual_fvf_export_cache.end(),
+        [](const std::pair<uint32_t, uint64_t>& a, const std::pair<uint32_t, uint64_t>& b) {
+          if (a.second != b.second) return a.second > b.second;
+          return a.first < b.first;
+        });
+    g_field_visual_fvf_cache_dirty = false;
+  }
+  if (rank >= g_field_visual_fvf_export_cache.size()) return 0;
+  return static_cast<uint32_t>(g_field_visual_fvf_export_cache[rank].second);
+}
+
+extern "C" uint32_t wyd_field_visual_fvf_bucket_size() {
+  if (g_field_visual_fvf_cache_dirty) {
+    g_field_visual_fvf_export_cache.clear();
+    for (const auto& kv : g_field_visual_fvf_histogram) {
+      g_field_visual_fvf_export_cache.emplace_back(kv.first, kv.second);
+    }
+    std::sort(
+        g_field_visual_fvf_export_cache.begin(),
+        g_field_visual_fvf_export_cache.end(),
+        [](const std::pair<uint32_t, uint64_t>& a, const std::pair<uint32_t, uint64_t>& b) {
+          if (a.second != b.second) return a.second > b.second;
+          return a.first < b.first;
+        });
+    g_field_visual_fvf_cache_dirty = false;
+  }
+  return static_cast<uint32_t>(g_field_visual_fvf_export_cache.size());
+}
+
 extern "C" void wyd_d3d9_reset_debug_counters() {
   g_tex_decode_success = 0;
   g_tex_decode_fail = 0;
@@ -10233,6 +10830,9 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_draw_alpha_test_enabled = 0;
   g_draw_alpha_test_disabled = 0;
   g_draw_blend_enabled = 0;
+  g_draw_vegetation_alpha_mask = 0;
+  g_draw_vegetation_alpha_blend = 0;
+  g_draw_vegetation_total = 0;
   g_draw_depth_test_disabled = 0;
   g_draw_depth_write_disabled = 0;
   g_depth_write_guard_forced_draws = 0;
@@ -10264,7 +10864,12 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_light_set_calls = 0;
   g_light_enable_calls = 0;
   g_lighted_vertices = 0;
+  g_directional_lighted_vertices = 0;
+  g_point_lighted_vertices = 0;
+  g_spot_lighted_vertices = 0;
+  g_specular_lighted_vertices = 0;
   g_draw_fog_enabled = 0;
+  g_fog_skin_draws = 0;
   g_draw_wireframe = 0;
   g_debug_skip_fvf_draws = 0;
   g_fvf322_draw_primitive_up = 0;
@@ -10350,12 +10955,24 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_debug_last_present_depth_enabled = 0;
   g_debug_last_present_depth_write = 0;
   g_debug_last_present_alpha_test = 0;
+  g_debug_last_present_fog = 0;
   g_debug_last_present_src_blend = 0;
   g_debug_last_present_dst_blend = 0;
   g_texture_draws_sky = 0;
   g_texture_draws_water = 0;
   g_texture_draws_bright = 0;
+  g_draw_water_stage1_disable = 0;
+  g_draw_water_stage1_modulate = 0;
+  g_draw_water_stage1_modulate2x = 0;
+  g_draw_water_stage1_add = 0;
+  g_draw_water_blend_enabled = 0;
+  g_draw_water_blend_disabled = 0;
+  g_draw_water_depth_write_disabled = 0;
+  g_draw_water_fog_disabled = 0;
   g_fvf322_bright_draws = 0;
+  g_effect_draws = 0;
+  g_fvf322_effect_draws = 0;
+  g_static_object_draws = 0;
   g_fvf322_class_draws.fill(0);
   g_stage0_colorop8_draws = 0;
   g_stage0_colorop8_with_texture = 0;
@@ -10368,6 +10985,10 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_set_stage0_colorop8_calls = 0;
   g_set_stage0_colorop4_calls = 0;
   g_set_stage0_colorop_last_value = 0;
+  g_terrain_stage1_modulate_draws = 0;
+  g_terrain_stage1_modulate2x_draws = 0;
+  g_terrain_stage1_disable_draws = 0;
+  g_fvf322_lightmap_heuristic_draws = 0;
   g_set_texture_stage0_sky_calls = 0;
   g_set_texture_stage1_sky_calls = 0;
   g_draw_attempts_with_sky_texture = 0;
@@ -10404,6 +11025,7 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_fvf_depth_write_enabled_histogram.clear();
   g_fvf_depth_write_disabled_histogram.clear();
   ResetDrawTraceResults(false);
+  ResetFieldVisualFrame();
   g_ffp_state.draw_calls = 0;
   g_ffp_state.primitive_count = 0;
   g_ffp_state.shader_draw_skipped = 0;

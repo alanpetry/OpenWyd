@@ -23,6 +23,73 @@
 #include "TMBike.h"
 #include "TMLog.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/console.h>
+
+namespace {
+	int g_wasmObjectLoadCount = 0;
+	int g_wasmObjectLoadFailed = 0;
+	int g_wasmObjectChecksumFailed = 0;
+	int g_wasmObjectSeaCount = 0;
+	int g_wasmObjectTreeCount = 0;
+	int g_wasmObjectHouseCount = 0;
+	int g_wasmObjectGroundEffectCount = 0;
+	int g_wasmObjectLightCount = 0;
+	int g_wasmObjectGenericCount = 0;
+	int g_wasmObjectLastMaskIndex = 0;
+
+	void WasmObjectLog(const char* msg)
+	{
+		emscripten_console_log(msg);
+	}
+} // namespace
+
+extern "C" int wyd_field_object_count()
+{
+	return g_wasmObjectLoadCount;
+}
+
+extern "C" int wyd_field_object_failed()
+{
+	return g_wasmObjectLoadFailed;
+}
+
+extern "C" int wyd_field_object_checksum_failed()
+{
+	return g_wasmObjectChecksumFailed;
+}
+
+extern "C" int wyd_field_object_sea_count()
+{
+	return g_wasmObjectSeaCount;
+}
+
+extern "C" int wyd_field_object_tree_count()
+{
+	return g_wasmObjectTreeCount;
+}
+
+extern "C" int wyd_field_object_house_count()
+{
+	return g_wasmObjectHouseCount;
+}
+
+extern "C" int wyd_field_object_light_count()
+{
+	return g_wasmObjectLightCount;
+}
+
+extern "C" int wyd_field_object_generic_count()
+{
+	return g_wasmObjectGenericCount;
+}
+
+extern "C" int wyd_field_object_last_mask_index()
+{
+	return g_wasmObjectLastMaskIndex;
+}
+#endif
+
 TMObjectContainer::TMObjectContainer(TMGround* pGround)
 	: TreeNode(0)
 {
@@ -67,7 +134,13 @@ int TMObjectContainer::Load(const char* szFileName)
 	int Handle = _open(szFileName, _O_BINARY);
 		
 	if (Handle == -1)
+	{
+#if defined(__EMSCRIPTEN__)
+		g_wasmObjectLoadFailed = 1;
+		g_wasmObjectLoadCount = 0;
+#endif
 		return 0;
+	}
 
 	int sz = _filelength(Handle);
 	char* buff = (char*)malloc(sz);
@@ -75,8 +148,25 @@ int TMObjectContainer::Load(const char* szFileName)
 	if (!buff)
 	{
 		MessageBoxA(0, "Not Enought Memory", "Memory allocation fail", MB_SYSTEMMODAL);
+#if defined(__EMSCRIPTEN__)
+		g_wasmObjectLoadFailed = 1;
+		g_wasmObjectLoadCount = 0;
+#endif
 		return 0;
 	}
+
+#if defined(__EMSCRIPTEN__)
+	g_wasmObjectLoadCount = 0;
+	g_wasmObjectLoadFailed = 0;
+	g_wasmObjectChecksumFailed = 0;
+	g_wasmObjectSeaCount = 0;
+	g_wasmObjectTreeCount = 0;
+	g_wasmObjectHouseCount = 0;
+	g_wasmObjectGroundEffectCount = 0;
+	g_wasmObjectLightCount = 0;
+	g_wasmObjectGenericCount = 0;
+	g_wasmObjectLastMaskIndex = 0;
+#endif
 
 	_read(Handle, buff, sz);
 	_close(Handle);
@@ -108,6 +198,11 @@ int TMObjectContainer::Load(const char* szFileName)
 		nCheckSum += (int)fHeight;
 		nCheckSum += nMaskIndex;
 
+#if defined(__EMSCRIPTEN__)
+		++g_wasmObjectLoadCount;
+		g_wasmObjectLastMaskIndex = nMaskIndex;
+#endif
+
 		if (dwObjType == 2)
 		{
 			TMGround* pGround = m_pGround;
@@ -136,6 +231,9 @@ int TMObjectContainer::Load(const char* szFileName)
 				}
 				++pGround->m_nSeaIndex;
 			}
+#if defined(__EMSCRIPTEN__)
+			++g_wasmObjectSeaCount;
+#endif
 			continue;
 		}
 		if (dwObjType == 343)
@@ -319,7 +417,12 @@ int TMObjectContainer::Load(const char* szFileName)
 			continue;
 		}
 		if (dwObjType >= 331 && dwObjType <= 342 || dwObjType >= 351 && dwObjType <= 378)
+		{
 			m_pObjectList[m_nObjectIndex] = new TMTree(dwObjType);
+#if defined(__EMSCRIPTEN__)
+			++g_wasmObjectTreeCount;
+#endif
+		}
 		else if (dwObjType >= 487 && dwObjType <= 489)
 			m_pObjectList[m_nObjectIndex] = new TMShip(dwObjType);
 		else if (dwObjType == 3)
@@ -399,6 +502,9 @@ int TMObjectContainer::Load(const char* szFileName)
 			}
 
 			m_pObjectList[m_nObjectIndex] = new TMHouse(cHouseType);
+#if defined(__EMSCRIPTEN__)
+			++g_wasmObjectHouseCount;
+#endif
 		}
 		else if (dwObjType == 121)
 			continue;
@@ -691,6 +797,9 @@ int TMObjectContainer::Load(const char* szFileName)
 				++TMLight::m_dwBaseLightIndex;
 
 			++m_nLightIndex;
+#if defined(__EMSCRIPTEN__)
+			++g_wasmObjectLightCount;
+#endif
 			continue;
 		}
 		else if (dwObjType >= 520 && dwObjType <= 530)
@@ -920,6 +1029,22 @@ int TMObjectContainer::Load(const char* szFileName)
 		m_pObjectList[m_nObjectIndex]->m_nTextureSetIndex = nTextureSetIndex;
 		m_pObjectList[m_nObjectIndex]->m_nMaskIndex = nMaskIndex;
 
+#if defined(__EMSCRIPTEN__)
+		if (!(dwObjType >= 331 && dwObjType <= 342 || dwObjType >= 351 && dwObjType <= 378)
+			&& !(dwObjType >= 251 && dwObjType <= 254
+				|| dwObjType == 474 || dwObjType == 273 || dwObjType == 274
+				|| dwObjType == 292 || dwObjType == 607 || dwObjType == 610
+				|| dwObjType == 614 || dwObjType == 195 || dwObjType == 697
+				|| dwObjType == 699 || dwObjType == 490 || dwObjType == 1520
+				|| dwObjType == 1535 || dwObjType == 1526 || dwObjType == 1665
+				|| dwObjType == 1993 || dwObjType == 2005 || dwObjType == 1695
+				|| dwObjType == 1696 || dwObjType == 1750 || dwObjType == 1739
+				|| dwObjType == 1711 || dwObjType == 1855))
+		{
+			++g_wasmObjectGenericCount;
+		}
+#endif
+
 		if (dwObjType >= 0x74E && dwObjType <= 0x753
 			|| dwObjType >= 0x755 && dwObjType <= 0x760
 			|| dwObjType >= 0x763 && dwObjType <= 0x767
@@ -957,6 +1082,10 @@ int TMObjectContainer::Load(const char* szFileName)
 	if (g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD
 		|| TMGround::m_nCheckSum[m_pGround->m_vecOffsetIndex.y + 32][m_pGround->m_vecOffsetIndex.x] == nCheckSum + m_pGround->m_vecOffsetIndex.x * m_pGround->m_vecOffsetIndex.y)
 	{
+#if defined(__EMSCRIPTEN__)
+		g_wasmObjectLoadFailed = 0;
+		g_wasmObjectChecksumFailed = 0;
+#endif
 		return 1;
 	}
 
@@ -966,6 +1095,11 @@ int TMObjectContainer::Load(const char* szFileName)
 		m_pGround->m_vecOffsetIndex.y,
 		TMGround::m_nCheckSum[m_pGround->m_vecOffsetIndex.y + 32][m_pGround->m_vecOffsetIndex.x],
 		nCheckSum + m_pGround->m_vecOffsetIndex.x * m_pGround->m_vecOffsetIndex.y);
+
+#if defined(__EMSCRIPTEN__)
+	g_wasmObjectLoadFailed = 1;
+	g_wasmObjectChecksumFailed = 1;
+#endif
 
 	if (!g_pCurrentScene->m_bCriticalError)
 		g_pCurrentScene->LogMsgCriticalError(9, 0, 0, 0, 0);

@@ -3,6 +3,95 @@
 #include "TMGlobal.h"
 #include "TMCamera.h"
 
+static unsigned int g_wydSunRenderCalls = 0;
+static unsigned int g_wydSunHiddenReturnsBg = 0;
+static unsigned int g_wydSunHiddenReturnsSelf = 0;
+static unsigned int g_wydSunOutOfViewport = 0;
+static unsigned int g_wydSunFlareDraws = 0;
+static int g_wydSunLastHide = -1;
+static float g_wydSunLastDefSize = -1.0f;
+static int g_wydSunLastInViewport = -1;
+static int g_wydSunLastFlareCount = -1;
+static float g_wydSunLastScreenX = 0.0f;
+static float g_wydSunLastScreenY = 0.0f;
+static float g_wydSunLastScreenZ = 0.0f;
+
+extern "C" unsigned int wyd_sun_render_calls()
+{
+	return g_wydSunRenderCalls;
+}
+
+extern "C" unsigned int wyd_sun_hidden_returns_bg()
+{
+	return g_wydSunHiddenReturnsBg;
+}
+
+extern "C" unsigned int wyd_sun_hidden_returns_self()
+{
+	return g_wydSunHiddenReturnsSelf;
+}
+
+extern "C" unsigned int wyd_sun_out_of_viewport()
+{
+	return g_wydSunOutOfViewport;
+}
+
+extern "C" unsigned int wyd_sun_flare_draws()
+{
+	return g_wydSunFlareDraws;
+}
+
+extern "C" int wyd_sun_last_hide()
+{
+	return g_wydSunLastHide;
+}
+
+extern "C" float wyd_sun_last_def_size()
+{
+	return g_wydSunLastDefSize;
+}
+
+extern "C" int wyd_sun_last_in_viewport()
+{
+	return g_wydSunLastInViewport;
+}
+
+extern "C" int wyd_sun_last_flare_count()
+{
+	return g_wydSunLastFlareCount;
+}
+
+extern "C" float wyd_sun_last_screen_x()
+{
+	return g_wydSunLastScreenX;
+}
+
+extern "C" float wyd_sun_last_screen_y()
+{
+	return g_wydSunLastScreenY;
+}
+
+extern "C" float wyd_sun_last_screen_z()
+{
+	return g_wydSunLastScreenZ;
+}
+
+extern "C" void wyd_sun_reset_debug_counters()
+{
+	g_wydSunRenderCalls = 0;
+	g_wydSunHiddenReturnsBg = 0;
+	g_wydSunHiddenReturnsSelf = 0;
+	g_wydSunOutOfViewport = 0;
+	g_wydSunFlareDraws = 0;
+	g_wydSunLastHide = -1;
+	g_wydSunLastDefSize = -1.0f;
+	g_wydSunLastInViewport = -1;
+	g_wydSunLastFlareCount = -1;
+	g_wydSunLastScreenX = 0.0f;
+	g_wydSunLastScreenY = 0.0f;
+	g_wydSunLastScreenZ = 0.0f;
+}
+
 TMSun::TMSun() : 
 	TreeNode(0),
 	m_vFlareDirection{},
@@ -90,11 +179,21 @@ int TMSun::InitObject()
 
 int TMSun::Render()
 {
+	++g_wydSunRenderCalls;
+	g_wydSunLastHide = m_bHide;
+	g_wydSunLastDefSize = m_fDefSize;
+
 	if (g_bHideBackground == 1)
+	{
+		++g_wydSunHiddenReturnsBg;
 		return 0;
+	}
 
 	if (m_bHide == 1)
+	{
+		++g_wydSunHiddenReturnsSelf;
 		return 1;
+	}
 
 	D3DXVECTOR3 vecCam
 	{ 
@@ -116,7 +215,19 @@ int TMSun::Render()
 		&g_pDevice->m_matWorld);
 
 	if (vFlarePos.z > 1.0f)
+	{
+		++g_wydSunOutOfViewport;
+		g_wydSunLastInViewport = 0;
+		g_wydSunLastScreenX = vFlarePos.x;
+		g_wydSunLastScreenY = vFlarePos.y;
+		g_wydSunLastScreenZ = vFlarePos.z;
 		return 1;
+	}
+
+	g_wydSunLastInViewport = 1;
+	g_wydSunLastScreenX = vFlarePos.x;
+	g_wydSunLastScreenY = vFlarePos.y;
+	g_wydSunLastScreenZ = vFlarePos.z;
 
 	D3DXVECTOR3 vCenterPosFromFlare{};
 
@@ -163,6 +274,8 @@ int TMSun::Render()
 		g_pDevice->m_pd3dDevice->SetFVF(324u);
 		g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
 	}
+	g_wydSunFlareDraws += 12;
+	g_wydSunLastFlareCount = 12;
 	return 1;
 }
 

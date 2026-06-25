@@ -512,6 +512,8 @@ function extractSmokeSummary(smoke) {
     "textureDrawsSky",
     "textureDrawsWater",
     "textureDrawsBright",
+    "effectDraws",
+    "fvf322EffectDraws",
     "fvf322ScreenlikeReplaySuppressed",
     "stage0ColorOp8Draws",
     "setStage0ColorOp8Calls",
