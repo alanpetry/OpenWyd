@@ -83,6 +83,7 @@ extern "C" float wyd_debug_camera_y() { return g_wydDebugCameraY; }
 extern "C" float wyd_debug_camera_z() { return g_wydDebugCameraZ; }
 extern "C" float wyd_debug_camera_h() { return g_wydDebugCameraH; }
 extern "C" float wyd_debug_camera_v() { return g_wydDebugCameraV; }
+extern "C" void wyd_debug_record_camera_now(TMCamera* pCamera) { WydRecordDebugCamera(pCamera); }
 extern "C" int wyd_debug_last_critical_type() { return g_wydLastCriticalType; }
 extern "C" int wyd_debug_last_critical_id() { return g_wydLastCriticalID; }
 extern "C" int wyd_debug_last_critical_mesh() { return g_wydLastCriticalMesh; }

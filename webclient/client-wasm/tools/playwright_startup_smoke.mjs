@@ -7,7 +7,7 @@ import playwrightPkg from "../../node_modules/playwright/index.js";
 import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
 
 const { chromium } = playwrightPkg;
-const GAME_STATE_SELECT_SERVER = 7;
+const GAME_STATE_FIELD = 0;
 const ALL_GAME_STATES = [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const SCREEN_STATES = {
   none: -1,
@@ -29,7 +29,7 @@ const SCREEN_STATES = {
 function parseArgs(argv) {
   const opts = {
     url: "http://127.0.0.1:8877/webclient/client-wasm/build/link/startup_harness.html",
-    state: GAME_STATE_SELECT_SERVER,
+    state: GAME_STATE_FIELD,
     screen: null,
     debugFlags: 0,
     debugSkipFvf: 0,
@@ -43,7 +43,7 @@ function parseArgs(argv) {
     traceTop: 24,
     preBootDebugFlags: null,
     cameraOffset: null,
-    viewport: { width: 1400, height: 900 },
+    viewport: { width: 1220, height: 720 },
     canvas: null,
     logical: null,
     layout: null,
@@ -2488,6 +2488,11 @@ const output = opts.summaryOnly
       ok: result.ok,
       gameState: result.gameState,
       stateDebug: result.stateDebug,
+      canvas: result.canvas,
+      viewport: result.viewport,
+      requestedLogical: result.requestedLogical,
+      fit: result.fit,
+      layout: result.layout,
       field: result.field,
       fieldVisual: result.fieldVisual,
       glErrorTotal: result.glErrorTotal,

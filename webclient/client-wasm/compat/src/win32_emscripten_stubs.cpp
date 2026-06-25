@@ -662,6 +662,7 @@ constexpr uint32_t kDebugGuardSkinDepthWrite = 1u << 23;
 constexpr uint32_t kDebugEnableLegacyDepthWriteGuard = 1u << 25;
 constexpr uint32_t kDebugEnableSkyScreenQuad = 1u << 26;
 constexpr uint32_t kDebugTerrainDepthTestOff = 1u << 27;
+constexpr uint32_t kDebugEnableFVF530LargeBoundsSkip = 1u << 28;
 
 bool DrawTraceIsEnabled();
 void ResetDrawOrderFrame();
@@ -717,7 +718,14 @@ void TrackShaderFileOpen(const char* raw_path, bool success) {
 
 void TrackAssetFileOpen(const char* raw_path, bool success) {
   if (!raw_path) return;
-  const std::string normalized = ToLowerCopy(NormalizeWinPath(raw_path));
+  std::string normalized = ToLowerCopy(NormalizeWinPath(raw_path));
+  if (normalized.empty()) return;
+  const auto has_path_segment = [&](const char* segment) -> bool {
+    if (!segment) return false;
+    if (normalized.rfind(segment, 0) == 0) return true;
+    const std::string with_separator = std::string("/") + segment;
+    return normalized.find(with_separator) != std::string::npos;
+  };
   g_asset_file_open_attempts += 1;
   if (success) {
     g_asset_file_open_success += 1;
@@ -729,10 +737,10 @@ void TrackAssetFileOpen(const char* raw_path, bool success) {
       g_asset_file_open_fail_seen.insert(normalized).second) {
     g_asset_file_open_fail_samples.push_back(normalized);
   }
-  if (normalized.find("/mesh/") != std::string::npos) g_asset_file_open_fail_mesh += 1;
-  if (normalized.find("/env/") != std::string::npos) g_asset_file_open_fail_env += 1;
-  if (normalized.find("/ui/") != std::string::npos) g_asset_file_open_fail_ui += 1;
-  if (normalized.find("/sound/") != std::string::npos) g_asset_file_open_fail_sound += 1;
+  if (has_path_segment("mesh/")) g_asset_file_open_fail_mesh += 1;
+  if (has_path_segment("env/")) g_asset_file_open_fail_env += 1;
+  if (has_path_segment("ui/")) g_asset_file_open_fail_ui += 1;
+  if (has_path_segment("sound/")) g_asset_file_open_fail_sound += 1;
   if (normalized.rfind(".bmp") == normalized.size() - 4 ||
       normalized.rfind(".tga") == normalized.size() - 4 ||
       normalized.rfind(".wyt") == normalized.size() - 4 ||
@@ -7983,6 +7991,7 @@ void TrackFVF530DrawStats(const std::vector<FFPVertex>& vertices, const std::vec
 }
 
 bool ShouldSkipFVF530LargeBoundsDraw() {
+  if ((g_debug_ffp_flags & kDebugEnableFVF530LargeBoundsSkip) == 0u) return false;
   if ((g_debug_ffp_flags & kDebugDisableFVF530LargeBoundsSkip) != 0u) return false;
   if (g_fvf530_last_inside_vertices != 0u) return false;
   if (g_fvf530_last_large_ndc_vertices == 0u) return false;

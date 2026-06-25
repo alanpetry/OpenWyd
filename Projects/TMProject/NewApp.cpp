@@ -14,6 +14,10 @@
 #include "TMLog.h"
 #include "Basedef.h"
 #include "TMCamera.h"
+
+#if defined(__EMSCRIPTEN__)
+extern "C" void wyd_debug_record_camera_now(TMCamera* pCamera);
+#endif
 #include <WinInet.h>
 #include "TMSkinMesh.h"
 #include "resource.h"
@@ -867,6 +871,10 @@ HRESULT NewApp::RenderScene()
 
 	TMCamera* pCamera = m_pObjectManager->m_pCamera;
 	TMVector3 vecLookAt = pCamera->GetCameraLookatPos();
+
+#if defined(__EMSCRIPTEN__)
+	wyd_debug_record_camera_now(pCamera);
+#endif
 
 	m_pRenderDevice->SetViewVector(pCamera->m_cameraPos, vecLookAt);
 	m_pRenderDevice->SetRenderStateBlock(1);
