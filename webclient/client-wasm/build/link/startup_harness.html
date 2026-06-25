@@ -184,6 +184,7 @@
     let autoTickFrames = 0;
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
+    const LAST_STATE_STORAGE_KEY = 'openwyd.lastState';
     const screenStates = {
       none: -1,
       field: 0,
@@ -202,6 +203,29 @@
     };
     const queryScreen = (query.get('screen') || '').toLowerCase();
     const queryState = Number.parseInt(query.get('state') || '', 10);
+    const isValidState = (value) => Number.isFinite(value) && value >= -1 && value <= 9;
+    const readStoredState = () => {
+      try {
+        const stored = Number.parseInt(window.localStorage?.getItem(LAST_STATE_STORAGE_KEY) || '', 10);
+        return isValidState(stored) ? stored : null;
+      } catch {
+        return null;
+      }
+    };
+    const writeStoredState = (value) => {
+      if (!isValidState(value)) return;
+      try {
+        window.localStorage?.setItem(LAST_STATE_STORAGE_KEY, String(value));
+      } catch {
+        // Storage can be unavailable in private/cross-origin contexts; the harness still works.
+      }
+    };
+    const resolveInitialState = () => {
+      if (query.has('state') && isValidState(queryState)) return queryState;
+      if (query.has('screen') && Object.prototype.hasOwnProperty.call(screenStates, queryScreen)) return screenStates[queryScreen];
+      const stored = readStoredState();
+      return stored == null ? 0 : stored;
+    };
     const parseSize = (value) => {
       const match = String(value || '').match(/^(\d+)x(\d+)$/i);
       if (!match) return null;
@@ -211,9 +235,7 @@
       return { width, height };
     };
     const autoConfig = {
-      state: Number.isFinite(queryState)
-        ? queryState
-        : (Object.prototype.hasOwnProperty.call(screenStates, queryScreen) ? screenStates[queryScreen] : 7),
+      state: resolveInitialState(),
       debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
       skipFvf: Number.parseInt(query.get('skipFvf') || '0', 10) || 0,
       tickBurst: Number.parseInt(query.get('tickBurst') || '0', 10) || 0,
@@ -448,6 +470,7 @@
         const requested = Number.isFinite(Number(state)) ? Number(state) : Number(screenSelect.value || 7);
         const ret = Module._wyd_set_game_state(requested);
         screenSelect.value = String(requested);
+        if (ret) writeStoredState(requested);
         write(`_wyd_set_game_state(${requested}) returned: ${ret}`, ret ? 'ok' : 'err');
         const info = refreshStateInfo();
         setStatus(`state=${requested} actual=${info.gameState} rc=${ret}`);
