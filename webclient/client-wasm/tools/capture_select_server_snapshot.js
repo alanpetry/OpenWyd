@@ -6,6 +6,24 @@ const http = require("http");
 const path = require("path");
 const { chromium } = require("playwright");
 
+const CLEAN_COUNTERS = [
+  "wyd_d3d9_gl_error_total",
+  "wyd_d3d9_depth_write_guard_forced_draws",
+  "wyd_d3d9_shader_draws_skipped",
+  "wyd_d3d9_skin_suspicious_texture_draws",
+];
+
+function parseBoolean(value, key) {
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  throw new Error(`Invalid boolean value for ${key}: ${value}`);
+}
+
 function parseArgs(argv) {
   const args = {
     repoRoot: ".",
@@ -16,6 +34,7 @@ function parseArgs(argv) {
     frames: 180,
     frameMs: 16.6667,
     timeoutMs: 60000,
+    cleanCounterGate: true,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -53,6 +72,9 @@ function parseArgs(argv) {
         break;
       case "--timeout-ms":
         args.timeoutMs = Number.parseInt(value, 10);
+        break;
+      case "--clean-counter-gate":
+        args.cleanCounterGate = parseBoolean(value, key);
         break;
       default:
         throw new Error(`Unknown argument: ${key}`);
@@ -195,6 +217,29 @@ function routeStallCandidate(human) {
   return movingIntent && hasRoute && delta < 0.0001;
 }
 
+function evaluateCleanCounterGate(telemetry) {
+  const missing = [];
+  const nonzero = [];
+
+  for (const name of CLEAN_COUNTERS) {
+    if (!Object.prototype.hasOwnProperty.call(telemetry, name)) {
+      missing.push(name);
+      continue;
+    }
+    const value = Number(telemetry[name]);
+    if (!Number.isFinite(value) || value !== 0) {
+      nonzero.push({ name, value: telemetry[name] });
+    }
+  }
+
+  return {
+    expected_zero: CLEAN_COUNTERS,
+    missing,
+    nonzero,
+    ok: missing.length === 0 && nonzero.length === 0,
+  };
+}
+
 async function readTelemetry(page) {
   const scalarNames = [
     "wyd_get_game_state",
@@ -316,11 +361,21 @@ async function main() {
       startupJs: path.relative(repoRoot, startupJs).split(path.sep).join("/"),
       screenshot: path.relative(repoRoot, screenshotPath).split(path.sep).join("/"),
     };
+    telemetry.clean_counter_gate = evaluateCleanCounterGate(telemetry);
     telemetry.console = consoleLines.slice(-200);
     fs.writeFileSync(telemetryPath, `${JSON.stringify(telemetry, null, 2)}\n`, "utf8");
 
     console.log(`[select-server-snapshot] screenshot=${path.relative(repoRoot, screenshotPath)}`);
     console.log(`[select-server-snapshot] telemetry=${path.relative(repoRoot, telemetryPath)}`);
+
+    if (args.cleanCounterGate && !telemetry.clean_counter_gate.ok) {
+      const gate = telemetry.clean_counter_gate;
+      const details = [
+        ...gate.missing.map((name) => `${name}=missing`),
+        ...gate.nonzero.map(({ name, value }) => `${name}=${value}`),
+      ].join(", ");
+      throw new Error(`Clean-counter gate failed: ${details}`);
+    }
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
