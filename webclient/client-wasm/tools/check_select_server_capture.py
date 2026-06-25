@@ -119,6 +119,7 @@ def main() -> int:
         checks.append(("actual", args.actual))
 
     errors: list[str] = []
+    sizes: dict[str, tuple[int, int]] = {}
     for label, path in checks:
         try:
             width, height = read_image_size(path)
@@ -129,8 +130,17 @@ def main() -> int:
             errors.append(f"{label}: {exc}")
             continue
 
+        sizes[label] = (width, height)
         print(describe(label, width, height))
         errors.extend(validate_size(label, width, height, strict_size, args.aspect_tolerance))
+
+    if "reference" in sizes and "actual" in sizes and sizes["reference"] != sizes["actual"]:
+        ref_width, ref_height = sizes["reference"]
+        actual_width, actual_height = sizes["actual"]
+        errors.append(
+            "actual capture must match reference dimensions for pixel comparison, "
+            f"got actual {actual_width}x{actual_height} vs reference {ref_width}x{ref_height}"
+        )
 
     if errors:
         for error in errors:
