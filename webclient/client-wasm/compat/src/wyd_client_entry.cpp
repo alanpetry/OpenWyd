@@ -2,12 +2,17 @@
 
 #include "NewApp.h"
 #include "ObjectManager.h"
+#include "TMHuman.h"
+#include "TMSelectServerScene.h"
 
 #include <cstring>
 #include <cstdio>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/console.h>
+#include <emscripten/emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
 #endif
 
 bool CheckOS();
@@ -33,6 +38,19 @@ void WydBootLog(const char* msg) {
 #else
   std::fprintf(stderr, "%s\n", msg ? msg : "(null)");
 #endif
+}
+
+TMSelectServerScene* WydSelectServerScene() {
+  if (!g_pObjectManager) return nullptr;
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  if (!scene || scene->GetSceneType() != ESCENE_TYPE::ESCENE_SELECT_SERVER) return nullptr;
+  return static_cast<TMSelectServerScene*>(scene);
+}
+
+TMHuman* WydSelectServerHuman(unsigned int index) {
+  if (index >= 50) return nullptr;
+  TMSelectServerScene* scene = WydSelectServerScene();
+  return scene ? scene->m_pCheckHumanList[index] : nullptr;
 }
 
 }  // namespace
@@ -120,6 +138,21 @@ extern "C" int wyd_shutdown_client() {
 extern "C" int wyd_get_game_state() {
   if (!g_pObjectManager) return static_cast<int>(ObjectManager::TM_GAME_STATE::TM_NONE_STATE);
   return static_cast<int>(g_pObjectManager->m_eCurrentState);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_moving(unsigned int index) {
+  TMHuman* human = WydSelectServerHuman(index);
+  return human ? human->m_bMoveing : 0;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_last_route_index(unsigned int index) {
+  TMHuman* human = WydSelectServerHuman(index);
+  return human ? human->m_nLastRouteIndex : 0;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int wyd_selserver_human_max_route_index(unsigned int index) {
+  TMHuman* human = WydSelectServerHuman(index);
+  return human ? human->m_nMaxRouteIndex : 0;
 }
 
 extern "C" int wyd_set_game_state(int state) {
