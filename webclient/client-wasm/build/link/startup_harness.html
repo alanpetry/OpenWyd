@@ -96,8 +96,8 @@
       border-radius: 0;
     }
     #canvas {
-      width: 1280px;
-      height: 720px;
+      width: 800px;
+      height: 600px;
       max-width: 100%;
       max-height: 100%;
       display: block;
@@ -157,7 +157,7 @@
       <div id="log">loading...</div>
     </div>
     <div class="canvas-wrap">
-      <canvas id="canvas" width="1280" height="720"></canvas>
+      <canvas id="canvas" width="800" height="600"></canvas>
     </div>
   </div>
   <script>
@@ -246,7 +246,7 @@
       layout: query.get('layout') || 'panel',
       fit: query.get('fit') || 'actual',
       fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
-      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 1280, height: 720 },
+      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 800, height: 600 },
       socketProxyUrl: query.get('socketProxy') || 'ws://127.0.0.1:8282/',
       debugHost: query.get('host') || '',
       debugAccount: query.get('account') || 'OPENWYD01',
