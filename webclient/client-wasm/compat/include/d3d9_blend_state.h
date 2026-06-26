@@ -53,13 +53,13 @@ struct WebGLBlendState {
 
 struct D3D9BlendRenderState {
   bool alpha_blend_enable = false;
-  DWORD src_blend = D3DBLEND_SRCALPHA;
-  DWORD dst_blend = D3DBLEND_INVSRCALPHA;
+  DWORD src_blend = D3DBLEND_ONE;
+  DWORD dst_blend = D3DBLEND_ZERO;
   DWORD blend_op = D3DBLENDOP_ADD;
   DWORD blend_factor = 0xFFFFFFFFu;
   bool separate_alpha_blend_enable = false;
-  DWORD src_blend_alpha = D3DBLEND_SRCALPHA;
-  DWORD dst_blend_alpha = D3DBLEND_INVSRCALPHA;
+  DWORD src_blend_alpha = D3DBLEND_ONE;
+  DWORD dst_blend_alpha = D3DBLEND_ZERO;
   DWORD blend_op_alpha = D3DBLENDOP_ADD;
 };
 
