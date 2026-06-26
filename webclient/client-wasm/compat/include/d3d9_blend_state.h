@@ -18,6 +18,8 @@ enum class WebGLBlendFactor : DWORD {
   SrcAlphaSaturate = 0x0308,
   ConstantColor = 0x8001,
   OneMinusConstantColor = 0x8002,
+  ConstantAlpha = 0x8003,
+  OneMinusConstantAlpha = 0x8004,
 };
 
 enum class WebGLBlendEquation : DWORD {
@@ -88,6 +90,10 @@ inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
       return WebGLBlendFactor::DstAlpha;
     case D3DBLEND_INVDESTCOLOR:
       return WebGLBlendFactor::OneMinusDstAlpha;
+    case D3DBLEND_BLENDFACTOR:
+      return WebGLBlendFactor::ConstantAlpha;
+    case D3DBLEND_INVBLENDFACTOR:
+      return WebGLBlendFactor::OneMinusConstantAlpha;
     default:
       return BlendFactorToWebGL(blend);
   }
@@ -111,7 +117,9 @@ inline WebGLBlendEquation BlendOpToWebGL(DWORD op) {
 
 inline bool BlendFactorUsesConstantColor(WebGLBlendFactor factor) {
   return factor == WebGLBlendFactor::ConstantColor ||
-         factor == WebGLBlendFactor::OneMinusConstantColor;
+         factor == WebGLBlendFactor::OneMinusConstantColor ||
+         factor == WebGLBlendFactor::ConstantAlpha ||
+         factor == WebGLBlendFactor::OneMinusConstantAlpha;
 }
 
 inline bool BlendStateUsesConstantColor(const WebGLBlendState& state) {
