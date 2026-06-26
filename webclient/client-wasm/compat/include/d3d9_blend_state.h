@@ -62,6 +62,40 @@ struct D3D9BlendRenderState {
   DWORD blend_op_alpha = D3DBLENDOP_ADD;
 };
 
+inline bool SetD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
+                                         D3DRENDERSTATETYPE state,
+                                         DWORD value) {
+  if (!render_state) return false;
+  switch (state) {
+    case D3DRS_SRCBLEND:
+      render_state->src_blend = value;
+      return true;
+    case D3DRS_DESTBLEND:
+      render_state->dst_blend = value;
+      return true;
+    case D3DRS_BLENDOP:
+      render_state->blend_op = value;
+      return true;
+    case D3DRS_BLENDFACTOR:
+      render_state->blend_factor = value;
+      return true;
+    case D3DRS_SEPARATEALPHABLENDENABLE:
+      render_state->separate_alpha_blend_enable = (value != 0u);
+      return true;
+    case D3DRS_SRCBLENDALPHA:
+      render_state->src_blend_alpha = value;
+      return true;
+    case D3DRS_DESTBLENDALPHA:
+      render_state->dst_blend_alpha = value;
+      return true;
+    case D3DRS_BLENDOPALPHA:
+      render_state->blend_op_alpha = value;
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
   switch (blend) {
     case D3DBLEND_ZERO:
