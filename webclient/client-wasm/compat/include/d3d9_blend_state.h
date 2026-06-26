@@ -51,6 +51,17 @@ struct WebGLBlendState {
   DWORD blend_factor = 0xFFFFFFFFu;
 };
 
+struct D3D9BlendRenderState {
+  DWORD src_blend = D3DBLEND_SRCALPHA;
+  DWORD dst_blend = D3DBLEND_INVSRCALPHA;
+  DWORD blend_op = D3DBLENDOP_ADD;
+  DWORD blend_factor = 0xFFFFFFFFu;
+  bool separate_alpha_blend_enable = false;
+  DWORD src_blend_alpha = D3DBLEND_SRCALPHA;
+  DWORD dst_blend_alpha = D3DBLEND_INVSRCALPHA;
+  DWORD blend_op_alpha = D3DBLENDOP_ADD;
+};
+
 inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
   switch (blend) {
     case D3DBLEND_ZERO:
@@ -245,5 +256,23 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
 
   return state;
 }
+
+inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& render_state) {
+  return BuildWebGLBlendState(
+      render_state.src_blend,
+      render_state.dst_blend,
+      render_state.blend_op,
+      render_state.blend_factor,
+      render_state.separate_alpha_blend_enable,
+      render_state.src_blend_alpha,
+      render_state.dst_blend_alpha,
+      render_state.blend_op_alpha);
+}
+
+#ifdef __EMSCRIPTEN__
+inline void ApplyWebGLBlendState(const D3D9BlendRenderState& render_state) {
+  ApplyWebGLBlendState(BuildWebGLBlendState(render_state));
+}
+#endif
 
 }  // namespace wyd::d3d9_compat
