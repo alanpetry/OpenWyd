@@ -18,10 +18,7 @@ v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
 
 # UI packs and RC/data needed by scene loading.
-v769ClientRelease/UI/*.bin@/UI/
-v769ClientRelease/UI/*.txt@/UI/
-v769ClientRelease/UI/*.wyt@/UI/
-v769ClientRelease/UI/*.wys@/UI/
+v769ClientRelease/UI/*@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/*@/UI/Panel/
