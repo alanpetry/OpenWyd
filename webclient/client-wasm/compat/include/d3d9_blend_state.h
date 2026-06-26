@@ -157,9 +157,10 @@ inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
 inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
   switch (blend) {
     case D3DBLEND_SRCCOLOR:
-    case D3DBLEND_SRCALPHASAT:
     case D3DBLEND_SRCCOLOR2:
       return WebGLBlendFactor::SrcAlpha;
+    case D3DBLEND_SRCALPHASAT:
+      return WebGLBlendFactor::One;
     case D3DBLEND_INVSRCCOLOR:
     case D3DBLEND_INVSRCCOLOR2:
       return WebGLBlendFactor::OneMinusSrcAlpha;
