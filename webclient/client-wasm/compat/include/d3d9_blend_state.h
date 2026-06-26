@@ -30,6 +30,13 @@ enum class WebGLBlendEquation : DWORD {
   Max = 0x8008,
 };
 
+struct WebGLBlendColor {
+  float r = 1.0f;
+  float g = 1.0f;
+  float b = 1.0f;
+  float a = 1.0f;
+};
+
 struct WebGLBlendState {
   WebGLBlendFactor src_rgb = WebGLBlendFactor::SrcAlpha;
   WebGLBlendFactor dst_rgb = WebGLBlendFactor::OneMinusSrcAlpha;
@@ -127,6 +134,19 @@ inline bool BlendStateUsesConstantColor(const WebGLBlendState& state) {
          BlendFactorUsesConstantColor(state.dst_rgb) ||
          BlendFactorUsesConstantColor(state.src_alpha) ||
          BlendFactorUsesConstantColor(state.dst_alpha);
+}
+
+inline float BlendFactorColorChannel(DWORD color, DWORD shift) {
+  return static_cast<float>((color >> shift) & 0xFFu) / 255.0f;
+}
+
+inline WebGLBlendColor BlendFactorColorToWebGL(DWORD blend_factor) {
+  WebGLBlendColor color;
+  color.r = BlendFactorColorChannel(blend_factor, 16);
+  color.g = BlendFactorColorChannel(blend_factor, 8);
+  color.b = BlendFactorColorChannel(blend_factor, 0);
+  color.a = BlendFactorColorChannel(blend_factor, 24);
+  return color;
 }
 
 inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
