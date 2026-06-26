@@ -2,6 +2,10 @@
 
 #include "d3d9.h"
 
+#ifdef __EMSCRIPTEN__
+#include <GLES2/gl2.h>
+#endif
+
 namespace wyd::d3d9_compat {
 
 enum class WebGLBlendFactor : DWORD {
@@ -178,6 +182,39 @@ inline WebGLBlendColor BlendFactorColorToWebGL(DWORD blend_factor) {
   color.a = BlendFactorColorChannel(blend_factor, 24);
   return color;
 }
+
+#ifdef __EMSCRIPTEN__
+inline GLenum WebGLEnum(WebGLBlendFactor factor) {
+  return static_cast<GLenum>(static_cast<DWORD>(factor));
+}
+
+inline GLenum WebGLEnum(WebGLBlendEquation equation) {
+  return static_cast<GLenum>(static_cast<DWORD>(equation));
+}
+
+inline void ApplyWebGLBlendState(const WebGLBlendState& state) {
+  if (BlendStateUsesConstantColor(state)) {
+    const WebGLBlendColor color = BlendFactorColorToWebGL(state.blend_factor);
+    glBlendColor(color.r, color.g, color.b, color.a);
+  }
+
+  if (BlendStateUsesSeparateFactors(state)) {
+    glBlendFuncSeparate(
+        WebGLEnum(state.src_rgb),
+        WebGLEnum(state.dst_rgb),
+        WebGLEnum(state.src_alpha),
+        WebGLEnum(state.dst_alpha));
+  } else {
+    glBlendFunc(WebGLEnum(state.src_rgb), WebGLEnum(state.dst_rgb));
+  }
+
+  if (BlendStateUsesSeparateEquations(state)) {
+    glBlendEquationSeparate(WebGLEnum(state.rgb_op), WebGLEnum(state.alpha_op));
+  } else {
+    glBlendEquation(WebGLEnum(state.rgb_op));
+  }
+}
+#endif
 
 inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
                                             DWORD dst_blend,
