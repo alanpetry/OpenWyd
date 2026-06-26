@@ -136,6 +136,18 @@ inline bool BlendStateUsesConstantColor(const WebGLBlendState& state) {
          BlendFactorUsesConstantColor(state.dst_alpha);
 }
 
+inline bool BlendStateUsesSeparateFactors(const WebGLBlendState& state) {
+  return state.src_rgb != state.src_alpha || state.dst_rgb != state.dst_alpha;
+}
+
+inline bool BlendStateUsesSeparateEquations(const WebGLBlendState& state) {
+  return state.rgb_op != state.alpha_op;
+}
+
+inline bool BlendStateUsesSeparateWebGLCalls(const WebGLBlendState& state) {
+  return BlendStateUsesSeparateFactors(state) || BlendStateUsesSeparateEquations(state);
+}
+
 inline float BlendFactorColorChannel(DWORD color, DWORD shift) {
   return static_cast<float>((color >> shift) & 0xFFu) / 255.0f;
 }
