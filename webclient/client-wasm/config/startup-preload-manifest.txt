@@ -36,6 +36,9 @@ v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
 
+# Texture payloads referenced directly by legacy texture lists and fixed-function draws.
+v769ClientRelease/Texture/*@/Texture/
+
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
