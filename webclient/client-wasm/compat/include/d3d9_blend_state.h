@@ -313,6 +313,14 @@ inline void ApplyWebGLBlendState(const D3D9BlendRenderState& render_state) {
   else glDisable(GL_BLEND);
   ApplyWebGLBlendState(BuildWebGLBlendState(render_state));
 }
+
+inline bool ApplyD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
+                                           D3DRENDERSTATETYPE state,
+                                           DWORD value) {
+  if (!SetD3D9BlendRenderStateValue(render_state, state, value)) return false;
+  ApplyWebGLBlendState(*render_state);
+  return true;
+}
 #endif
 
 }  // namespace wyd::d3d9_compat
