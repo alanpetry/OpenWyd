@@ -52,6 +52,7 @@ struct WebGLBlendState {
 };
 
 struct D3D9BlendRenderState {
+  bool alpha_blend_enable = false;
   DWORD src_blend = D3DBLEND_SRCALPHA;
   DWORD dst_blend = D3DBLEND_INVSRCALPHA;
   DWORD blend_op = D3DBLENDOP_ADD;
@@ -67,6 +68,9 @@ inline bool SetD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
                                          DWORD value) {
   if (!render_state) return false;
   switch (state) {
+    case D3DRS_ALPHABLENDENABLE:
+      render_state->alpha_blend_enable = (value != 0u);
+      return true;
     case D3DRS_SRCBLEND:
       render_state->src_blend = value;
       return true;
@@ -305,6 +309,8 @@ inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& render_s
 
 #ifdef __EMSCRIPTEN__
 inline void ApplyWebGLBlendState(const D3D9BlendRenderState& render_state) {
+  if (render_state.alpha_blend_enable) glEnable(GL_BLEND);
+  else glDisable(GL_BLEND);
   ApplyWebGLBlendState(BuildWebGLBlendState(render_state));
 }
 #endif
