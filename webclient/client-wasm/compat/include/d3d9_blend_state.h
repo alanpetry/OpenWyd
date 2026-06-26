@@ -45,8 +45,10 @@ inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
     case D3DBLEND_ONE:
       return WebGLBlendFactor::One;
     case D3DBLEND_SRCCOLOR:
+    case D3DBLEND_SRCCOLOR2:
       return WebGLBlendFactor::SrcColor;
     case D3DBLEND_INVSRCCOLOR:
+    case D3DBLEND_INVSRCCOLOR2:
       return WebGLBlendFactor::OneMinusSrcColor;
     case D3DBLEND_SRCALPHA:
     case D3DBLEND_BOTHSRCALPHA:
@@ -68,10 +70,26 @@ inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
       return WebGLBlendFactor::ConstantColor;
     case D3DBLEND_INVBLENDFACTOR:
       return WebGLBlendFactor::OneMinusConstantColor;
-    case D3DBLEND_SRCCOLOR2:
-    case D3DBLEND_INVSRCCOLOR2:
     default:
       return WebGLBlendFactor::One;
+  }
+}
+
+inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
+  switch (blend) {
+    case D3DBLEND_SRCCOLOR:
+    case D3DBLEND_SRCALPHASAT:
+    case D3DBLEND_SRCCOLOR2:
+      return WebGLBlendFactor::SrcAlpha;
+    case D3DBLEND_INVSRCCOLOR:
+    case D3DBLEND_INVSRCCOLOR2:
+      return WebGLBlendFactor::OneMinusSrcAlpha;
+    case D3DBLEND_DESTCOLOR:
+      return WebGLBlendFactor::DstAlpha;
+    case D3DBLEND_INVDESTCOLOR:
+      return WebGLBlendFactor::OneMinusDstAlpha;
+    default:
+      return BlendFactorToWebGL(blend);
   }
 }
 
@@ -118,12 +136,12 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
   state.blend_factor = blend_factor;
 
   if (separate_alpha_blend_enable) {
-    state.src_alpha = BlendFactorToWebGL(src_blend_alpha);
-    state.dst_alpha = BlendFactorToWebGL(dst_blend_alpha);
+    state.src_alpha = BlendAlphaFactorToWebGL(src_blend_alpha);
+    state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend_alpha);
     state.alpha_op = BlendOpToWebGL(blend_op_alpha);
   } else {
-    state.src_alpha = state.src_rgb;
-    state.dst_alpha = state.dst_rgb;
+    state.src_alpha = BlendAlphaFactorToWebGL(src_blend);
+    state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend);
     state.alpha_op = state.rgb_op;
   }
 
