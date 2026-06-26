@@ -14,6 +14,13 @@
 #include <emscripten/html5.h>
 #include <GLES2/gl2.h>
 
+#ifndef GL_MIN
+#define GL_MIN 0x8007
+#endif
+#ifndef GL_MAX
+#define GL_MAX 0x8008
+#endif
+
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
@@ -1393,6 +1400,12 @@ class DummyD3DXSprite final : public ID3DXSprite, private ComRefBase {
     bool z_write_enable = true;
     DWORD src_blend = D3DBLEND_SRCALPHA;
     DWORD dst_blend = D3DBLEND_INVSRCALPHA;
+    DWORD blend_op = D3DBLENDOP_ADD;
+    DWORD blend_factor = 0xFFFFFFFFu;
+    DWORD separate_alpha_blend_enable = 0;
+    DWORD src_blend_alpha = D3DBLEND_ONE;
+    DWORD dst_blend_alpha = D3DBLEND_ZERO;
+    DWORD blend_op_alpha = D3DBLENDOP_ADD;
     bool blend_enabled = false;
     DWORD alpha_test_enable = 0;
     DWORD alpha_ref = 0;
@@ -3762,6 +3775,12 @@ struct WasmD3D9State {
   D3DVIEWPORT9 viewport{0, 0, static_cast<DWORD>(kDefaultWidth), static_cast<DWORD>(kDefaultHeight), 0.0f, 1.0f};
   DWORD src_blend = D3DBLEND_SRCALPHA;
   DWORD dst_blend = D3DBLEND_INVSRCALPHA;
+  DWORD blend_op = D3DBLENDOP_ADD;
+  DWORD blend_factor = 0xFFFFFFFFu;
+  DWORD separate_alpha_blend_enable = 0;
+  DWORD src_blend_alpha = D3DBLEND_ONE;
+  DWORD dst_blend_alpha = D3DBLEND_ZERO;
+  DWORD blend_op_alpha = D3DBLENDOP_ADD;
   bool blend_enabled = false;
   bool z_enable = true;
   bool z_write_enable = true;
@@ -3810,24 +3829,119 @@ struct WasmD3D9State {
 
 WasmD3D9State g_wasm_d3d9_state;
 
-GLenum BlendFactorFromD3D(DWORD blend) {
+GLenum BlendFactorFromD3DRgb(DWORD blend) {
   switch (blend) {
     case D3DBLEND_ZERO: return GL_ZERO;
     case D3DBLEND_ONE: return GL_ONE;
     case D3DBLEND_SRCCOLOR: return GL_SRC_COLOR;
+    case D3DBLEND_SRCCOLOR2: return GL_SRC_COLOR;
     case D3DBLEND_INVSRCCOLOR: return GL_ONE_MINUS_SRC_COLOR;
+    case D3DBLEND_INVSRCCOLOR2: return GL_ONE_MINUS_SRC_COLOR;
     case D3DBLEND_SRCALPHA: return GL_SRC_ALPHA;
+    case D3DBLEND_BOTHSRCALPHA: return GL_SRC_ALPHA;
     case D3DBLEND_INVSRCALPHA: return GL_ONE_MINUS_SRC_ALPHA;
+    case D3DBLEND_BOTHINVSRCALPHA: return GL_ONE_MINUS_SRC_ALPHA;
     case D3DBLEND_DESTALPHA: return GL_DST_ALPHA;
     case D3DBLEND_INVDESTALPHA: return GL_ONE_MINUS_DST_ALPHA;
     case D3DBLEND_DESTCOLOR: return GL_DST_COLOR;
     case D3DBLEND_INVDESTCOLOR: return GL_ONE_MINUS_DST_COLOR;
+    case D3DBLEND_SRCALPHASAT: return GL_SRC_ALPHA_SATURATE;
+    case D3DBLEND_BLENDFACTOR: return GL_CONSTANT_COLOR;
+    case D3DBLEND_INVBLENDFACTOR: return GL_ONE_MINUS_CONSTANT_COLOR;
     default: return GL_ONE;
   }
 }
 
+GLenum BlendFactorFromD3DAlpha(DWORD blend) {
+  switch (blend) {
+    case D3DBLEND_SRCCOLOR:
+    case D3DBLEND_SRCALPHASAT:
+    case D3DBLEND_SRCCOLOR2:
+      return GL_SRC_ALPHA;
+    case D3DBLEND_INVSRCCOLOR:
+    case D3DBLEND_INVSRCCOLOR2:
+      return GL_ONE_MINUS_SRC_ALPHA;
+    case D3DBLEND_DESTCOLOR:
+      return GL_DST_ALPHA;
+    case D3DBLEND_INVDESTCOLOR:
+      return GL_ONE_MINUS_DST_ALPHA;
+    case D3DBLEND_BLENDFACTOR:
+      return GL_CONSTANT_ALPHA;
+    case D3DBLEND_INVBLENDFACTOR:
+      return GL_ONE_MINUS_CONSTANT_ALPHA;
+    default:
+      return BlendFactorFromD3DRgb(blend);
+  }
+}
+
+GLenum BlendOpFromD3D(DWORD op) {
+  switch (op) {
+    case D3DBLENDOP_SUBTRACT: return GL_FUNC_SUBTRACT;
+    case D3DBLENDOP_REVSUBTRACT: return GL_FUNC_REVERSE_SUBTRACT;
+    case D3DBLENDOP_MIN: return GL_MIN;
+    case D3DBLENDOP_MAX: return GL_MAX;
+    case D3DBLENDOP_ADD:
+    default:
+      return GL_FUNC_ADD;
+  }
+}
+
+void ApplyBothSourceAlphaBlendPair(DWORD blend, GLenum* src_factor, GLenum* dst_factor) {
+  if (!src_factor || !dst_factor) return;
+  if (blend == D3DBLEND_BOTHSRCALPHA) {
+    *src_factor = GL_SRC_ALPHA;
+    *dst_factor = GL_ONE_MINUS_SRC_ALPHA;
+  } else if (blend == D3DBLEND_BOTHINVSRCALPHA) {
+    *src_factor = GL_ONE_MINUS_SRC_ALPHA;
+    *dst_factor = GL_SRC_ALPHA;
+  }
+}
+
+bool BlendFactorUsesConstantColor(GLenum factor) {
+  return factor == GL_CONSTANT_COLOR ||
+         factor == GL_ONE_MINUS_CONSTANT_COLOR ||
+         factor == GL_CONSTANT_ALPHA ||
+         factor == GL_ONE_MINUS_CONSTANT_ALPHA;
+}
+
 void ApplyBlendState() {
-  glBlendFunc(BlendFactorFromD3D(g_wasm_d3d9_state.src_blend), BlendFactorFromD3D(g_wasm_d3d9_state.dst_blend));
+  GLenum src_rgb = BlendFactorFromD3DRgb(g_wasm_d3d9_state.src_blend);
+  GLenum dst_rgb = BlendFactorFromD3DRgb(g_wasm_d3d9_state.dst_blend);
+  ApplyBothSourceAlphaBlendPair(g_wasm_d3d9_state.src_blend, &src_rgb, &dst_rgb);
+
+  const bool separate_alpha = g_wasm_d3d9_state.separate_alpha_blend_enable != 0;
+  const DWORD src_alpha_state = separate_alpha ? g_wasm_d3d9_state.src_blend_alpha : g_wasm_d3d9_state.src_blend;
+  const DWORD dst_alpha_state = separate_alpha ? g_wasm_d3d9_state.dst_blend_alpha : g_wasm_d3d9_state.dst_blend;
+  GLenum src_alpha = BlendFactorFromD3DAlpha(src_alpha_state);
+  GLenum dst_alpha = BlendFactorFromD3DAlpha(dst_alpha_state);
+  ApplyBothSourceAlphaBlendPair(src_alpha_state, &src_alpha, &dst_alpha);
+
+  const GLenum rgb_op = BlendOpFromD3D(g_wasm_d3d9_state.blend_op);
+  const GLenum alpha_op = BlendOpFromD3D(separate_alpha ? g_wasm_d3d9_state.blend_op_alpha : g_wasm_d3d9_state.blend_op);
+
+  if (BlendFactorUsesConstantColor(src_rgb) ||
+      BlendFactorUsesConstantColor(dst_rgb) ||
+      BlendFactorUsesConstantColor(src_alpha) ||
+      BlendFactorUsesConstantColor(dst_alpha)) {
+    const DWORD c = g_wasm_d3d9_state.blend_factor;
+    const float a = static_cast<float>((c >> 24) & 0xFFu) / 255.0f;
+    const float r = static_cast<float>((c >> 16) & 0xFFu) / 255.0f;
+    const float g = static_cast<float>((c >> 8) & 0xFFu) / 255.0f;
+    const float b = static_cast<float>(c & 0xFFu) / 255.0f;
+    glBlendColor(r, g, b, a);
+  }
+
+  if (src_rgb != src_alpha || dst_rgb != dst_alpha) {
+    glBlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
+  } else {
+    glBlendFunc(src_rgb, dst_rgb);
+  }
+
+  if (rgb_op != alpha_op) {
+    glBlendEquationSeparate(rgb_op, alpha_op);
+  } else {
+    glBlendEquation(rgb_op);
+  }
 }
 
 GLenum FrontFaceFromCullMode(DWORD cull_mode) {
@@ -4144,6 +4258,30 @@ HRESULT WydD3D9Device_SetRenderState(IDirect3DDevice9*, D3DRENDERSTATETYPE state
       break;
     case D3DRS_DESTBLEND:
       g_wasm_d3d9_state.dst_blend = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_BLENDOP:
+      g_wasm_d3d9_state.blend_op = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_BLENDFACTOR:
+      g_wasm_d3d9_state.blend_factor = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_SEPARATEALPHABLENDENABLE:
+      g_wasm_d3d9_state.separate_alpha_blend_enable = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_SRCBLENDALPHA:
+      g_wasm_d3d9_state.src_blend_alpha = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_DESTBLENDALPHA:
+      g_wasm_d3d9_state.dst_blend_alpha = value;
+      ApplyBlendState();
+      break;
+    case D3DRS_BLENDOPALPHA:
+      g_wasm_d3d9_state.blend_op_alpha = value;
       ApplyBlendState();
       break;
     case D3DRS_ALPHATESTENABLE:
@@ -4478,6 +4616,12 @@ void DummyD3DXSprite::SaveDeviceState() {
   saved_state_.z_write_enable = g_wasm_d3d9_state.z_write_enable;
   saved_state_.src_blend = g_wasm_d3d9_state.src_blend;
   saved_state_.dst_blend = g_wasm_d3d9_state.dst_blend;
+  saved_state_.blend_op = g_wasm_d3d9_state.blend_op;
+  saved_state_.blend_factor = g_wasm_d3d9_state.blend_factor;
+  saved_state_.separate_alpha_blend_enable = g_wasm_d3d9_state.separate_alpha_blend_enable;
+  saved_state_.src_blend_alpha = g_wasm_d3d9_state.src_blend_alpha;
+  saved_state_.dst_blend_alpha = g_wasm_d3d9_state.dst_blend_alpha;
+  saved_state_.blend_op_alpha = g_wasm_d3d9_state.blend_op_alpha;
   saved_state_.blend_enabled = g_wasm_d3d9_state.blend_enabled;
   saved_state_.alpha_test_enable = g_wasm_d3d9_state.alpha_test_enable;
   saved_state_.alpha_ref = g_wasm_d3d9_state.alpha_ref;
@@ -4501,6 +4645,12 @@ void DummyD3DXSprite::RestoreDeviceState() {
   device_->SetRenderState(D3DRS_ALPHABLENDENABLE, saved_state_.blend_enabled ? 1u : 0u);
   device_->SetRenderState(D3DRS_SRCBLEND, saved_state_.src_blend);
   device_->SetRenderState(D3DRS_DESTBLEND, saved_state_.dst_blend);
+  device_->SetRenderState(D3DRS_BLENDOP, saved_state_.blend_op);
+  device_->SetRenderState(D3DRS_BLENDFACTOR, saved_state_.blend_factor);
+  device_->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, saved_state_.separate_alpha_blend_enable);
+  device_->SetRenderState(D3DRS_SRCBLENDALPHA, saved_state_.src_blend_alpha);
+  device_->SetRenderState(D3DRS_DESTBLENDALPHA, saved_state_.dst_blend_alpha);
+  device_->SetRenderState(D3DRS_BLENDOPALPHA, saved_state_.blend_op_alpha);
   device_->SetRenderState(D3DRS_ALPHATESTENABLE, saved_state_.alpha_test_enable);
   device_->SetRenderState(D3DRS_ALPHAREF, saved_state_.alpha_ref);
   device_->SetRenderState(D3DRS_ALPHAFUNC, saved_state_.alpha_func);

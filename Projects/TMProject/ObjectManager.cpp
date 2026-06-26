@@ -33,6 +33,8 @@ char g_wasmStateDebugLabel[128] = "None";
 int g_wasmFieldMode = 1;
 bool g_wasmFieldDebugFixtureUsed = false;
 
+void WasmEnsureFieldDebugMobData(ObjectManager* objectManager);
+
 void WasmStateLog(const char* msg)
 {
 	emscripten_console_log(msg ? msg : "(null)");
@@ -82,6 +84,8 @@ ESCENE_TYPE WasmSceneTypeForState(ObjectManager::TM_GAME_STATE state)
 	{
 	case ObjectManager::TM_GAME_STATE::TM_FIELD_STATE:
 		return g_wasmFieldMode == 0 ? ESCENE_TYPE::ESCENE_NONE : ESCENE_TYPE::ESCENE_FIELD;
+	case ObjectManager::TM_GAME_STATE::TM_FIELD2_STATE:
+		return ESCENE_TYPE::ESCENE_FIELD;
 	case ObjectManager::TM_GAME_STATE::TM_SELECTCHAR_STATE:
 	case ObjectManager::TM_GAME_STATE::TM_CREATECHAR_STATE:
 		return ESCENE_TYPE::ESCENE_SELCHAR;
@@ -106,42 +110,50 @@ void WasmRecordStateDebug(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneT
 		g_wasmStateDebugLabel,
 		sizeof(g_wasmStateDebugLabel),
 		"%s%s",
-		placeholder ? "DEBUG PLACEHOLDER - " : "",
+		placeholder ? "WASM STATE SHELL - " : "",
 		WasmStateName(state));
 }
 
 class TMWasmDebugStateScene final : public TMScene
 {
 public:
-	TMWasmDebugStateScene(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneType)
+	TMWasmDebugStateScene(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneType, const char* rcPath)
 		: TMScene()
 		, m_eDebugState(state)
 		, m_eDebugSceneType(sceneType)
 		, m_pTitleText(nullptr)
 		, m_pDetailText(nullptr)
+		, m_bLoadedRc(0)
 	{
 		m_eSceneType = sceneType;
 		m_dwID = static_cast<unsigned int>(sceneType);
-		std::snprintf(m_szTitle, sizeof(m_szTitle), "DEBUG PLACEHOLDER - %s", WasmStateName(state));
+		std::snprintf(m_szRcPath, sizeof(m_szRcPath), "%s", rcPath ? rcPath : "");
+		std::snprintf(m_szTitle, sizeof(m_szTitle), "WASM STATE SHELL - %s", WasmStateName(state));
 		std::snprintf(
 			m_szDetail,
 			sizeof(m_szDetail),
-			"state=%d sceneType=%d",
+			"state=%d sceneType=%d rc=%s",
 			static_cast<int>(state),
-			static_cast<int>(sceneType));
+			static_cast<int>(sceneType),
+			m_szRcPath[0] ? m_szRcPath : "none");
 	}
 
 	int InitializeScene() override
 	{
 		m_eSceneType = m_eDebugSceneType;
 		m_dwID = static_cast<unsigned int>(m_eDebugSceneType);
+		WasmRecordStateDebug(m_eDebugState, m_eDebugSceneType, true);
+
+		if (m_szRcPath[0])
+			m_bLoadedRc = LoadRC(m_szRcPath);
 
 		if (m_pControlContainer)
 		{
+			const unsigned int titleColor = m_bLoadedRc ? 0xFFBBDDEE : 0xFFFFFFFF;
 			m_pTitleText = new SText(
 				-2,
 				m_szTitle,
-				0xFFFFFFFF,
+				titleColor,
 				140.0f,
 				260.0f,
 				520.0f,
@@ -186,7 +198,7 @@ public:
 			0.0f,
 			static_cast<float>(g_pDevice->m_dwScreenWidth),
 			static_cast<float>(g_pDevice->m_dwScreenHeight),
-			0xFF101820,
+			m_bLoadedRc ? 0xFF050505 : 0xFF101820,
 			0);
 
 		const float panelW = 560.0f * RenderDevice::m_fWidthRatio;
@@ -203,13 +215,50 @@ private:
 	ESCENE_TYPE m_eDebugSceneType;
 	SText* m_pTitleText;
 	SText* m_pDetailText;
+	int m_bLoadedRc;
+	char m_szRcPath[128];
 	char m_szTitle[96];
-	char m_szDetail[96];
+	char m_szDetail[160];
 };
 
 TMScene* WasmCreateDebugScene(ObjectManager::TM_GAME_STATE state)
 {
-	return new TMWasmDebugStateScene(state, WasmSceneTypeForState(state));
+	const char* rcPath = nullptr;
+	switch (state)
+	{
+	case ObjectManager::TM_GAME_STATE::TM_LOGIN_STATE:
+		rcPath = "UI\\LoginScene.txt";
+		break;
+	case ObjectManager::TM_GAME_STATE::TM_CREATEID_STATE:
+		rcPath = "UI\\LoginScene2.txt";
+		break;
+	case ObjectManager::TM_GAME_STATE::TM_TEST2_STATE:
+	case ObjectManager::TM_GAME_STATE::TM_SEA_STATE:
+	case ObjectManager::TM_GAME_STATE::TM_NONE_STATE:
+	default:
+		rcPath = "UI\\DemoScene.txt";
+		break;
+	}
+	return new TMWasmDebugStateScene(state, WasmSceneTypeForState(state), rcPath);
+}
+
+class TMWasmCreateCharScene final : public TMSelectCharScene
+{
+public:
+	int InitializeScene() override
+	{
+		if (!TMSelectCharScene::InitializeScene())
+			return 0;
+
+		VisibleSelectCreate(0);
+		return 1;
+	}
+};
+
+TMScene* WasmCreateFieldScene(ObjectManager* objectManager)
+{
+	WasmEnsureFieldDebugMobData(objectManager);
+	return new TMFieldScene();
 }
 
 void WasmEnsureFieldDebugMobData(ObjectManager* objectManager)
@@ -1263,12 +1312,17 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		}
 		else
 		{
-			WasmEnsureFieldDebugMobData(this);
 			WasmStateLog("[obj:set-state] new real TMFieldScene");
-			pScene = new TMFieldScene();
+			pScene = WasmCreateFieldScene(this);
 		}
 #else
 		pScene = new TMFieldScene();
+#endif
+		break;
+	case TM_GAME_STATE::TM_FIELD2_STATE:
+#if defined(__EMSCRIPTEN__)
+		WasmStateLog("[obj:set-state] new real TMFieldScene for Field2");
+		pScene = WasmCreateFieldScene(this);
 #endif
 		break;
 	case TM_GAME_STATE::TM_SELECTCHAR_STATE:
@@ -1276,6 +1330,12 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		WasmStateLog("[obj:set-state] new TMSelectCharScene");
 #endif
 		pScene = new TMSelectCharScene();
+		break;
+	case TM_GAME_STATE::TM_CREATECHAR_STATE:
+#if defined(__EMSCRIPTEN__)
+		WasmStateLog("[obj:set-state] new TMSelectCharScene create mode");
+		pScene = new TMWasmCreateCharScene();
+#endif
 		break;
 	case TM_GAME_STATE::TM_SELECTSERVER_STATE:
 	{
@@ -1295,9 +1355,8 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 	break;
 	case TM_GAME_STATE::TM_DEMO_STATE:
 #if defined(__EMSCRIPTEN__)
-		WasmStateLog("[obj:set-state] new wasm debug demo scene");
-		pScene = WasmCreateDebugScene(m_eCurrentState);
-		bWasmPlaceholderScene = true;
+		WasmStateLog("[obj:set-state] new real TMDemoScene");
+		pScene = new TMDemoScene();
 #else
 		pScene = new TMDemoScene();
 #endif

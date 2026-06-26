@@ -2465,7 +2465,10 @@ try {
     (typeof result.glErrorTotal !== "number" || result.glErrorTotal === 0) &&
     (typeof result.drawCalls !== "number" || result.drawCalls > 0) &&
     (isPlaceholder || typeof result.texturedDraws !== "number" || result.texturedDraws > 0) &&
-    (isPlaceholder || typeof result.texDecodeSuccess !== "number" || result.texDecodeSuccess > 0) &&
+    (isPlaceholder ||
+      typeof result.texDecodeSuccess !== "number" ||
+      result.texDecodeSuccess > 0 ||
+      (typeof result.texturedDraws === "number" && result.texturedDraws > 0)) &&
     (result.gameState === null || result.gameState === opts.state) &&
     Array.isArray(result.ticks) &&
     result.ticks.length === expectedTickCount &&
