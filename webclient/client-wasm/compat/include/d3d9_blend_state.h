@@ -42,10 +42,10 @@ struct WebGLBlendColor {
 };
 
 struct WebGLBlendState {
-  WebGLBlendFactor src_rgb = WebGLBlendFactor::SrcAlpha;
-  WebGLBlendFactor dst_rgb = WebGLBlendFactor::OneMinusSrcAlpha;
-  WebGLBlendFactor src_alpha = WebGLBlendFactor::SrcAlpha;
-  WebGLBlendFactor dst_alpha = WebGLBlendFactor::OneMinusSrcAlpha;
+  WebGLBlendFactor src_rgb = WebGLBlendFactor::One;
+  WebGLBlendFactor dst_rgb = WebGLBlendFactor::Zero;
+  WebGLBlendFactor src_alpha = WebGLBlendFactor::One;
+  WebGLBlendFactor dst_alpha = WebGLBlendFactor::Zero;
   WebGLBlendEquation rgb_op = WebGLBlendEquation::Add;
   WebGLBlendEquation alpha_op = WebGLBlendEquation::Add;
   DWORD blend_factor = 0xFFFFFFFFu;
