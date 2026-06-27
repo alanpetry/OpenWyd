@@ -112,6 +112,26 @@ inline void RestoreD3D9BlendRuntimeState(
   RestoreD3D9BlendRuntimeState(&current_state, snapshot);
 }
 
+inline void RestoreD3D9BlendRuntimeState(
+    IDirect3DDevice9* device,
+    const D3D9BlendRuntimeSnapshot& snapshot) {
+  if (!device) return;
+  const D3D9BlendRenderState& render_state = snapshot.render_state;
+  device->SetRenderState(D3DRS_SRCBLEND, render_state.src_blend);
+  device->SetRenderState(D3DRS_DESTBLEND, render_state.dst_blend);
+  device->SetRenderState(D3DRS_BLENDOP, render_state.blend_op);
+  device->SetRenderState(D3DRS_BLENDFACTOR, render_state.blend_factor);
+  device->SetRenderState(
+      D3DRS_SEPARATEALPHABLENDENABLE,
+      render_state.separate_alpha_blend_enable ? 1u : 0u);
+  device->SetRenderState(D3DRS_SRCBLENDALPHA, render_state.src_blend_alpha);
+  device->SetRenderState(D3DRS_DESTBLENDALPHA, render_state.dst_blend_alpha);
+  device->SetRenderState(D3DRS_BLENDOPALPHA, render_state.blend_op_alpha);
+  device->SetRenderState(
+      D3DRS_ALPHABLENDENABLE,
+      render_state.alpha_blend_enable ? 1u : 0u);
+}
+
 inline bool ApplyD3D9BlendRuntimeStateValue(
     D3D9BlendRuntimeState* current_state,
     D3DRENDERSTATETYPE state,
