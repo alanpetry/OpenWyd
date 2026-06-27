@@ -278,10 +278,11 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
   HRESULT ApplyResult() const { return apply_result_; }
   HRESULT RestoreResult() const { return restore_result_; }
 
-  void Restore() {
-    if (!active_) return;
+  HRESULT Restore() {
+    if (!active_) return restore_result_;
     restore_result_ = RestoreD3D9BlendRuntimeState(device_, snapshot_);
     active_ = false;
+    return restore_result_;
   }
 
  private:
