@@ -7,10 +7,34 @@ namespace wyd::d3d9_compat {
 struct D3D9BlendRuntimeState {
   D3D9BlendRenderState render_state;
 
+  D3D9BlendRuntimeState() = default;
+
+  D3D9BlendRuntimeState(bool alpha_blend_enable,
+                        DWORD src_blend,
+                        DWORD dst_blend) {
+    ResetFromLegacyFields(alpha_blend_enable, src_blend, dst_blend);
+  }
+
+  void ResetFromLegacyFields(bool alpha_blend_enable,
+                             DWORD src_blend,
+                             DWORD dst_blend) {
+    render_state = MakeD3D9BlendRenderState(alpha_blend_enable, src_blend, dst_blend);
+  }
+
+  D3D9BlendRenderState& RenderState() { return render_state; }
+  const D3D9BlendRenderState& RenderState() const { return render_state; }
+
   bool AlphaBlendEnabled() const { return render_state.alpha_blend_enable; }
   DWORD SrcBlend() const { return render_state.src_blend; }
   DWORD DstBlend() const { return render_state.dst_blend; }
 };
+
+inline D3D9BlendRuntimeState MakeD3D9BlendRuntimeState(
+    bool alpha_blend_enable,
+    DWORD src_blend,
+    DWORD dst_blend) {
+  return D3D9BlendRuntimeState(alpha_blend_enable, src_blend, dst_blend);
+}
 
 struct D3D9BlendRuntimeSnapshot {
   D3D9BlendRenderState render_state;
@@ -25,7 +49,7 @@ inline D3D9BlendRuntimeSnapshot CaptureD3D9BlendRuntimeState(
 
 inline D3D9BlendRuntimeSnapshot CaptureD3D9BlendRuntimeState(
     const D3D9BlendRuntimeState& runtime_state) {
-  return CaptureD3D9BlendRuntimeState(runtime_state.render_state);
+  return CaptureD3D9BlendRuntimeState(runtime_state.RenderState());
 }
 
 #ifdef __EMSCRIPTEN__
@@ -47,7 +71,7 @@ inline void RestoreD3D9BlendRuntimeState(
     D3D9BlendRuntimeState* current_state,
     const D3D9BlendRuntimeSnapshot& snapshot) {
   if (!current_state) return;
-  RestoreD3D9BlendRuntimeState(current_state->render_state, snapshot);
+  RestoreD3D9BlendRuntimeState(current_state->RenderState(), snapshot);
 }
 
 inline void RestoreD3D9BlendRuntimeState(
@@ -61,7 +85,7 @@ inline bool ApplyD3D9BlendRuntimeStateValue(
     D3DRENDERSTATETYPE state,
     DWORD value) {
   if (!current_state) return false;
-  return ApplyD3D9BlendRenderStateValue(current_state->render_state, state, value);
+  return ApplyD3D9BlendRenderStateValue(current_state->RenderState(), state, value);
 }
 
 inline bool ApplyD3D9BlendRuntimeStateValue(
@@ -89,7 +113,7 @@ inline void ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRuntimeState* current_state,
     D3D9BlendRuntimeSnapshot* snapshot) {
   if (!current_state) return;
-  ApplyD3D9SpriteBlendRuntimeState(current_state->render_state, snapshot);
+  ApplyD3D9SpriteBlendRuntimeState(current_state->RenderState(), snapshot);
 }
 
 inline void ApplyD3D9SpriteBlendRuntimeState(
