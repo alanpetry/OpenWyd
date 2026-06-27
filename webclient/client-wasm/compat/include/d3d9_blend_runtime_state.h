@@ -21,12 +21,26 @@ struct D3D9BlendRuntimeState {
     render_state = MakeD3D9BlendRenderState(alpha_blend_enable, src_blend, dst_blend);
   }
 
+  void ResetFromRenderState(const D3D9BlendRenderState& next_render_state) {
+    render_state = next_render_state;
+  }
+
+  bool SetRenderStateValue(D3DRENDERSTATETYPE state, DWORD value) {
+    return SetD3D9BlendRenderStateValue(render_state, state, value);
+  }
+
   D3D9BlendRenderState& RenderState() { return render_state; }
   const D3D9BlendRenderState& RenderState() const { return render_state; }
 
   bool AlphaBlendEnabled() const { return render_state.alpha_blend_enable; }
   DWORD SrcBlend() const { return render_state.src_blend; }
   DWORD DstBlend() const { return render_state.dst_blend; }
+  DWORD BlendOp() const { return render_state.blend_op; }
+  DWORD BlendFactor() const { return render_state.blend_factor; }
+  bool SeparateAlphaBlendEnabled() const { return render_state.separate_alpha_blend_enable; }
+  DWORD SrcBlendAlpha() const { return render_state.src_blend_alpha; }
+  DWORD DstBlendAlpha() const { return render_state.dst_blend_alpha; }
+  DWORD BlendOpAlpha() const { return render_state.blend_op_alpha; }
 };
 
 inline D3D9BlendRuntimeState MakeD3D9BlendRuntimeState(
@@ -103,7 +117,9 @@ inline bool ApplyD3D9BlendRuntimeStateValue(
     D3DRENDERSTATETYPE state,
     DWORD value) {
   if (!current_state) return false;
-  return ApplyD3D9BlendRenderStateValue(current_state->RenderState(), state, value);
+  if (!current_state->SetRenderStateValue(state, value)) return false;
+  ApplyD3D9BlendRuntimeState(*current_state);
+  return true;
 }
 
 inline bool ApplyD3D9BlendRuntimeStateValue(
