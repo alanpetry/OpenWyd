@@ -23,11 +23,7 @@ v769ClientRelease/UI/*.txt@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
-v769ClientRelease/UI/DemoCamAction@/UI/DemoCamAction
-v769ClientRelease/UI/DemoCamAction2@/UI/DemoCamAction2
-v769ClientRelease/UI/DemoCamAction3@/UI/DemoCamAction3
-v769ClientRelease/UI/DemoCamAction4@/UI/DemoCamAction4
-v769ClientRelease/UI/DemoCamAction5@/UI/DemoCamAction5
+v769ClientRelease/UI/DemoCamAction*@/UI/
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
