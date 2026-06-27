@@ -359,6 +359,16 @@ inline bool ApplyD3D9BlendRenderStateValue(D3D9BlendRenderState& render_state,
                                            DWORD value) {
   return ApplyD3D9BlendRenderStateValue(&render_state, state, value);
 }
+
+inline void ApplyD3D9SpriteBlendRenderState(D3D9BlendRenderState* render_state) {
+  if (!render_state) return;
+  *render_state = MakeD3D9SpriteBlendRenderState();
+  ApplyWebGLBlendState(*render_state);
+}
+
+inline void ApplyD3D9SpriteBlendRenderState(D3D9BlendRenderState& render_state) {
+  ApplyD3D9SpriteBlendRenderState(&render_state);
+}
 #endif
 
 }  // namespace wyd::d3d9_compat
