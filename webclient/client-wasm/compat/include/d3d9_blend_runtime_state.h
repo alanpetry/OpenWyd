@@ -101,6 +101,7 @@ inline void ApplyD3D9SpriteBlendRuntimeState(IDirect3DDevice9* device) {
   device->SetRenderState(
       D3DRS_ALPHABLENDENABLE,
       render_state.alpha_blend_enable ? 1u : 0u);
+  ApplyWebGLBlendState(render_state);
 }
 
 inline void RestoreD3D9BlendRuntimeState(
@@ -148,6 +149,7 @@ inline void RestoreD3D9BlendRuntimeState(
   device->SetRenderState(
       D3DRS_ALPHABLENDENABLE,
       render_state.alpha_blend_enable ? 1u : 0u);
+  ApplyWebGLBlendState(render_state);
 }
 
 inline bool ApplyD3D9BlendRuntimeStateValue(
