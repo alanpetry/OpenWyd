@@ -120,8 +120,8 @@ inline HRESULT ApplyD3D9BlendRenderStateToDevice(
   return first_error;
 }
 
-inline void ApplyD3D9SpriteBlendRuntimeState(IDirect3DDevice9* device) {
-  ApplyD3D9BlendRenderStateToDevice(device, MakeD3D9SpriteBlendRenderState());
+inline HRESULT ApplyD3D9SpriteBlendRuntimeState(IDirect3DDevice9* device) {
+  return ApplyD3D9BlendRenderStateToDevice(device, MakeD3D9SpriteBlendRenderState());
 }
 
 inline void RestoreD3D9BlendRuntimeState(
@@ -151,10 +151,10 @@ inline void RestoreD3D9BlendRuntimeState(
   RestoreD3D9BlendRuntimeState(&current_state, snapshot);
 }
 
-inline void RestoreD3D9BlendRuntimeState(
+inline HRESULT RestoreD3D9BlendRuntimeState(
     IDirect3DDevice9* device,
     const D3D9BlendRuntimeSnapshot& snapshot) {
-  ApplyD3D9BlendRenderStateToDevice(device, snapshot.render_state);
+  return ApplyD3D9BlendRenderStateToDevice(device, snapshot.render_state);
 }
 
 inline bool ApplyD3D9BlendRuntimeStateValue(
@@ -255,7 +255,7 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
       IDirect3DDevice9* device,
       const D3D9BlendRuntimeSnapshot& snapshot)
       : device_(device), snapshot_(snapshot), active_(device != nullptr) {
-    ApplyD3D9SpriteBlendRuntimeState(device_);
+    apply_result_ = ApplyD3D9SpriteBlendRuntimeState(device_);
   }
 
   ScopedD3D9SpriteDeviceBlendRuntimeState(
@@ -275,15 +275,20 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
 
   ~ScopedD3D9SpriteDeviceBlendRuntimeState() { Restore(); }
 
+  HRESULT ApplyResult() const { return apply_result_; }
+  HRESULT RestoreResult() const { return restore_result_; }
+
   void Restore() {
     if (!active_) return;
-    RestoreD3D9BlendRuntimeState(device_, snapshot_);
+    restore_result_ = RestoreD3D9BlendRuntimeState(device_, snapshot_);
     active_ = false;
   }
 
  private:
   IDirect3DDevice9* device_ = nullptr;
   D3D9BlendRuntimeSnapshot snapshot_{};
+  HRESULT apply_result_ = S_OK;
+  HRESULT restore_result_ = S_OK;
   bool active_ = false;
 };
 #endif
