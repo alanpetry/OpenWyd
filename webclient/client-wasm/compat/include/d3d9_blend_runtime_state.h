@@ -169,6 +169,40 @@ inline D3D9BlendRuntimeSnapshot ApplyD3D9SpriteBlendRuntimeState(
   ApplyD3D9SpriteBlendRuntimeState(current_state, &snapshot);
   return snapshot;
 }
+
+class ScopedD3D9SpriteBlendRuntimeState {
+ public:
+  explicit ScopedD3D9SpriteBlendRuntimeState(D3D9BlendRenderState& current_state)
+      : render_state_(&current_state),
+        snapshot_(ApplyD3D9SpriteBlendRuntimeState(current_state)),
+        active_(true) {}
+
+  explicit ScopedD3D9SpriteBlendRuntimeState(D3D9BlendRuntimeState& current_state)
+      : runtime_state_(&current_state),
+        snapshot_(ApplyD3D9SpriteBlendRuntimeState(current_state)),
+        active_(true) {}
+
+  ScopedD3D9SpriteBlendRuntimeState(const ScopedD3D9SpriteBlendRuntimeState&) = delete;
+  ScopedD3D9SpriteBlendRuntimeState& operator=(const ScopedD3D9SpriteBlendRuntimeState&) = delete;
+
+  ~ScopedD3D9SpriteBlendRuntimeState() { Restore(); }
+
+  void Restore() {
+    if (!active_) return;
+    if (runtime_state_) {
+      RestoreD3D9BlendRuntimeState(*runtime_state_, snapshot_);
+    } else if (render_state_) {
+      RestoreD3D9BlendRuntimeState(*render_state_, snapshot_);
+    }
+    active_ = false;
+  }
+
+ private:
+  D3D9BlendRenderState* render_state_ = nullptr;
+  D3D9BlendRuntimeState* runtime_state_ = nullptr;
+  D3D9BlendRuntimeSnapshot snapshot_{};
+  bool active_ = false;
+};
 #endif
 
 }  // namespace wyd::d3d9_compat
