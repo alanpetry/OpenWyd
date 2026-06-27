@@ -143,6 +143,13 @@ inline void ApplyD3D9SpriteBlendRuntimeState(
   ApplyD3D9SpriteBlendRuntimeState(&current_state, snapshot);
 }
 
+inline D3D9BlendRuntimeSnapshot ApplyD3D9SpriteBlendRuntimeState(
+    D3D9BlendRenderState& current_state) {
+  D3D9BlendRuntimeSnapshot snapshot;
+  ApplyD3D9SpriteBlendRuntimeState(current_state, &snapshot);
+  return snapshot;
+}
+
 inline void ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRuntimeState* current_state,
     D3D9BlendRuntimeSnapshot* snapshot) {
@@ -154,6 +161,13 @@ inline void ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRuntimeState& current_state,
     D3D9BlendRuntimeSnapshot* snapshot) {
   ApplyD3D9SpriteBlendRuntimeState(&current_state, snapshot);
+}
+
+inline D3D9BlendRuntimeSnapshot ApplyD3D9SpriteBlendRuntimeState(
+    D3D9BlendRuntimeState& current_state) {
+  D3D9BlendRuntimeSnapshot snapshot;
+  ApplyD3D9SpriteBlendRuntimeState(current_state, &snapshot);
+  return snapshot;
 }
 #endif
 
