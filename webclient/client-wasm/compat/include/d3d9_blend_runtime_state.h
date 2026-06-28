@@ -174,6 +174,29 @@ inline bool ApplyD3D9BlendRuntimeStateValue(
   return ApplyD3D9BlendRuntimeStateValue(&current_state, state, value);
 }
 
+inline bool ApplyD3D9BlendRuntimeStateValue(
+    IDirect3DDevice9* device,
+    D3D9BlendRuntimeState* current_state,
+    D3DRENDERSTATETYPE state,
+    DWORD value) {
+  if (!current_state) return false;
+  if (!current_state->SetRenderStateValue(state, value)) return false;
+  if (!device) {
+    ApplyD3D9BlendRuntimeState(*current_state);
+    return true;
+  }
+  ApplyD3D9BlendRenderStateToDevice(device, current_state->RenderState());
+  return true;
+}
+
+inline bool ApplyD3D9BlendRuntimeStateValue(
+    IDirect3DDevice9* device,
+    D3D9BlendRuntimeState& current_state,
+    D3DRENDERSTATETYPE state,
+    DWORD value) {
+  return ApplyD3D9BlendRuntimeStateValue(device, &current_state, state, value);
+}
+
 inline void ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRenderState* current_state,
     D3D9BlendRuntimeSnapshot* snapshot) {
