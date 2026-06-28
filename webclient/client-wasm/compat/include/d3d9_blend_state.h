@@ -71,8 +71,6 @@ inline D3D9BlendRenderState MakeD3D9BlendRenderState(
   render_state.alpha_blend_enable = alpha_blend_enable;
   render_state.src_blend = src_blend;
   render_state.dst_blend = dst_blend;
-  render_state.src_blend_alpha = src_blend;
-  render_state.dst_blend_alpha = dst_blend;
   return render_state;
 }
 
