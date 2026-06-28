@@ -4,6 +4,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include <GLES2/gl2.h>
+#include <cstring>
 #endif
 
 namespace wyd::d3d9_compat {
@@ -273,7 +274,33 @@ inline GLenum WebGLEnum(WebGLBlendEquation equation) {
   return static_cast<GLenum>(static_cast<DWORD>(equation));
 }
 
-inline void ApplyWebGLBlendState(const WebGLBlendState& state) {
+inline bool WebGLStringContains(GLenum name, const char* needle) {
+  if (!needle || needle[0] == '\0') return false;
+  const auto* raw = reinterpret_cast<const char*>(glGetString(name));
+  return raw && std::strstr(raw, needle) != nullptr;
+}
+
+inline bool WebGLMinMaxBlendEquationSupported() {
+  return WebGLStringContains(GL_VERSION, "WebGL 2") ||
+         WebGLStringContains(GL_VERSION, "OpenGL ES 3") ||
+         WebGLStringContains(GL_EXTENSIONS, "EXT_blend_minmax");
+}
+
+inline WebGLBlendEquation SupportedWebGLBlendEquation(WebGLBlendEquation equation) {
+  if (equation != WebGLBlendEquation::Min && equation != WebGLBlendEquation::Max) {
+    return equation;
+  }
+  return WebGLMinMaxBlendEquationSupported() ? equation : WebGLBlendEquation::Add;
+}
+
+inline WebGLBlendState NormalizeWebGLBlendStateForContext(WebGLBlendState state) {
+  state.rgb_op = SupportedWebGLBlendEquation(state.rgb_op);
+  state.alpha_op = SupportedWebGLBlendEquation(state.alpha_op);
+  return state;
+}
+
+inline void ApplyWebGLBlendState(const WebGLBlendState& raw_state) {
+  const WebGLBlendState state = NormalizeWebGLBlendStateForContext(raw_state);
   if (BlendStateUsesConstantColor(state)) {
     const WebGLBlendColor color = BlendFactorColorToWebGL(state.blend_factor);
     glBlendColor(color.r, color.g, color.b, color.a);
