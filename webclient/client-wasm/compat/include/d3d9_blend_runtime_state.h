@@ -159,7 +159,7 @@ inline HRESULT ApplyD3D9BlendRenderStateToDevice(
   apply(
       D3DRS_ALPHABLENDENABLE,
       render_state.alpha_blend_enable ? 1u : 0u);
-  ApplyWebGLBlendState(render_state);
+  if (first_error == S_OK) ApplyWebGLBlendState(render_state);
   return first_error;
 }
 
@@ -223,12 +223,19 @@ inline bool ApplyD3D9BlendRuntimeStateValue(
     D3DRENDERSTATETYPE state,
     DWORD value) {
   if (!current_state) return false;
-  if (!current_state->SetRenderStateValue(state, value)) return false;
+
+  D3D9BlendRuntimeState next_state = *current_state;
+  if (!next_state.SetRenderStateValue(state, value)) return false;
+
   if (!device) {
+    current_state->ResetFromRenderState(next_state.RenderState());
     ApplyD3D9BlendRuntimeState(*current_state);
     return true;
   }
-  ApplyD3D9BlendRenderStateToDevice(device, current_state->RenderState());
+
+  const HRESULT result = ApplyD3D9BlendRenderStateToDevice(device, next_state.RenderState());
+  if (result != S_OK) return false;
+  current_state->ResetFromRenderState(next_state.RenderState());
   return true;
 }
 
