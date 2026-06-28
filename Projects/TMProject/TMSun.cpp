@@ -134,6 +134,7 @@ int TMSun::Render()
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
 	g_pDevice->m_pd3dDevice->SetTexture(1, nullptr);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
 	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
