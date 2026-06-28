@@ -54,6 +54,49 @@ struct D3D9BlendRuntimeSnapshot {
   D3D9BlendRenderState render_state;
 };
 
+struct D3D9LegacyBlendFields {
+  bool alpha_blend_enable = false;
+  DWORD src_blend = D3DBLEND_ONE;
+  DWORD dst_blend = D3DBLEND_ZERO;
+};
+
+inline D3D9LegacyBlendFields CaptureD3D9LegacyBlendFields(
+    const D3D9BlendRenderState& render_state) {
+  D3D9LegacyBlendFields fields;
+  fields.alpha_blend_enable = render_state.alpha_blend_enable;
+  fields.src_blend = render_state.src_blend;
+  fields.dst_blend = render_state.dst_blend;
+  return fields;
+}
+
+inline D3D9LegacyBlendFields CaptureD3D9LegacyBlendFields(
+    const D3D9BlendRuntimeState& runtime_state) {
+  return CaptureD3D9LegacyBlendFields(runtime_state.RenderState());
+}
+
+inline void SyncD3D9LegacyBlendFields(
+    const D3D9BlendRenderState& render_state,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  const D3D9LegacyBlendFields fields = CaptureD3D9LegacyBlendFields(render_state);
+  if (alpha_blend_enable) *alpha_blend_enable = fields.alpha_blend_enable;
+  if (src_blend) *src_blend = fields.src_blend;
+  if (dst_blend) *dst_blend = fields.dst_blend;
+}
+
+inline void SyncD3D9LegacyBlendFields(
+    const D3D9BlendRuntimeState& runtime_state,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  SyncD3D9LegacyBlendFields(
+      runtime_state.RenderState(),
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+}
+
 inline D3D9BlendRuntimeSnapshot CaptureD3D9BlendRuntimeState(
     const D3D9BlendRenderState& render_state) {
   D3D9BlendRuntimeSnapshot snapshot;
