@@ -133,6 +133,15 @@ int TMSun::Render()
 	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 8u);
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
+	g_pDevice->m_pd3dDevice->SetTexture(1, nullptr);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	g_pDevice->m_pd3dDevice->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
 
 	m_vFlareDirection.y = m_fDefSize * 0.69999999f;
 
