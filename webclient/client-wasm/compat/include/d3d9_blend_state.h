@@ -233,6 +233,18 @@ inline bool BlendFactorUsesConstantColor(WebGLBlendFactor factor) {
          factor == WebGLBlendFactor::OneMinusConstantAlpha;
 }
 
+inline WebGLBlendFactor NormalizeWebGLConstantBlendFactorFamily(
+    WebGLBlendFactor factor) {
+  switch (factor) {
+    case WebGLBlendFactor::ConstantAlpha:
+      return WebGLBlendFactor::ConstantColor;
+    case WebGLBlendFactor::OneMinusConstantAlpha:
+      return WebGLBlendFactor::OneMinusConstantColor;
+    default:
+      return factor;
+  }
+}
+
 inline bool BlendStateUsesConstantColor(const WebGLBlendState& state) {
   return BlendFactorUsesConstantColor(state.src_rgb) ||
          BlendFactorUsesConstantColor(state.dst_rgb) ||
@@ -297,7 +309,7 @@ inline WebGLBlendFactor SupportedWebGLBlendFactor(
     WebGLBlendFactor factor,
     bool source_rgb_factor) {
   if (factor != WebGLBlendFactor::SrcAlphaSaturate || source_rgb_factor) {
-    return factor;
+    return NormalizeWebGLConstantBlendFactorFamily(factor);
   }
   return WebGLBlendFactor::One;
 }
