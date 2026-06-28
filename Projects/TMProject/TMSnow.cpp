@@ -96,6 +96,15 @@ int TMSnow::Render()
     }
 
     g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(2, 5000));
+    g_pDevice->m_pd3dDevice->SetTexture(1, nullptr);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+    g_pDevice->m_pd3dDevice->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
 
     auto matView = g_pDevice->m_matView;
     TMVector3 vecPosXAxis{ g_pDevice->m_matView._11, g_pDevice->m_matView._21, g_pDevice->m_matView._31 };
