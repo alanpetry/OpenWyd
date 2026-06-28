@@ -145,7 +145,13 @@ inline HRESULT ApplyD3D9BlendRenderStateToDevice(
     const HRESULT result = device->SetRenderState(state, value);
     if (first_error == S_OK && result != S_OK) first_error = result;
   };
+  const auto apply_alpha_blend_enable = [&]() {
+    apply(
+        D3DRS_ALPHABLENDENABLE,
+        render_state.alpha_blend_enable ? 1u : 0u);
+  };
 
+  if (!render_state.alpha_blend_enable) apply_alpha_blend_enable();
   apply(D3DRS_SRCBLEND, render_state.src_blend);
   apply(D3DRS_DESTBLEND, render_state.dst_blend);
   apply(D3DRS_BLENDOP, render_state.blend_op);
@@ -156,9 +162,7 @@ inline HRESULT ApplyD3D9BlendRenderStateToDevice(
   apply(D3DRS_SRCBLENDALPHA, render_state.src_blend_alpha);
   apply(D3DRS_DESTBLENDALPHA, render_state.dst_blend_alpha);
   apply(D3DRS_BLENDOPALPHA, render_state.blend_op_alpha);
-  apply(
-      D3DRS_ALPHABLENDENABLE,
-      render_state.alpha_blend_enable ? 1u : 0u);
+  if (render_state.alpha_blend_enable) apply_alpha_blend_enable();
   if (first_error == S_OK) ApplyWebGLBlendState(render_state);
   return first_error;
 }
