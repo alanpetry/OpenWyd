@@ -293,7 +293,20 @@ inline WebGLBlendEquation SupportedWebGLBlendEquation(WebGLBlendEquation equatio
   return WebGLMinMaxBlendEquationSupported() ? equation : WebGLBlendEquation::Add;
 }
 
+inline WebGLBlendFactor SupportedWebGLBlendFactor(
+    WebGLBlendFactor factor,
+    bool source_rgb_factor) {
+  if (factor != WebGLBlendFactor::SrcAlphaSaturate || source_rgb_factor) {
+    return factor;
+  }
+  return WebGLBlendFactor::One;
+}
+
 inline WebGLBlendState NormalizeWebGLBlendStateForContext(WebGLBlendState state) {
+  state.src_rgb = SupportedWebGLBlendFactor(state.src_rgb, true);
+  state.dst_rgb = SupportedWebGLBlendFactor(state.dst_rgb, false);
+  state.src_alpha = SupportedWebGLBlendFactor(state.src_alpha, false);
+  state.dst_alpha = SupportedWebGLBlendFactor(state.dst_alpha, false);
   state.rgb_op = SupportedWebGLBlendEquation(state.rgb_op);
   state.alpha_op = SupportedWebGLBlendEquation(state.alpha_op);
   return state;
