@@ -23,6 +23,12 @@ v769ClientRelease/UI/*.txt@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
+# Camera rails consumed by TMScene::ReadCameraPos during select-server demos.
+v769ClientRelease/UI/DemoCamAction.bin@/UI/DemoCamAction.bin
+v769ClientRelease/UI/DemoCamAction2.bin@/UI/DemoCamAction2.bin
+v769ClientRelease/UI/DemoCamAction3.bin@/UI/DemoCamAction3.bin
+v769ClientRelease/UI/DemoCamAction4.bin@/UI/DemoCamAction4.bin
+v769ClientRelease/UI/DemoCamAction5.bin@/UI/DemoCamAction5.bin
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
