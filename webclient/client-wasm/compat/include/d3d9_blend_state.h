@@ -84,8 +84,8 @@ inline D3D9BlendRenderState MakeD3D9SpriteBlendRenderState() {
   render_state.dst_blend = D3DBLEND_INVSRCALPHA;
   render_state.blend_op = D3DBLENDOP_ADD;
   render_state.blend_factor = 0xFFFFFFFFu;
-  render_state.separate_alpha_blend_enable = false;
-  render_state.src_blend_alpha = D3DBLEND_SRCALPHA;
+  render_state.separate_alpha_blend_enable = true;
+  render_state.src_blend_alpha = D3DBLEND_ONE;
   render_state.dst_blend_alpha = D3DBLEND_INVSRCALPHA;
   render_state.blend_op_alpha = D3DBLENDOP_ADD;
   return render_state;
