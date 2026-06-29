@@ -321,7 +321,8 @@ inline void ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRuntimeSnapshot* snapshot) {
   if (!current_state) return;
   if (snapshot) *snapshot = CaptureD3D9BlendRuntimeState(*current_state);
-  ApplyD3D9SpriteBlendRenderState(current_state);
+  *current_state = MakeD3D9SpriteBlendRenderState();
+  ApplyD3D9BlendRuntimeState(*current_state);
 }
 
 inline void ApplyD3D9SpriteBlendRuntimeState(
