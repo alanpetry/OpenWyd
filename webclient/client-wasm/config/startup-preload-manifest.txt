@@ -20,6 +20,8 @@ v769ClientRelease/object.bin@/object.bin
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
 v769ClientRelease/UI/*.txt@/UI/
+# Select-server camera timelines are opened explicitly by CamAction()/ReadCameraPos().
+v769ClientRelease/UI/DemoCamAction*.bin@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
