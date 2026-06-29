@@ -601,6 +601,30 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
                 src_blend,
                 dst_blend)) {}
 
+  ScopedD3D9SpriteDeviceBlendRuntimeState(
+      IDirect3DDevice9* device,
+      bool alpha_blend_enable,
+      DWORD src_blend,
+      DWORD dst_blend,
+      bool* alpha_blend_enable_out,
+      DWORD* src_blend_out,
+      DWORD* dst_blend_out)
+      : device_(device),
+        alpha_blend_enable_(alpha_blend_enable_out),
+        src_blend_(src_blend_out),
+        dst_blend_(dst_blend_out),
+        active_(device != nullptr) {
+    apply_result_ = ApplyD3D9SpriteBlendRuntimeState(
+        device_,
+        alpha_blend_enable,
+        src_blend,
+        dst_blend,
+        &snapshot_,
+        alpha_blend_enable_,
+        src_blend_,
+        dst_blend_);
+  }
+
   ScopedD3D9SpriteDeviceBlendRuntimeState(const ScopedD3D9SpriteDeviceBlendRuntimeState&) = delete;
   ScopedD3D9SpriteDeviceBlendRuntimeState& operator=(const ScopedD3D9SpriteDeviceBlendRuntimeState&) = delete;
 
@@ -620,7 +644,12 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
           src_blend_,
           dst_blend_);
     } else {
-      restore_result_ = RestoreD3D9BlendRuntimeState(device_, snapshot_);
+      restore_result_ = RestoreD3D9BlendRuntimeState(
+          device_,
+          snapshot_,
+          alpha_blend_enable_,
+          src_blend_,
+          dst_blend_);
     }
     active_ = false;
     return restore_result_;
