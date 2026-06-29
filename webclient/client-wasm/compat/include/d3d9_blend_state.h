@@ -186,9 +186,9 @@ inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
     case D3DBLEND_INVDESTCOLOR:
       return WebGLBlendFactor::OneMinusDstAlpha;
     case D3DBLEND_BLENDFACTOR:
-      return WebGLBlendFactor::ConstantColor;
+      return WebGLBlendFactor::ConstantAlpha;
     case D3DBLEND_INVBLENDFACTOR:
-      return WebGLBlendFactor::OneMinusConstantColor;
+      return WebGLBlendFactor::OneMinusConstantAlpha;
     default:
       return BlendFactorToWebGL(blend);
   }
@@ -235,6 +235,16 @@ inline bool BlendFactorUsesConstantColor(WebGLBlendFactor factor) {
          factor == WebGLBlendFactor::OneMinusConstantAlpha;
 }
 
+inline bool BlendFactorUsesConstantColorFamily(WebGLBlendFactor factor) {
+  return factor == WebGLBlendFactor::ConstantColor ||
+         factor == WebGLBlendFactor::OneMinusConstantColor;
+}
+
+inline bool BlendFactorUsesConstantAlphaFamily(WebGLBlendFactor factor) {
+  return factor == WebGLBlendFactor::ConstantAlpha ||
+         factor == WebGLBlendFactor::OneMinusConstantAlpha;
+}
+
 inline WebGLBlendFactor NormalizeWebGLConstantBlendFactorFamily(
     WebGLBlendFactor factor) {
   switch (factor) {
@@ -252,6 +262,24 @@ inline bool BlendStateUsesConstantColor(const WebGLBlendState& state) {
          BlendFactorUsesConstantColor(state.dst_rgb) ||
          BlendFactorUsesConstantColor(state.src_alpha) ||
          BlendFactorUsesConstantColor(state.dst_alpha);
+}
+
+inline bool BlendStateUsesConstantColorFamily(const WebGLBlendState& state) {
+  return BlendFactorUsesConstantColorFamily(state.src_rgb) ||
+         BlendFactorUsesConstantColorFamily(state.dst_rgb) ||
+         BlendFactorUsesConstantColorFamily(state.src_alpha) ||
+         BlendFactorUsesConstantColorFamily(state.dst_alpha);
+}
+
+inline bool BlendStateUsesConstantAlphaFamily(const WebGLBlendState& state) {
+  return BlendFactorUsesConstantAlphaFamily(state.src_rgb) ||
+         BlendFactorUsesConstantAlphaFamily(state.dst_rgb) ||
+         BlendFactorUsesConstantAlphaFamily(state.src_alpha) ||
+         BlendFactorUsesConstantAlphaFamily(state.dst_alpha);
+}
+
+inline bool BlendStateMixesConstantFamilies(const WebGLBlendState& state) {
+  return BlendStateUsesConstantColorFamily(state) && BlendStateUsesConstantAlphaFamily(state);
 }
 
 inline bool BlendStateUsesSeparateFactors(const WebGLBlendState& state) {
@@ -309,18 +337,23 @@ inline WebGLBlendEquation SupportedWebGLBlendEquation(WebGLBlendEquation equatio
 
 inline WebGLBlendFactor SupportedWebGLBlendFactor(
     WebGLBlendFactor factor,
-    bool source_rgb_factor) {
-  if (factor != WebGLBlendFactor::SrcAlphaSaturate || source_rgb_factor) {
+    bool source_rgb_factor,
+    bool force_constant_color_family) {
+  if (factor == WebGLBlendFactor::SrcAlphaSaturate && !source_rgb_factor) {
+    return WebGLBlendFactor::One;
+  }
+  if (force_constant_color_family) {
     return NormalizeWebGLConstantBlendFactorFamily(factor);
   }
-  return WebGLBlendFactor::One;
+  return factor;
 }
 
 inline WebGLBlendState NormalizeWebGLBlendStateForContext(WebGLBlendState state) {
-  state.src_rgb = SupportedWebGLBlendFactor(state.src_rgb, true);
-  state.dst_rgb = SupportedWebGLBlendFactor(state.dst_rgb, false);
-  state.src_alpha = SupportedWebGLBlendFactor(state.src_alpha, false);
-  state.dst_alpha = SupportedWebGLBlendFactor(state.dst_alpha, false);
+  const bool force_constant_color_family = BlendStateMixesConstantFamilies(state);
+  state.src_rgb = SupportedWebGLBlendFactor(state.src_rgb, true, force_constant_color_family);
+  state.dst_rgb = SupportedWebGLBlendFactor(state.dst_rgb, false, force_constant_color_family);
+  state.src_alpha = SupportedWebGLBlendFactor(state.src_alpha, false, force_constant_color_family);
+  state.dst_alpha = SupportedWebGLBlendFactor(state.dst_alpha, false, force_constant_color_family);
   state.rgb_op = SupportedWebGLBlendEquation(state.rgb_op);
   state.alpha_op = SupportedWebGLBlendEquation(state.alpha_op);
   return state;
