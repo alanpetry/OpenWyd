@@ -198,6 +198,34 @@ inline void RestoreD3D9BlendRuntimeState(
   RestoreD3D9BlendRuntimeState(&current_state, snapshot);
 }
 
+inline void RestoreD3D9BlendRuntimeState(
+    D3D9BlendRuntimeState& current_state,
+    const D3D9BlendRuntimeSnapshot& snapshot,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  RestoreD3D9BlendRuntimeState(current_state, snapshot);
+  SyncD3D9LegacyBlendFields(
+      current_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+}
+
+inline void RestoreD3D9BlendRuntimeState(
+    D3D9BlendRenderState& current_state,
+    const D3D9BlendRuntimeSnapshot& snapshot,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  RestoreD3D9BlendRuntimeState(current_state, snapshot);
+  SyncD3D9LegacyBlendFields(
+      current_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+}
+
 inline HRESULT RestoreD3D9BlendRuntimeState(
     IDirect3DDevice9* device,
     const D3D9BlendRuntimeSnapshot& snapshot) {
@@ -322,6 +350,34 @@ inline void ApplyD3D9SpriteBlendRuntimeState(
   ApplyD3D9SpriteBlendRuntimeState(&current_state, snapshot);
 }
 
+inline void ApplyD3D9SpriteBlendRuntimeState(
+    D3D9BlendRuntimeState& current_state,
+    D3D9BlendRuntimeSnapshot* snapshot,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  ApplyD3D9SpriteBlendRuntimeState(current_state, snapshot);
+  SyncD3D9LegacyBlendFields(
+      current_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+}
+
+inline void ApplyD3D9SpriteBlendRuntimeState(
+    D3D9BlendRenderState& current_state,
+    D3D9BlendRuntimeSnapshot* snapshot,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  ApplyD3D9SpriteBlendRuntimeState(current_state, snapshot);
+  SyncD3D9LegacyBlendFields(
+      current_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+}
+
 inline D3D9BlendRuntimeSnapshot ApplyD3D9SpriteBlendRuntimeState(
     D3D9BlendRuntimeState& current_state) {
   D3D9BlendRuntimeSnapshot snapshot;
@@ -341,6 +397,42 @@ class ScopedD3D9SpriteBlendRuntimeState {
         snapshot_(ApplyD3D9SpriteBlendRuntimeState(current_state)),
         active_(true) {}
 
+  ScopedD3D9SpriteBlendRuntimeState(
+      D3D9BlendRuntimeState& current_state,
+      bool* alpha_blend_enable,
+      DWORD* src_blend,
+      DWORD* dst_blend)
+      : runtime_state_(&current_state),
+        alpha_blend_enable_(alpha_blend_enable),
+        src_blend_(src_blend),
+        dst_blend_(dst_blend),
+        active_(true) {
+    ApplyD3D9SpriteBlendRuntimeState(
+        current_state,
+        &snapshot_,
+        alpha_blend_enable_,
+        src_blend_,
+        dst_blend_);
+  }
+
+  ScopedD3D9SpriteBlendRuntimeState(
+      D3D9BlendRenderState& current_state,
+      bool* alpha_blend_enable,
+      DWORD* src_blend,
+      DWORD* dst_blend)
+      : render_state_(&current_state),
+        alpha_blend_enable_(alpha_blend_enable),
+        src_blend_(src_blend),
+        dst_blend_(dst_blend),
+        active_(true) {
+    ApplyD3D9SpriteBlendRuntimeState(
+        current_state,
+        &snapshot_,
+        alpha_blend_enable_,
+        src_blend_,
+        dst_blend_);
+  }
+
   ScopedD3D9SpriteBlendRuntimeState(const ScopedD3D9SpriteBlendRuntimeState&) = delete;
   ScopedD3D9SpriteBlendRuntimeState& operator=(const ScopedD3D9SpriteBlendRuntimeState&) = delete;
 
@@ -349,9 +441,19 @@ class ScopedD3D9SpriteBlendRuntimeState {
   void Restore() {
     if (!active_) return;
     if (runtime_state_) {
-      RestoreD3D9BlendRuntimeState(*runtime_state_, snapshot_);
+      RestoreD3D9BlendRuntimeState(
+          *runtime_state_,
+          snapshot_,
+          alpha_blend_enable_,
+          src_blend_,
+          dst_blend_);
     } else if (render_state_) {
-      RestoreD3D9BlendRuntimeState(*render_state_, snapshot_);
+      RestoreD3D9BlendRuntimeState(
+          *render_state_,
+          snapshot_,
+          alpha_blend_enable_,
+          src_blend_,
+          dst_blend_);
     }
     active_ = false;
   }
@@ -359,6 +461,9 @@ class ScopedD3D9SpriteBlendRuntimeState {
  private:
   D3D9BlendRenderState* render_state_ = nullptr;
   D3D9BlendRuntimeState* runtime_state_ = nullptr;
+  bool* alpha_blend_enable_ = nullptr;
+  DWORD* src_blend_ = nullptr;
+  DWORD* dst_blend_ = nullptr;
   D3D9BlendRuntimeSnapshot snapshot_{};
   bool active_ = false;
 };
