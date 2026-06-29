@@ -590,6 +590,30 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
 
   ScopedD3D9SpriteDeviceBlendRuntimeState(
       IDirect3DDevice9* device,
+      D3D9BlendRuntimeState& runtime_state,
+      const D3D9BlendRuntimeSnapshot& snapshot,
+      bool* alpha_blend_enable,
+      DWORD* src_blend,
+      DWORD* dst_blend)
+      : device_(device),
+        runtime_state_(&runtime_state),
+        alpha_blend_enable_(alpha_blend_enable),
+        src_blend_(src_blend),
+        dst_blend_(dst_blend),
+        snapshot_(snapshot),
+        active_(device != nullptr) {
+    apply_result_ = ApplyD3D9SpriteBlendRuntimeState(
+        device_,
+        alpha_blend_enable_,
+        src_blend_,
+        dst_blend_);
+    if (apply_result_ == S_OK) {
+      runtime_state_->ResetFromRenderState(MakeD3D9SpriteBlendRenderState());
+    }
+  }
+
+  ScopedD3D9SpriteDeviceBlendRuntimeState(
+      IDirect3DDevice9* device,
       const D3D9BlendRenderState& render_state)
       : ScopedD3D9SpriteDeviceBlendRuntimeState(
             device,
