@@ -234,6 +234,22 @@ inline HRESULT RestoreD3D9BlendRuntimeState(
 
 inline HRESULT RestoreD3D9BlendRuntimeState(
     IDirect3DDevice9* device,
+    const D3D9BlendRuntimeSnapshot& snapshot,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  const HRESULT result = RestoreD3D9BlendRuntimeState(device, snapshot);
+  if (result != S_OK) return result;
+  SyncD3D9LegacyBlendFields(
+      snapshot.render_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+  return result;
+}
+
+inline HRESULT RestoreD3D9BlendRuntimeState(
+    IDirect3DDevice9* device,
     D3D9BlendRuntimeState& current_state,
     const D3D9BlendRuntimeSnapshot& snapshot,
     bool* alpha_blend_enable,
@@ -415,6 +431,28 @@ inline HRESULT ApplyD3D9SpriteBlendRuntimeState(
       src_blend,
       dst_blend);
   return result;
+}
+
+inline HRESULT ApplyD3D9SpriteBlendRuntimeState(
+    IDirect3DDevice9* device,
+    bool alpha_blend_enable,
+    DWORD src_blend,
+    DWORD dst_blend,
+    D3D9BlendRuntimeSnapshot* snapshot,
+    bool* alpha_blend_enable_out,
+    DWORD* src_blend_out,
+    DWORD* dst_blend_out) {
+  D3D9BlendRuntimeState current_state(
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+  return ApplyD3D9SpriteBlendRuntimeState(
+      device,
+      current_state,
+      snapshot,
+      alpha_blend_enable_out,
+      src_blend_out,
+      dst_blend_out);
 }
 
 inline D3D9BlendRuntimeSnapshot ApplyD3D9SpriteBlendRuntimeState(
