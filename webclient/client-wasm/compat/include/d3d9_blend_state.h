@@ -395,12 +395,12 @@ inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& render_s
 
 #ifdef __EMSCRIPTEN__
 inline void ApplyWebGLBlendState(const D3D9BlendRenderState& render_state) {
-  if (!render_state.alpha_blend_enable) {
-    glDisable(GL_BLEND);
-    return;
-  }
   ApplyWebGLBlendState(BuildWebGLBlendState(render_state));
-  glEnable(GL_BLEND);
+  if (render_state.alpha_blend_enable) {
+    glEnable(GL_BLEND);
+  } else {
+    glDisable(GL_BLEND);
+  }
 }
 
 inline bool ApplyD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
