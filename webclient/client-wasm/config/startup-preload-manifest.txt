@@ -22,6 +22,7 @@ v769ClientRelease/UI/*.bin@/UI/
 v769ClientRelease/UI/*.txt@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
+v769ClientRelease/UI/DemoCamAction*@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/*@/UI/Panel/
