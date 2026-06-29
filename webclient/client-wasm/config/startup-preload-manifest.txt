@@ -40,6 +40,8 @@ v769ClientRelease/Env/*.wys@/Env/
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
+v769ClientRelease/Effect/*.tga@/Effect/
+v769ClientRelease/Effect/*.dds@/Effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
 v769ClientRelease/Mesh/*.bin@/Mesh/
