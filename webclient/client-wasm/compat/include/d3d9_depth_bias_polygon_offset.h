@@ -24,6 +24,8 @@ struct D3D9DepthBiasPolygonOffsetScope {
       const D3D9DepthBiasPolygonOffset& in_offset)
       : offset(in_offset) {}
 
+  bool IsEnabled() const { return offset.enabled; }
+
   template <typename EnablePolygonOffsetFn, typename PolygonOffsetFn>
   void Begin(EnablePolygonOffsetFn enable_polygon_offset,
              PolygonOffsetFn polygon_offset) {
@@ -38,6 +40,15 @@ struct D3D9DepthBiasPolygonOffsetScope {
     if (!active) return;
     enable_polygon_offset(false);
     active = false;
+  }
+
+  template <typename EnablePolygonOffsetFn, typename PolygonOffsetFn, typename DrawFn>
+  void AroundDraw(EnablePolygonOffsetFn enable_polygon_offset,
+                  PolygonOffsetFn polygon_offset,
+                  DrawFn draw) {
+    Begin(enable_polygon_offset, polygon_offset);
+    draw();
+    End(enable_polygon_offset);
   }
 };
 
