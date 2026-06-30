@@ -13,11 +13,16 @@ inline float D3D9DepthBiasFinitePolygonOffsetValue(float value) {
   return std::isfinite(value) ? value : 0.0f;
 }
 
+inline float D3D9DepthBiasPolygonOffsetUnitsFromDepthBias(float depth_bias) {
+  constexpr float kDefaultWebGLDepthUnitScale = 16777216.0f;
+  return D3D9DepthBiasFinitePolygonOffsetValue(depth_bias) * kDefaultWebGLDepthUnitScale;
+}
+
 inline D3D9DepthBiasPolygonOffset D3D9DepthBiasPolygonOffsetFromRenderState(
     const D3D9DepthBiasRenderState& state) {
   D3D9DepthBiasPolygonOffset out{};
   out.factor = D3D9DepthBiasFinitePolygonOffsetValue(state.SlopeScaleDepthBiasFloat());
-  out.units = D3D9DepthBiasFinitePolygonOffsetValue(state.DepthBiasFloat());
+  out.units = D3D9DepthBiasPolygonOffsetUnitsFromDepthBias(state.DepthBiasFloat());
   out.enabled = (out.factor != 0.0f) || (out.units != 0.0f);
   return out;
 }
