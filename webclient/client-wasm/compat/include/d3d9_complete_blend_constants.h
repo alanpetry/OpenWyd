@@ -1,5 +1,7 @@
 #pragma once
 
+#include "d3d9.h"
+
 // Numeric D3D9 blend constants used by the WebGL blend-state bridge before
 // the compact d3d9.h shim grows the full Direct3D enum surface.
 #ifndef D3DRS_BLENDOP
