@@ -587,7 +587,7 @@ struct IDirect3DTexture9 : public IDirect3DBaseTexture9 {
     return WydD3D9Texture_GetSurfaceLevel(this, Level, ppSurfaceLevel);
   }
   HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Texture_LockRect(this, Level, pLockedRect, pRect, Flags);
+    return WydD3D9Texture_LockRect(this, Level, pLockedRect, Flags);
   }
   HRESULT UnlockRect(UINT Level) { return WydD3D9Texture_UnlockRect(this, Level); }
 };
@@ -837,8 +837,18 @@ struct IDirect3D9 : public IUnknown {
 #define D3DFVF_XYZB5 0x00E
 #define D3DFVF_NORMAL 0x010
 #define D3DFVF_DIFFUSE 0x040
+#define D3DFVF_SPECULAR 0x080
+#define D3DFVF_TEXCOUNT_MASK 0xF00
+#define D3DFVF_TEXCOUNT_SHIFT 8
+#define D3DFVF_TEX0 0x000
 #define D3DFVF_TEX1 0x100
 #define D3DFVF_TEX2 0x200
+#define D3DFVF_TEX3 0x300
+#define D3DFVF_TEX4 0x400
+#define D3DFVF_TEX5 0x500
+#define D3DFVF_TEX6 0x600
+#define D3DFVF_TEX7 0x700
+#define D3DFVF_TEX8 0x800
 #define D3DFVF_LASTBETA_UBYTE4 0x1000
 #define D3DFVF_LASTBETA_D3DCOLOR 0x8000
 
