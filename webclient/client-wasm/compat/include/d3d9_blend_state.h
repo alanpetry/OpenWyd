@@ -53,6 +53,12 @@ struct WebGLBlendState {
   DWORD blend_factor = 0xFFFFFFFFu;
 };
 
+constexpr DWORD kD3D9ColorWriteEnableAll =
+    D3DCOLORWRITEENABLE_RED |
+    D3DCOLORWRITEENABLE_GREEN |
+    D3DCOLORWRITEENABLE_BLUE |
+    D3DCOLORWRITEENABLE_ALPHA;
+
 struct D3D9BlendRenderState {
   bool alpha_blend_enable = false;
   DWORD src_blend = D3DBLEND_ONE;
@@ -63,6 +69,10 @@ struct D3D9BlendRenderState {
   DWORD src_blend_alpha = D3DBLEND_ONE;
   DWORD dst_blend_alpha = D3DBLEND_ZERO;
   DWORD blend_op_alpha = D3DBLENDOP_ADD;
+  DWORD color_write_enable = kD3D9ColorWriteEnableAll;
+  DWORD color_write_enable1 = kD3D9ColorWriteEnableAll;
+  DWORD color_write_enable2 = kD3D9ColorWriteEnableAll;
+  DWORD color_write_enable3 = kD3D9ColorWriteEnableAll;
 };
 
 inline D3D9BlendRenderState MakeD3D9BlendRenderState(
@@ -89,6 +99,10 @@ inline D3D9BlendRenderState MakeD3D9SpriteBlendRenderState() {
   render_state.src_blend_alpha = D3DBLEND_ONE;
   render_state.dst_blend_alpha = D3DBLEND_INVSRCALPHA;
   render_state.blend_op_alpha = D3DBLENDOP_ADD;
+  render_state.color_write_enable = kD3D9ColorWriteEnableAll;
+  render_state.color_write_enable1 = kD3D9ColorWriteEnableAll;
+  render_state.color_write_enable2 = kD3D9ColorWriteEnableAll;
+  render_state.color_write_enable3 = kD3D9ColorWriteEnableAll;
   return render_state;
 }
 
@@ -123,6 +137,18 @@ inline bool SetD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
       return true;
     case D3DRS_BLENDOPALPHA:
       render_state->blend_op_alpha = value;
+      return true;
+    case D3DRS_COLORWRITEENABLE:
+      render_state->color_write_enable = value;
+      return true;
+    case D3DRS_COLORWRITEENABLE1:
+      render_state->color_write_enable1 = value;
+      return true;
+    case D3DRS_COLORWRITEENABLE2:
+      render_state->color_write_enable2 = value;
+      return true;
+    case D3DRS_COLORWRITEENABLE3:
+      render_state->color_write_enable3 = value;
       return true;
     default:
       return false;
@@ -308,6 +334,11 @@ inline WebGLBlendColor BlendFactorColorToWebGL(DWORD blend_factor) {
   return color;
 }
 
+inline bool D3D9ColorWriteEnabled(DWORD color_write_enable,
+                                  DWORD channel_mask) {
+  return (color_write_enable & channel_mask) != 0u;
+}
+
 #ifdef __EMSCRIPTEN__
 inline GLenum WebGLEnum(WebGLBlendFactor factor) {
   return static_cast<GLenum>(static_cast<DWORD>(factor));
@@ -428,7 +459,16 @@ inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& render_s
 }
 
 #ifdef __EMSCRIPTEN__
+inline void ApplyWebGLColorWriteState(const D3D9BlendRenderState& render_state) {
+  glColorMask(
+      D3D9ColorWriteEnabled(render_state.color_write_enable, D3DCOLORWRITEENABLE_RED),
+      D3D9ColorWriteEnabled(render_state.color_write_enable, D3DCOLORWRITEENABLE_GREEN),
+      D3D9ColorWriteEnabled(render_state.color_write_enable, D3DCOLORWRITEENABLE_BLUE),
+      D3D9ColorWriteEnabled(render_state.color_write_enable, D3DCOLORWRITEENABLE_ALPHA));
+}
+
 inline void ApplyWebGLBlendState(const D3D9BlendRenderState& render_state) {
+  ApplyWebGLColorWriteState(render_state);
   ApplyWebGLBlendState(BuildWebGLBlendState(render_state));
   if (render_state.alpha_blend_enable) {
     glEnable(GL_BLEND);
