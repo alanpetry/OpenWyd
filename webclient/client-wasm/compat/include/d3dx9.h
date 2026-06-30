@@ -1,5 +1,6 @@
 #pragma once
 #include "d3d9.h"
+#include "d3d9_texture_stage_compat.h"
 
 struct D3DXVECTOR2 {
   float x, y;
@@ -32,16 +33,16 @@ struct D3DXQUATERNION {
 };
 
 struct D3DXCOLOR {
-  float r, g, b, a;
-  D3DXCOLOR() : r(0), g(0), b(0), a(0) {}
-  D3DXCOLOR(float ir, float ig, float ib, float ia) : r(ir), g(ig), b(ib), a(ia) {}
-  D3DXCOLOR(float ir, float ig, float ib) : r(ir), g(ig), b(ib), a(1.0f) {}
+  float r, b, g, a;
+  D3DXCOLOR() : r(0), b(0), g(0), a(0) {}
+  D3DXCOLOR(float ir, float ig, float ib, float ia) : r(ir), b(ib), g(ig), a(ia) {}
+  D3DXCOLOR(float ir, float ig, float ib) : r(ir), b(ib), g(ig), a(1.0f) {}
   D3DXCOLOR(D3DCOLOR c)
       : r(((c >> 16) & 0xFF) / 255.0f),
-        g(((c >> 8) & 0xFF) / 255.0f),
         b((c & 0xFF) / 255.0f),
+        g(((c >> 8) & 0xFF) / 255.0f),
         a(((c >> 24) & 0xFF) / 255.0f) {}
-  D3DXCOLOR(const D3DCOLORVALUE& v) : r(v.r), g(v.g), b(v.b), a(v.a) {}
+  D3DXCOLOR(const D3DCOLORVALUE& v) : r(v.r), b(v.b), g(v.g), a(v.a) {}
   operator D3DCOLORVALUE() const { return D3DCOLORVALUE{r, g, b, a}; }
   D3DXCOLOR& operator+=(const D3DXCOLOR& o) {
     r += o.r;
