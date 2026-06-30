@@ -25,10 +25,29 @@ struct D3D9DepthBiasRenderState {
   }
 };
 
+struct D3D9DepthBiasPolygonOffset {
+  bool enabled = false;
+  float factor = 0.0f;
+  float units = 0.0f;
+};
+
 inline float D3D9DepthBiasFloatFromDWORD(DWORD value) {
   float out = 0.0f;
   std::memcpy(&out, &value, sizeof(out));
   return out;
+}
+
+inline D3D9DepthBiasPolygonOffset BuildD3D9DepthBiasPolygonOffset(
+    const D3D9DepthBiasRenderState& depth_bias_state) {
+  D3D9DepthBiasPolygonOffset offset{};
+  offset.enabled = depth_bias_state.enabled();
+  if (!offset.enabled) return offset;
+
+  // D3D9 stores both depth-bias render states as DWORD-preserved float bits.
+  // WebGL's polygonOffset takes the same conceptual pair as factor/units.
+  offset.factor = D3D9DepthBiasFloatFromDWORD(depth_bias_state.slope_scale_depth_bias);
+  offset.units = D3D9DepthBiasFloatFromDWORD(depth_bias_state.depth_bias);
+  return offset;
 }
 
 inline bool SetD3D9DepthBiasRenderStateValue(
