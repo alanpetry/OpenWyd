@@ -48,13 +48,21 @@ struct D3D9DepthBiasPolygonOffsetScope {
     active = false;
   }
 
+  template <typename EnablePolygonOffsetFn, typename PolygonOffsetFn>
+  void End(EnablePolygonOffsetFn enable_polygon_offset,
+           PolygonOffsetFn polygon_offset) {
+    if (!active) return;
+    polygon_offset(0.0f, 0.0f);
+    End(enable_polygon_offset);
+  }
+
   template <typename EnablePolygonOffsetFn, typename PolygonOffsetFn, typename DrawFn>
   void AroundDraw(EnablePolygonOffsetFn enable_polygon_offset,
                   PolygonOffsetFn polygon_offset,
                   DrawFn draw) {
     Begin(enable_polygon_offset, polygon_offset);
     draw();
-    End(enable_polygon_offset);
+    End(enable_polygon_offset, polygon_offset);
   }
 };
 
