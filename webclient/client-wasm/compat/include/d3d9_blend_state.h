@@ -65,6 +65,7 @@ struct D3D9BlendRenderState {
   DWORD dst_blend = D3DBLEND_ZERO;
   DWORD blend_op = D3DBLENDOP_ADD;
   DWORD blend_factor = 0xFFFFFFFFu;
+  bool srgb_write_enable = false;
   bool separate_alpha_blend_enable = false;
   DWORD src_blend_alpha = D3DBLEND_ONE;
   DWORD dst_blend_alpha = D3DBLEND_ZERO;
@@ -95,6 +96,7 @@ inline D3D9BlendRenderState MakeD3D9SpriteBlendRenderState() {
   render_state.dst_blend = D3DBLEND_INVSRCALPHA;
   render_state.blend_op = D3DBLENDOP_ADD;
   render_state.blend_factor = 0xFFFFFFFFu;
+  render_state.srgb_write_enable = false;
   render_state.separate_alpha_blend_enable = true;
   render_state.src_blend_alpha = D3DBLEND_ONE;
   render_state.dst_blend_alpha = D3DBLEND_INVSRCALPHA;
@@ -125,6 +127,9 @@ inline bool SetD3D9BlendRenderStateValue(D3D9BlendRenderState* render_state,
       return true;
     case D3DRS_BLENDFACTOR:
       render_state->blend_factor = value;
+      return true;
+    case D3DRS_SRGBWRITEENABLE:
+      render_state->srgb_write_enable = (value != 0u);
       return true;
     case D3DRS_SEPARATEALPHABLENDENABLE:
       render_state->separate_alpha_blend_enable = (value != 0u);
