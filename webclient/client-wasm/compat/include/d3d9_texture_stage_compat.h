@@ -1,0 +1,41 @@
+#pragma once
+
+#ifndef D3DTSS_COLORARG0
+#define D3DTSS_COLORARG0 26
+#endif
+#ifndef D3DTSS_ALPHAARG0
+#define D3DTSS_ALPHAARG0 27
+#endif
+#ifndef D3DTSS_RESULTARG
+#define D3DTSS_RESULTARG 28
+#endif
+
+#ifndef D3DTA_TEMP
+#define D3DTA_TEMP 0x00000005
+#endif
+
+#ifndef D3DTADDRESS_WRAP
+#define D3DTADDRESS_WRAP 1
+#endif
+#ifndef D3DTADDRESS_MIRROR
+#define D3DTADDRESS_MIRROR 2
+#endif
+#ifndef D3DTADDRESS_CLAMP
+#define D3DTADDRESS_CLAMP 3
+#endif
+#ifndef D3DTADDRESS_BORDER
+#define D3DTADDRESS_BORDER 4
+#endif
+
+#ifndef D3DTEXF_NONE
+#define D3DTEXF_NONE 0
+#endif
+#ifndef D3DTEXF_POINT
+#define D3DTEXF_POINT 1
+#endif
+#ifndef D3DTEXF_LINEAR
+#define D3DTEXF_LINEAR 2
+#endif
+#ifndef D3DTEXF_ANISOTROPIC
+#define D3DTEXF_ANISOTROPIC 3
+#endif
