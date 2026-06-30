@@ -152,6 +152,10 @@ inline HRESULT ApplyD3D9BlendRenderStateToDevice(
   };
 
   if (!render_state.alpha_blend_enable) apply_alpha_blend_enable();
+  apply(D3DRS_COLORWRITEENABLE, render_state.color_write_enable);
+  apply(D3DRS_COLORWRITEENABLE1, render_state.color_write_enable1);
+  apply(D3DRS_COLORWRITEENABLE2, render_state.color_write_enable2);
+  apply(D3DRS_COLORWRITEENABLE3, render_state.color_write_enable3);
   apply(D3DRS_SRCBLEND, render_state.src_blend);
   apply(D3DRS_DESTBLEND, render_state.dst_blend);
   apply(D3DRS_BLENDOP, render_state.blend_op);
