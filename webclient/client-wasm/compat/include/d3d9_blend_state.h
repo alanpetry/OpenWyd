@@ -1,6 +1,7 @@
 #pragma once
 
 #include "d3d9.h"
+#include "d3d9_complete_blend_constants.h"
 
 #ifdef __EMSCRIPTEN__
 #include <GLES2/gl2.h>
