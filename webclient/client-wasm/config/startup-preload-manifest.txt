@@ -40,6 +40,8 @@ v769ClientRelease/Env/*.wys@/Env/
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
+v769ClientRelease/Effect/*.dds@/Effect/
+v769ClientRelease/Effect/*.tga@/Effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
 v769ClientRelease/Mesh/*.bin@/Mesh/
@@ -51,6 +53,8 @@ v769ClientRelease/Mesh/*.mshb@/Mesh/
 v769ClientRelease/Mesh/*.msa@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
+v769ClientRelease/Mesh/*.dds@/Mesh/
+v769ClientRelease/Mesh/*.tga@/Mesh/
 
 # Audio assets used by startup scenes.
 v769ClientRelease/Sound/*@/Sound/
