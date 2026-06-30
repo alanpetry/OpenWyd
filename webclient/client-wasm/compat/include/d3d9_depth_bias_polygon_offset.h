@@ -1,17 +1,23 @@
 #pragma once
 #include "d3d9.h"
 
+#include <cmath>
+
 struct D3D9DepthBiasPolygonOffset {
   bool enabled = false;
   float factor = 0.0f;
   float units = 0.0f;
 };
 
+inline float D3D9DepthBiasFinitePolygonOffsetValue(float value) {
+  return std::isfinite(value) ? value : 0.0f;
+}
+
 inline D3D9DepthBiasPolygonOffset D3D9DepthBiasPolygonOffsetFromRenderState(
     const D3D9DepthBiasRenderState& state) {
   D3D9DepthBiasPolygonOffset out{};
-  out.factor = state.SlopeScaleDepthBiasFloat();
-  out.units = state.DepthBiasFloat();
+  out.factor = D3D9DepthBiasFinitePolygonOffsetValue(state.SlopeScaleDepthBiasFloat());
+  out.units = D3D9DepthBiasFinitePolygonOffsetValue(state.DepthBiasFloat());
   out.enabled = (out.factor != 0.0f) || (out.units != 0.0f);
   return out;
 }
