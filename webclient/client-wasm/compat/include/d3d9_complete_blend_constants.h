@@ -1,0 +1,57 @@
+#pragma once
+
+// Numeric D3D9 blend constants used by the WebGL blend-state bridge before
+// the compact d3d9.h shim grows the full Direct3D enum surface.
+#ifndef D3DRS_BLENDOP
+#define D3DRS_BLENDOP static_cast<D3DRENDERSTATETYPE>(171)
+#endif
+#ifndef D3DRS_BLENDFACTOR
+#define D3DRS_BLENDFACTOR static_cast<D3DRENDERSTATETYPE>(193)
+#endif
+#ifndef D3DRS_SEPARATEALPHABLENDENABLE
+#define D3DRS_SEPARATEALPHABLENDENABLE static_cast<D3DRENDERSTATETYPE>(206)
+#endif
+#ifndef D3DRS_SRCBLENDALPHA
+#define D3DRS_SRCBLENDALPHA static_cast<D3DRENDERSTATETYPE>(207)
+#endif
+#ifndef D3DRS_DESTBLENDALPHA
+#define D3DRS_DESTBLENDALPHA static_cast<D3DRENDERSTATETYPE>(208)
+#endif
+#ifndef D3DRS_BLENDOPALPHA
+#define D3DRS_BLENDOPALPHA static_cast<D3DRENDERSTATETYPE>(209)
+#endif
+
+#ifndef D3DBLEND_BOTHSRCALPHA
+#define D3DBLEND_BOTHSRCALPHA 12u
+#endif
+#ifndef D3DBLEND_BOTHINVSRCALPHA
+#define D3DBLEND_BOTHINVSRCALPHA 13u
+#endif
+#ifndef D3DBLEND_BLENDFACTOR
+#define D3DBLEND_BLENDFACTOR 14u
+#endif
+#ifndef D3DBLEND_INVBLENDFACTOR
+#define D3DBLEND_INVBLENDFACTOR 15u
+#endif
+#ifndef D3DBLEND_SRCCOLOR2
+#define D3DBLEND_SRCCOLOR2 16u
+#endif
+#ifndef D3DBLEND_INVSRCCOLOR2
+#define D3DBLEND_INVSRCCOLOR2 17u
+#endif
+
+#ifndef D3DBLENDOP_ADD
+#define D3DBLENDOP_ADD 1u
+#endif
+#ifndef D3DBLENDOP_SUBTRACT
+#define D3DBLENDOP_SUBTRACT 2u
+#endif
+#ifndef D3DBLENDOP_REVSUBTRACT
+#define D3DBLENDOP_REVSUBTRACT 3u
+#endif
+#ifndef D3DBLENDOP_MIN
+#define D3DBLENDOP_MIN 4u
+#endif
+#ifndef D3DBLENDOP_MAX
+#define D3DBLENDOP_MAX 5u
+#endif
