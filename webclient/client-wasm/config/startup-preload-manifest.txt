@@ -29,12 +29,10 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
-# Environment maps/textures (select-server map uses Env/Character.*).
-v769ClientRelease/Env/*.bin@/Env/
-v769ClientRelease/Env/*.trn@/Env/
-v769ClientRelease/Env/*.dat@/Env/
-v769ClientRelease/Env/*.map@/Env/
-v769ClientRelease/Env/*.wys@/Env/
+# Environment map payloads used by the original select-server scene.
+# Keep the whole Env/ directory available so terrain, water, lightmaps, sky,
+# and per-map auxiliary assets are not dropped by extension filters.
+v769ClientRelease/Env/*@/Env/
 
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
