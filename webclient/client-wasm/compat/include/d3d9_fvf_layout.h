@@ -1,25 +1,55 @@
 #pragma once
 #include "d3d9.h"
 
-inline unsigned int D3D9FVFPositionBytes(DWORD fvf) {
-  switch (fvf & 0x00Eu) {
-    case D3DFVF_XYZ:
-      return 12u;
-    case D3DFVF_XYZRHW:
-      return 16u;
+inline unsigned int D3D9FVFPositionMask(DWORD fvf) {
+  return fvf & 0x400Eu;
+}
+
+inline unsigned int D3D9FVFPositionBlendCount(DWORD fvf) {
+  switch (D3D9FVFPositionMask(fvf)) {
     case D3DFVF_XYZB1:
-      return 16u;
+      return 1u;
     case D3DFVF_XYZB2:
-      return 20u;
+      return 2u;
     case D3DFVF_XYZB3:
-      return 24u;
+      return 3u;
     case D3DFVF_XYZB4:
-      return 28u;
+      return 4u;
     case D3DFVF_XYZB5:
-      return 32u;
+      return 5u;
     default:
       return 0u;
   }
+}
+
+inline bool D3D9FVFPositionHasRHW(DWORD fvf) {
+  return D3D9FVFPositionMask(fvf) == D3DFVF_XYZRHW;
+}
+
+inline unsigned int D3D9FVFPositionBytes(DWORD fvf) {
+  if (D3D9FVFPositionHasRHW(fvf)) return 16u;
+  switch (D3D9FVFPositionMask(fvf)) {
+    case D3DFVF_XYZ:
+    case D3DFVF_XYZB1:
+    case D3DFVF_XYZB2:
+    case D3DFVF_XYZB3:
+    case D3DFVF_XYZB4:
+    case D3DFVF_XYZB5:
+      break;
+    default:
+      return 0u;
+  }
+
+  unsigned int bytes = 12u;
+  unsigned int blend_count = D3D9FVFPositionBlendCount(fvf);
+  if (blend_count == 0u) return bytes;
+
+  if ((fvf & (D3DFVF_LASTBETA_UBYTE4 | D3DFVF_LASTBETA_D3DCOLOR)) != 0u) {
+    if (blend_count > 0u) blend_count -= 1u;
+    bytes += 4u;
+  }
+  bytes += blend_count * 4u;
+  return bytes;
 }
 
 inline unsigned int D3D9FVFNormalBytes(DWORD fvf) {
