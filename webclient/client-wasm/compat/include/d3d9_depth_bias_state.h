@@ -20,4 +20,22 @@ inline void ApplyWebGLDepthBiasState(const D3D9DepthBiasRenderState& state) {
     glDisable(GL_POLYGON_OFFSET_FILL);
   }
 }
+
+inline bool UpdateAndApplyWebGLDepthBiasRenderState(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value) {
+  if (!SetD3D9DepthBiasRenderStateValue(state, type, value)) return false;
+  ApplyWebGLDepthBiasState(*state);
+  return true;
+}
+#else
+inline void ApplyWebGLDepthBiasState(const D3D9DepthBiasRenderState&) {}
+
+inline bool UpdateAndApplyWebGLDepthBiasRenderState(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value) {
+  return SetD3D9DepthBiasRenderStateValue(state, type, value);
+}
 #endif
