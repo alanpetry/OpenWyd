@@ -1,5 +1,6 @@
 #pragma once
 #include "d3d9.h"
+#include "d3d9_texture_stage_arg0.h"
 
 struct D3DXVECTOR2 {
   float x, y;
