@@ -587,7 +587,7 @@ struct IDirect3DTexture9 : public IDirect3DBaseTexture9 {
     return WydD3D9Texture_GetSurfaceLevel(this, Level, ppSurfaceLevel);
   }
   HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Texture_LockRect(this, Level, pRect, Flags);
+    return WydD3D9Texture_LockRect(this, Level, pLockedRect, pRect, Flags);
   }
   HRESULT UnlockRect(UINT Level) { return WydD3D9Texture_UnlockRect(this, Level); }
 };
@@ -758,6 +758,8 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT SetSoftwareVertexProcessing(Args...) { return S_OK; }
   template <typename... Args>
   void SetGammaRamp(Args...) {}
+  template <typename... Args>
+  void GetGammaRamp(Args...) {}
 };
 
 struct IDirect3D9 : public IUnknown {
