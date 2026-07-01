@@ -29,6 +29,10 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
+# Select-server demo camera tracks. TMScene::ReadCameraPos appends .bin to
+# UI\\DemoCamAction*, so keep these binaries explicit in the startup preload.
+v769ClientRelease/UI/DemoCamAction*.bin@/UI/
+
 # Environment maps/textures (select-server map uses Env/Character.*).
 v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
