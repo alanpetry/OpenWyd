@@ -40,6 +40,18 @@ inline bool SetD3D9DepthBiasRenderStateValueAndCheckActive(
   return D3D9DepthBiasRenderStateAppliesPolygonOffset(*state);
 }
 
+inline void ResetD3D9DepthBiasRenderState(D3D9DepthBiasRenderState* state) {
+  if (!state) return;
+  state->slope_scale_depth_bias = 0u;
+  state->depth_bias = 0u;
+}
+
+inline bool ResetD3D9DepthBiasRenderStateAndCheckActive(
+    D3D9DepthBiasRenderState* state) {
+  ResetD3D9DepthBiasRenderState(state);
+  return state ? D3D9DepthBiasRenderStateAppliesPolygonOffset(*state) : false;
+}
+
 struct D3D9DepthBiasPolygonOffsetScope {
   D3D9DepthBiasPolygonOffset offset{};
   bool active = false;
