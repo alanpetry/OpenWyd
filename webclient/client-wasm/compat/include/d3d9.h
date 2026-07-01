@@ -658,7 +658,11 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT SetSamplerState(DWORD Sampler, D3DSAMPLERSTATETYPE Type, DWORD Value) {
     return WydD3D9Device_SetSamplerState(this, Sampler, Type, Value);
   }
-  HRESULT SetFVF(DWORD FVF) { return WydD3D9Device_SetFVF(this, FVF); }
+  HRESULT SetFVF(DWORD FVF) {
+    const HRESULT hr = WydD3D9Device_SetFVF(this, FVF);
+    if (hr != S_OK) return hr;
+    return WydD3D9Device_SetPixelShader(this, nullptr);
+  }
   HRESULT SetStreamSource(UINT StreamNumber, IDirect3DVertexBuffer9* pStreamData, UINT OffsetInBytes, UINT Stride) {
     return WydD3D9Device_SetStreamSource(this, StreamNumber, pStreamData, OffsetInBytes, Stride);
   }
@@ -837,6 +841,7 @@ struct IDirect3D9 : public IUnknown {
 #define D3DFVF_XYZB5 0x00E
 #define D3DFVF_NORMAL 0x010
 #define D3DFVF_DIFFUSE 0x040
+#define D3DFVF_SPECULAR 0x080
 #define D3DFVF_TEX1 0x100
 #define D3DFVF_TEX2 0x200
 #define D3DFVF_LASTBETA_UBYTE4 0x1000
@@ -849,6 +854,7 @@ struct IDirect3D9 : public IUnknown {
 #define D3DTA_CURRENT 0x00000001
 #define D3DTA_TEXTURE 0x00000002
 #define D3DTA_TFACTOR 0x00000003
+#define D3DTA_SPECULAR 0x00000004
 #define D3DTA_COMPLEMENT 0x00000010
 #define D3DTA_ALPHAREPLICATE 0x00000020
 
