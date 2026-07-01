@@ -27,6 +27,19 @@ inline D3D9DepthBiasPolygonOffset D3D9DepthBiasPolygonOffsetFromRenderState(
   return out;
 }
 
+inline bool D3D9DepthBiasRenderStateAppliesPolygonOffset(
+    const D3D9DepthBiasRenderState& state) {
+  return D3D9DepthBiasPolygonOffsetFromRenderState(state).enabled;
+}
+
+inline bool SetD3D9DepthBiasRenderStateValueAndCheckActive(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value) {
+  if (!SetD3D9DepthBiasRenderStateValue(state, type, value) || !state) return false;
+  return D3D9DepthBiasRenderStateAppliesPolygonOffset(*state);
+}
+
 struct D3D9DepthBiasPolygonOffsetScope {
   D3D9DepthBiasPolygonOffset offset{};
   bool active = false;
