@@ -17,3 +17,22 @@ static constexpr D3DTEXTURESTAGESTATETYPE D3DTSS_RESULTARG =
 #ifndef D3DTA_CONSTANT
 #define D3DTA_CONSTANT 0x00000006
 #endif
+
+static constexpr DWORD kD3D9TextureStageConstantRegisterIndex = 32u;
+
+inline bool D3D9TextureStageStateUsesArg0(D3DTEXTURESTAGESTATETYPE type) {
+  return type == D3DTSS_COLORARG0 || type == D3DTSS_ALPHAARG0;
+}
+
+inline DWORD D3D9TextureStageArgSelector(DWORD arg) {
+  return arg & ~(static_cast<DWORD>(D3DTA_COMPLEMENT) |
+                 static_cast<DWORD>(D3DTA_ALPHAREPLICATE));
+}
+
+inline bool D3D9TextureStageArgUsesTemp(DWORD arg) {
+  return D3D9TextureStageArgSelector(arg) == static_cast<DWORD>(D3DTA_TEMP);
+}
+
+inline bool D3D9TextureStageArgUsesConstant(DWORD arg) {
+  return D3D9TextureStageArgSelector(arg) == static_cast<DWORD>(D3DTA_CONSTANT);
+}
