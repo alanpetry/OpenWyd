@@ -837,6 +837,7 @@ struct IDirect3D9 : public IUnknown {
 #define D3DFVF_XYZB5 0x00E
 #define D3DFVF_NORMAL 0x010
 #define D3DFVF_DIFFUSE 0x040
+#define D3DFVF_SPECULAR 0x080
 #define D3DFVF_TEX1 0x100
 #define D3DFVF_TEX2 0x200
 #define D3DFVF_LASTBETA_UBYTE4 0x1000
