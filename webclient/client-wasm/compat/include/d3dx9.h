@@ -1,5 +1,6 @@
 #pragma once
 #include "d3d9.h"
+#include "d3d9_depth_bias_state.h"
 
 struct D3DXVECTOR2 {
   float x, y;
@@ -191,6 +192,7 @@ D3DXQUATERNION* D3DXQuaternionIdentity(D3DXQUATERNION*);
 D3DXQUATERNION* D3DXQuaternionRotationMatrix(D3DXQUATERNION*, const D3DXMATRIX*);
 D3DXQUATERNION* D3DXQuaternionSlerp(D3DXQUATERNION*, const D3DXQUATERNION*, const D3DXQUATERNION*, float);
 
+BOOL D3DXIntersectTri(const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, float*, float*);
 BOOL D3DXIntersectTri(const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, float*, float*, float*);
 D3DXVECTOR3* D3DXVec3Project(D3DXVECTOR3*, const D3DXVECTOR3*, const D3DVIEWPORT9*, const D3DXMATRIX*, const D3DXMATRIX*, const D3DXMATRIX*);
 D3DXCOLOR* D3DXColorLerp(D3DXCOLOR*, const D3DXCOLOR*, const D3DXCOLOR*, float);
