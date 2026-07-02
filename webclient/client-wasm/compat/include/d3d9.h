@@ -612,7 +612,7 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib);
 struct IDirect3DSurface9 : public IUnknown {
   HRESULT GetDesc(D3DSURFACE_DESC* pDesc) { return WydD3D9Surface_GetDesc(this, pDesc); }
   HRESULT LockRect(D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Surface_LockRect(this, pLockedRect, Flags);
+    return WydD3D9Surface_LockRect(this, pLockedRect, pRect, Flags);
   }
   HRESULT UnlockRect() { return WydD3D9Surface_UnlockRect(this); }
 };
@@ -709,7 +709,7 @@ struct IDirect3DDevice9 : public IUnknown {
       UINT PrimitiveCount,
       const void* pVertexStreamZeroData,
       UINT VertexStreamZeroStride) {
-    return WydD3D9Device_DrawPrimitiveUP(this, PrimitiveType, PrimitiveCount, vertex_stream_zero_data, VertexStreamZeroStride);
+    return WydD3D9Device_DrawPrimitiveUP(this, PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
   }
   HRESULT DrawIndexedPrimitiveUP(
       D3DPRIMITIVETYPE PrimitiveType,
