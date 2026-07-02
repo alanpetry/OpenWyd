@@ -103,3 +103,35 @@ inline unsigned int D3D9FVFTexcoordBytes(DWORD fvf) {
 inline unsigned int D3D9FVFVertexBytes(DWORD fvf) {
   return D3D9FVFTexcoordOffset(fvf) + D3D9FVFTexcoordBytes(fvf);
 }
+
+struct D3D9FVFDecodeLayout {
+  bool valid_position = false;
+  bool has_rhw = false;
+  bool has_normal = false;
+  bool has_diffuse = false;
+  bool has_specular = false;
+  unsigned int position_bytes = 0u;
+  unsigned int normal_offset = 0u;
+  unsigned int diffuse_offset = 0u;
+  unsigned int specular_offset = 0u;
+  unsigned int texcoord_offset = 0u;
+  unsigned int texcoord_count = 0u;
+  unsigned int vertex_bytes = 0u;
+};
+
+inline D3D9FVFDecodeLayout D3D9FVFBuildDecodeLayout(DWORD fvf) {
+  D3D9FVFDecodeLayout layout{};
+  layout.position_bytes = D3D9FVFPositionBytes(fvf);
+  layout.valid_position = layout.position_bytes != 0u;
+  layout.has_rhw = D3D9FVFPositionHasRHW(fvf);
+  layout.has_normal = D3D9FVFNormalBytes(fvf) != 0u;
+  layout.has_diffuse = D3D9FVFHasDiffuse(fvf);
+  layout.has_specular = D3D9FVFHasSpecular(fvf);
+  layout.normal_offset = layout.position_bytes;
+  layout.diffuse_offset = D3D9FVFDiffuseOffset(fvf);
+  layout.specular_offset = D3D9FVFSpecularOffset(fvf);
+  layout.texcoord_offset = D3D9FVFTexcoordOffset(fvf);
+  layout.texcoord_count = D3D9FVFTexcoordCount(fvf);
+  layout.vertex_bytes = D3D9FVFVertexBytes(fvf);
+  return layout;
+}
