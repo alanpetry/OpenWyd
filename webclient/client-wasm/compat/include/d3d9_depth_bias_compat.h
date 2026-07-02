@@ -31,6 +31,11 @@ struct D3D9DepthBiasPolygonOffset {
   float units = 0.0f;
 };
 
+struct D3D9DepthBiasRenderStateUpdate {
+  bool handled = false;
+  D3D9DepthBiasPolygonOffset offset{};
+};
+
 inline float D3D9DepthBiasFloatFromDWORD(DWORD value) {
   float out = 0.0f;
   std::memcpy(&out, &value, sizeof(out));
@@ -65,4 +70,16 @@ inline bool SetD3D9DepthBiasRenderStateValue(
     default:
       return false;
   }
+}
+
+inline D3D9DepthBiasRenderStateUpdate ApplyD3D9DepthBiasRenderStateValue(
+    D3D9DepthBiasRenderState* depth_bias_state,
+    D3DRENDERSTATETYPE render_state,
+    DWORD value) {
+  D3D9DepthBiasRenderStateUpdate update{};
+  update.handled = SetD3D9DepthBiasRenderStateValue(depth_bias_state, render_state, value);
+  if (update.handled && depth_bias_state) {
+    update.offset = BuildD3D9DepthBiasPolygonOffset(*depth_bias_state);
+  }
+  return update;
 }
