@@ -1,6 +1,9 @@
 #pragma once
 #include "unknwn.h"
 
+#include <cmath>
+#include <cstring>
+
 using D3DCOLOR = DWORD;
 
 enum D3DFORMAT : DWORD {
@@ -118,8 +121,10 @@ enum D3DRENDERSTATETYPE : DWORD {
   D3DRS_CLIPPLANEENABLE = 152,
   D3DRS_POINTSIZE = 154,
   D3DRS_MULTISAMPLEANTIALIAS = 161,
-  D3DRS_ANTIALIASEDLINEENABLE = 176,
   D3DRS_INDEXEDVERTEXBLENDENABLE = 167,
+  D3DRS_SLOPESCALEDEPTHBIAS = 175,
+  D3DRS_ANTIALIASEDLINEENABLE = 176,
+  D3DRS_DEPTHBIAS = 195,
 };
 
 enum D3DFILLMODE : DWORD {
@@ -243,6 +248,42 @@ enum D3DMATERIALCOLORSOURCE : DWORD {
 enum D3DBACKBUFFER_TYPE : DWORD {
   D3DBACKBUFFER_TYPE_MONO = 0,
 };
+
+inline float D3D9FloatFromDWORDBits(DWORD value) {
+  float out = 0.0f;
+  std::memcpy(&out, &value, sizeof(out));
+  return out;
+}
+
+inline float D3D9FiniteFloatFromDWORDBits(DWORD value) {
+  const float out = D3D9FloatFromDWORDBits(value);
+  return std::isfinite(out) ? out : 0.0f;
+}
+
+struct D3D9DepthBiasRenderState {
+  DWORD slope_scale_depth_bias = 0;
+  DWORD depth_bias = 0;
+
+  float SlopeScaleDepthBiasFloat() const { return D3D9FiniteFloatFromDWORDBits(slope_scale_depth_bias); }
+  float DepthBiasFloat() const { return D3D9FiniteFloatFromDWORDBits(depth_bias); }
+};
+
+inline bool SetD3D9DepthBiasRenderStateValue(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value) {
+  if (!state) return false;
+  switch (type) {
+    case D3DRS_SLOPESCALEDEPTHBIAS:
+      state->slope_scale_depth_bias = value;
+      return true;
+    case D3DRS_DEPTHBIAS:
+      state->depth_bias = value;
+      return true;
+    default:
+      return false;
+  }
+}
 
 struct D3DVECTOR {
   float x, y, z;
