@@ -595,7 +595,7 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib);
 struct IDirect3DSurface9 : public IUnknown {
   HRESULT GetDesc(D3DSURFACE_DESC* pDesc) { return WydD3D9Surface_GetDesc(this, pDesc); }
   HRESULT LockRect(D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Surface_LockRect(this, pLockedRect, Flags);
+    return WydD3D9Surface_LockRect(this, pLockedRect, pRect, Flags);
   }
   HRESULT UnlockRect() { return WydD3D9Surface_UnlockRect(this); }
 };
