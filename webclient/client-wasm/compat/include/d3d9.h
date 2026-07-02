@@ -117,9 +117,20 @@ enum D3DRENDERSTATETYPE : DWORD {
   D3DRS_VERTEXBLEND = 151,
   D3DRS_CLIPPLANEENABLE = 152,
   D3DRS_POINTSIZE = 154,
+  D3DRS_POINTSIZE_MIN = 155,
+  D3DRS_POINTSPRITEENABLE = 156,
+  D3DRS_POINTSCALEENABLE = 157,
+  D3DRS_POINTSCALE_A = 158,
+  D3DRS_POINTSCALE_B = 159,
+  D3DRS_POINTSCALE_C = 160,
   D3DRS_MULTISAMPLEANTIALIAS = 161,
-  D3DRS_ANTIALIASEDLINEENABLE = 176,
   D3DRS_INDEXEDVERTEXBLENDENABLE = 167,
+  D3DRS_COLORWRITEENABLE = 168,
+  D3DRS_BLENDOP = 171,
+  D3DRS_SCISSORTESTENABLE = 174,
+  D3DRS_SLOPESCALEDEPTHBIAS = 175,
+  D3DRS_ANTIALIASEDLINEENABLE = 176,
+  D3DRS_POINTSIZE_MAX = 166,
 };
 
 enum D3DFILLMODE : DWORD {
@@ -183,6 +194,19 @@ enum D3DBLEND : DWORD {
   D3DBLEND_INVDESTALPHA = 8,
   D3DBLEND_DESTCOLOR = 9,
   D3DBLEND_INVDESTCOLOR = 10,
+  D3DBLEND_SRCALPHASAT = 11,
+  D3DBLEND_BOTHSRCALPHA = 12,
+  D3DBLEND_BOTHINVSRCALPHA = 13,
+  D3DBLEND_BLENDFACTOR = 14,
+  D3DBLEND_INVBLENDFACTOR = 15,
+};
+
+enum D3DBLENDOP : DWORD {
+  D3DBLENDOP_ADD = 1,
+  D3DBLENDOP_SUBTRACT = 2,
+  D3DBLENDOP_REVSUBTRACT = 3,
+  D3DBLENDOP_MIN = 4,
+  D3DBLENDOP_MAX = 5,
 };
 
 enum D3DMULTISAMPLE_TYPE : DWORD {
@@ -587,7 +611,7 @@ struct IDirect3DTexture9 : public IDirect3DBaseTexture9 {
     return WydD3D9Texture_GetSurfaceLevel(this, Level, ppSurfaceLevel);
   }
   HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Texture_LockRect(this, Level, pLockedRect, pRect, Flags);
+    return WydD3D9Texture_LockRect(this, Level, pLockedRect, Flags);
   }
   HRESULT UnlockRect(UINT Level) { return WydD3D9Texture_UnlockRect(this, Level); }
 };
@@ -707,7 +731,7 @@ struct IDirect3DDevice9 : public IUnknown {
       D3DPOOL Pool,
       IDirect3DVertexBuffer9** ppVertexBuffer,
       void* pSharedHandle) {
-    return WydD3D9Device_CreateVertexBuffer(this, Length, Usage, FVF, Pool, ppVertexBuffer, pSharedHandle);
+    return WydD3D9Device_CreateVertexBuffer(this, Length, Usage, FVF, Pool, ppVertexBuffer, shared_handle);
   }
   HRESULT CreateIndexBuffer(
       UINT Length,
