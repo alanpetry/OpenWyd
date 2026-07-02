@@ -1,6 +1,8 @@
 #pragma once
 #include "d3d9.h"
 
+#include <cstring>
+
 inline unsigned int D3D9FVFPositionMask(DWORD fvf) {
   return fvf & 0x400Eu;
 }
@@ -134,4 +136,66 @@ inline D3D9FVFDecodeLayout D3D9FVFBuildDecodeLayout(DWORD fvf) {
   layout.texcoord_count = D3D9FVFTexcoordCount(fvf);
   layout.vertex_bytes = D3D9FVFVertexBytes(fvf);
   return layout;
+}
+
+struct D3D9FVFDecodedColorTexcoords {
+  bool valid = false;
+  DWORD diffuse = 0xFFFFFFFFu;
+  float u0 = 0.0f;
+  float v0 = 0.0f;
+  float u1 = 0.0f;
+  float v1 = 0.0f;
+  unsigned int texcoords_read = 0u;
+};
+
+inline bool D3D9FVFCanReadField(unsigned int offset, unsigned int bytes, unsigned int stride) {
+  return bytes == 0u || (offset <= stride && bytes <= stride - offset);
+}
+
+template <typename T>
+inline T D3D9FVFReadUnalignedField(const unsigned char* ptr) {
+  T out{};
+  if (ptr) std::memcpy(&out, ptr, sizeof(T));
+  return out;
+}
+
+inline bool D3D9FVFLayoutFitsStride(const D3D9FVFDecodeLayout& layout, unsigned int stride) {
+  if (!layout.valid_position) return false;
+  return layout.vertex_bytes <= stride;
+}
+
+inline D3D9FVFDecodedColorTexcoords D3D9FVFDecodeColorTexcoords(
+    const unsigned char* src,
+    unsigned int stride,
+    DWORD fvf) {
+  D3D9FVFDecodedColorTexcoords out{};
+  if (!src) return out;
+
+  const D3D9FVFDecodeLayout layout = D3D9FVFBuildDecodeLayout(fvf);
+  if (!D3D9FVFLayoutFitsStride(layout, stride)) return out;
+
+  if (layout.has_diffuse) {
+    if (!D3D9FVFCanReadField(layout.diffuse_offset, 4u, stride)) return out;
+    out.diffuse = D3D9FVFReadUnalignedField<DWORD>(src + layout.diffuse_offset);
+  }
+
+  if (layout.texcoord_count > 0u) {
+    if (!D3D9FVFCanReadField(layout.texcoord_offset, 8u, stride)) return out;
+    out.u0 = D3D9FVFReadUnalignedField<float>(src + layout.texcoord_offset + 0u);
+    out.v0 = D3D9FVFReadUnalignedField<float>(src + layout.texcoord_offset + 4u);
+    out.texcoords_read = 1u;
+  }
+
+  if (layout.texcoord_count > 1u) {
+    if (!D3D9FVFCanReadField(layout.texcoord_offset + 8u, 8u, stride)) return out;
+    out.u1 = D3D9FVFReadUnalignedField<float>(src + layout.texcoord_offset + 8u);
+    out.v1 = D3D9FVFReadUnalignedField<float>(src + layout.texcoord_offset + 12u);
+    out.texcoords_read = 2u;
+  } else {
+    out.u1 = out.u0;
+    out.v1 = out.v0;
+  }
+
+  out.valid = true;
+  return out;
 }
