@@ -598,7 +598,7 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib);
 struct IDirect3DSurface9 : public IUnknown {
   HRESULT GetDesc(D3DSURFACE_DESC* pDesc) { return WydD3D9Surface_GetDesc(this, pDesc); }
   HRESULT LockRect(D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Surface_LockRect(this, pLockedRect, pRect, Flags);
+    return WydD3D9Surface_LockRect(this, pLockedRect, Flags);
   }
   HRESULT UnlockRect() { return WydD3D9Surface_UnlockRect(this); }
 };
@@ -628,7 +628,7 @@ struct IDirect3DVertexBuffer9 : public IUnknown {
 };
 
 struct IDirect3DIndexBuffer9 : public IUnknown {
-  HRESULT GetDesc(D3DINDEXBUFFER_DESC* pDesc) { return WydD3D9IndexBuffer_GetDesc(this); }
+  HRESULT GetDesc(D3DINDEXBUFFER_DESC* pDesc) { return WydD3D9IndexBuffer_GetDesc(this, pDesc); }
   HRESULT Lock(UINT OffsetToLock, UINT SizeToLock, void** ppbData, DWORD Flags) {
     return WydD3D9IndexBuffer_Lock(this, OffsetToLock, SizeToLock, ppbData, Flags);
   }
