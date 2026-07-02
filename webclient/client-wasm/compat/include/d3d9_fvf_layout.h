@@ -148,6 +148,26 @@ struct D3D9FVFDecodedColorTexcoords {
   unsigned int texcoords_read = 0u;
 };
 
+struct D3D9FVFDecodedFixedFunctionFields {
+  bool valid = false;
+  bool has_rhw = false;
+  bool has_normal = false;
+  bool has_diffuse = false;
+  float x = 0.0f;
+  float y = 0.0f;
+  float z = 0.0f;
+  float rhw = 1.0f;
+  float nx = 0.0f;
+  float ny = 0.0f;
+  float nz = 1.0f;
+  DWORD diffuse = 0xFFFFFFFFu;
+  float u0 = 0.0f;
+  float v0 = 0.0f;
+  float u1 = 0.0f;
+  float v1 = 0.0f;
+  unsigned int texcoords_read = 0u;
+};
+
 inline bool D3D9FVFCanReadField(unsigned int offset, unsigned int bytes, unsigned int stride) {
   return bytes == 0u || (offset <= stride && bytes <= stride - offset);
 }
@@ -196,6 +216,49 @@ inline D3D9FVFDecodedColorTexcoords D3D9FVFDecodeColorTexcoords(
     out.v1 = out.v0;
   }
 
+  out.valid = true;
+  return out;
+}
+
+inline D3D9FVFDecodedFixedFunctionFields D3D9FVFDecodeFixedFunctionFields(
+    const unsigned char* src,
+    unsigned int stride,
+    DWORD fvf) {
+  D3D9FVFDecodedFixedFunctionFields out{};
+  if (!src) return out;
+
+  const D3D9FVFDecodeLayout layout = D3D9FVFBuildDecodeLayout(fvf);
+  if (!D3D9FVFLayoutFitsStride(layout, stride)) return out;
+  if (!D3D9FVFCanReadField(0u, 12u, stride)) return out;
+
+  out.has_rhw = layout.has_rhw;
+  out.has_normal = layout.has_normal;
+  out.has_diffuse = layout.has_diffuse;
+  out.x = D3D9FVFReadUnalignedField<float>(src + 0u);
+  out.y = D3D9FVFReadUnalignedField<float>(src + 4u);
+  out.z = D3D9FVFReadUnalignedField<float>(src + 8u);
+
+  if (layout.has_rhw) {
+    if (!D3D9FVFCanReadField(12u, 4u, stride)) return out;
+    out.rhw = D3D9FVFReadUnalignedField<float>(src + 12u);
+  }
+
+  if (layout.has_normal) {
+    if (!D3D9FVFCanReadField(layout.normal_offset, 12u, stride)) return out;
+    out.nx = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 0u);
+    out.ny = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 4u);
+    out.nz = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 8u);
+  }
+
+  const D3D9FVFDecodedColorTexcoords color_tex =
+      D3D9FVFDecodeColorTexcoords(src, stride, fvf);
+  if (!color_tex.valid) return out;
+  out.diffuse = color_tex.diffuse;
+  out.u0 = color_tex.u0;
+  out.v0 = color_tex.v0;
+  out.u1 = color_tex.u1;
+  out.v1 = color_tex.v1;
+  out.texcoords_read = color_tex.texcoords_read;
   out.valid = true;
   return out;
 }
