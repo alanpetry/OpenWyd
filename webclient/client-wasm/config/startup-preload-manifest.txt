@@ -30,6 +30,8 @@ v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
 # Environment maps/textures (select-server map uses Env/Character.*).
+v769ClientRelease/Env/Character.trn@/env/Character.trn
+v769ClientRelease/Env/Character.dat@/env/Character.dat
 v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
