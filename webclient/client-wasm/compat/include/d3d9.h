@@ -279,6 +279,8 @@ inline bool SetD3D9DepthBiasRenderStateValue(
   }
 }
 
+#include "d3d9_depth_bias_state.h"
+
 struct D3DVECTOR {
   float x, y, z;
 };
@@ -622,7 +624,7 @@ struct IDirect3DTexture9 : public IDirect3DBaseTexture9 {
     return WydD3D9Texture_GetSurfaceLevel(this, Level, ppSurfaceLevel);
   }
   HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Texture_LockRect(this, Level, pLockedRect, pRect, Flags);
+    return WydD3D9Texture_LockRect(this, Level, pRect, Flags);
   }
   HRESULT UnlockRect(UINT Level) { return WydD3D9Texture_UnlockRect(this, Level); }
 };
@@ -683,7 +685,14 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT GetLight(DWORD Index, D3DLIGHT9* pLight) { return WydD3D9Device_GetLight(this, Index, pLight); }
   HRESULT LightEnable(DWORD Index, BOOL Enable) { return WydD3D9Device_LightEnable(this, Index, Enable); }
   HRESULT GetLightEnable(DWORD Index, BOOL* pEnable) { return WydD3D9Device_GetLightEnable(this, Index, pEnable); }
-  HRESULT SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) { return WydD3D9Device_SetRenderState(this, State, Value); }
+  HRESULT SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) {
+    const HRESULT result = WydD3D9Device_SetRenderState(this, State, Value);
+    if (result != S_OK) return result;
+    if (SetD3D9DepthBiasRenderStateValue(&depth_bias_state_, State, Value)) {
+      ApplyWebGLDepthBiasState(depth_bias_state_);
+    }
+    return result;
+  }
   HRESULT SetTexture(DWORD Stage, IDirect3DBaseTexture9* pTexture) {
     return WydD3D9Device_SetTexture(this, Stage, pTexture);
   }
@@ -795,6 +804,9 @@ struct IDirect3DDevice9 : public IUnknown {
   void SetGammaRamp(Args...) {}
   template <typename... Args>
   void GetGammaRamp(Args...) {}
+
+ private:
+  D3D9DepthBiasRenderState depth_bias_state_{};
 };
 
 struct IDirect3D9 : public IUnknown {
