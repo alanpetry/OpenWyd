@@ -58,13 +58,22 @@ inline void ApplyWebGLDepthBiasStateForDraw(
   glDisable(GL_POLYGON_OFFSET_FILL);
 }
 
+inline bool UpdateAndApplyWebGLDepthBiasRenderStateForDraw(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value,
+    bool depth_test_enabled,
+    bool screen_space_or_replacement_draw = false) {
+  if (!SetD3D9DepthBiasRenderStateValue(state, type, value)) return false;
+  ApplyWebGLDepthBiasStateForDraw(*state, depth_test_enabled, screen_space_or_replacement_draw);
+  return true;
+}
+
 inline bool UpdateAndApplyWebGLDepthBiasRenderState(
     D3D9DepthBiasRenderState* state,
     D3DRENDERSTATETYPE type,
     DWORD value) {
-  if (!SetD3D9DepthBiasRenderStateValue(state, type, value)) return false;
-  ApplyWebGLDepthBiasState(*state);
-  return true;
+  return UpdateAndApplyWebGLDepthBiasRenderStateForDraw(state, type, value, true);
 }
 #else
 inline void ApplyWebGLDepthBiasState(const D3D9DepthBiasRenderState&) {}
@@ -74,10 +83,19 @@ inline void ApplyWebGLDepthBiasStateForDraw(
     bool,
     bool = false) {}
 
+inline bool UpdateAndApplyWebGLDepthBiasRenderStateForDraw(
+    D3D9DepthBiasRenderState* state,
+    D3DRENDERSTATETYPE type,
+    DWORD value,
+    bool,
+    bool = false) {
+  return SetD3D9DepthBiasRenderStateValue(state, type, value);
+}
+
 inline bool UpdateAndApplyWebGLDepthBiasRenderState(
     D3D9DepthBiasRenderState* state,
     D3DRENDERSTATETYPE type,
     DWORD value) {
-  return SetD3D9DepthBiasRenderStateValue(state, type, value);
+  return UpdateAndApplyWebGLDepthBiasRenderStateForDraw(state, type, value, true);
 }
 #endif
