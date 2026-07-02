@@ -138,6 +138,16 @@ inline D3D9FVFDecodeLayout D3D9FVFBuildDecodeLayout(DWORD fvf) {
   return layout;
 }
 
+inline unsigned int D3D9FVFEffectiveStride(DWORD fvf, unsigned int fallback_stride) {
+  if (fallback_stride > 0u) return fallback_stride;
+
+  const D3D9FVFDecodeLayout layout = D3D9FVFBuildDecodeLayout(fvf);
+  if (layout.valid_position) return layout.vertex_bytes;
+
+  return 12u + D3D9FVFNormalBytes(fvf) + D3D9FVFDiffuseBytes(fvf) +
+      D3D9FVFSpecularBytes(fvf) + D3D9FVFTexcoordBytes(fvf);
+}
+
 struct D3D9FVFDecodedColorTexcoords {
   bool valid = false;
   DWORD diffuse = 0xFFFFFFFFu;
