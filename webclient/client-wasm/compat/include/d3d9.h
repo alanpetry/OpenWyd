@@ -658,7 +658,13 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT SetSamplerState(DWORD Sampler, D3DSAMPLERSTATETYPE Type, DWORD Value) {
     return WydD3D9Device_SetSamplerState(this, Sampler, Type, Value);
   }
-  HRESULT SetFVF(DWORD FVF) { return WydD3D9Device_SetFVF(this, FVF); }
+  HRESULT SetFVF(DWORD FVF) {
+    HRESULT hr = WydD3D9Device_SetFVF(this, FVF);
+    if (FAILED(hr)) return hr;
+    WydD3D9Device_SetVertexShader(this, nullptr);
+    WydD3D9Device_SetPixelShader(this, nullptr);
+    return hr;
+  }
   HRESULT SetStreamSource(UINT StreamNumber, IDirect3DVertexBuffer9* pStreamData, UINT OffsetInBytes, UINT Stride) {
     return WydD3D9Device_SetStreamSource(this, StreamNumber, pStreamData, OffsetInBytes, Stride);
   }
