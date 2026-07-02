@@ -1,6 +1,7 @@
 #pragma once
 #include "unknwn.h"
 
+#include <cmath>
 #include <cstring>
 
 using D3DCOLOR = DWORD;
@@ -254,12 +255,17 @@ inline float D3D9FloatFromDWORDBits(DWORD value) {
   return out;
 }
 
+inline float D3D9FiniteFloatFromDWORDBits(DWORD value) {
+  const float out = D3D9FloatFromDWORDBits(value);
+  return std::isfinite(out) ? out : 0.0f;
+}
+
 struct D3D9DepthBiasRenderState {
   DWORD slope_scale_depth_bias = 0;
   DWORD depth_bias = 0;
 
-  float SlopeScaleDepthBiasFloat() const { return D3D9FloatFromDWORDBits(slope_scale_depth_bias); }
-  float DepthBiasFloat() const { return D3D9FloatFromDWORDBits(depth_bias); }
+  float SlopeScaleDepthBiasFloat() const { return D3D9FiniteFloatFromDWORDBits(slope_scale_depth_bias); }
+  float DepthBiasFloat() const { return D3D9FiniteFloatFromDWORDBits(depth_bias); }
 };
 
 inline bool SetD3D9DepthBiasRenderStateValue(
@@ -680,7 +686,7 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT SetMaterial(const D3DMATERIAL9* pMaterial) { return WydD3D9Device_SetMaterial(this, pMaterial); }
   HRESULT GetMaterial(D3DMATERIAL9* pMaterial) { return WydD3D9Device_GetMaterial(this, pMaterial); }
   HRESULT SetLight(DWORD Index, const D3DLIGHT9* pLight) { return WydD3D9Device_SetLight(this, Index, pLight); }
-  HRESULT GetLight(DWORD Index, D3DLIGHT9* pLight) { return WydD3D9Device_GetLight(this, Index, pLight); }
+  HRESULT GetLight(DWORD Index, D3DLIGHT9* pLight) { return WydD3D9Device_GetLight(this, Index); }
   HRESULT LightEnable(DWORD Index, BOOL Enable) { return WydD3D9Device_LightEnable(this, Index, Enable); }
   HRESULT GetLightEnable(DWORD Index, BOOL* pEnable) { return WydD3D9Device_GetLightEnable(this, Index, pEnable); }
   HRESULT SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) { return WydD3D9Device_SetRenderState(this, State, Value); }
