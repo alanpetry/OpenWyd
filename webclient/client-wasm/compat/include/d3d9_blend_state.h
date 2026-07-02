@@ -186,9 +186,9 @@ inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
     case D3DBLEND_INVDESTCOLOR:
       return WebGLBlendFactor::OneMinusDstAlpha;
     case D3DBLEND_BLENDFACTOR:
-      return WebGLBlendFactor::ConstantColor;
+      return WebGLBlendFactor::ConstantAlpha;
     case D3DBLEND_INVBLENDFACTOR:
-      return WebGLBlendFactor::OneMinusConstantColor;
+      return WebGLBlendFactor::OneMinusConstantAlpha;
     default:
       return BlendFactorToWebGL(blend);
   }
