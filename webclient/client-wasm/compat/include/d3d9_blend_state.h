@@ -409,4 +409,12 @@ inline void ApplyD3D9BlendRenderStateLegacyFunc(
   ApplyD3D9BlendRenderState(blend_state, full_runtime);
 }
 
+inline bool ApplyD3D9BlendRenderStateLegacyFuncIfExact(
+    const D3D9BlendRenderState& blend_state,
+    const WebGLLegacyBlendFuncRuntimeFns& runtime) {
+  if (!D3D9BlendRenderStateFitsLegacyBlendFunc(blend_state)) return false;
+  ApplyD3D9BlendRenderStateLegacyFunc(blend_state, runtime);
+  return true;
+}
+
 }  // namespace wyd::d3d9_compat
