@@ -1,6 +1,8 @@
 # Startup dataset focused on booting real C++ select-server scene in WASM.
 # Syntax: <source-path>@<wasm-fs-path>
 
+# Keep root client binary data available for early boot/select-server logic.
+v769ClientRelease/*.bin@/
 v769ClientRelease/serverlist.bin@/serverlist.bin
 v769ClientRelease/SkillData.bin@/SkillData.bin
 v769ClientRelease/ItemList.bin@/ItemList.bin
@@ -11,7 +13,6 @@ v769ClientRelease/itemhelp.dat@/itemhelp.dat
 v769ClientRelease/Mixhelp.dat@/Mixhelp.dat
 v769ClientRelease/sn.bin@/sn.bin
 v769ClientRelease/Config.bin@/Config.bin
-v769ClientRelease/demo2.bin@/demo2.bin
 v769ClientRelease/AniSound4.txt@/AniSound4.txt
 v769ClientRelease/Music.txt@/Music.txt
 v769ClientRelease/sound.txt@/sound.txt
