@@ -417,4 +417,15 @@ inline bool ApplyD3D9BlendRenderStateLegacyFuncIfExact(
   return true;
 }
 
+inline bool ApplyD3D9BlendRenderStateLegacyFuncOrFull(
+    const D3D9BlendRenderState& blend_state,
+    const WebGLLegacyBlendFuncRuntimeFns& legacy_runtime,
+    const WebGLBlendRuntimeFns& full_runtime) {
+  if (ApplyD3D9BlendRenderStateLegacyFuncIfExact(blend_state, legacy_runtime)) {
+    return true;
+  }
+  ApplyD3D9BlendRenderState(blend_state, full_runtime);
+  return false;
+}
+
 }  // namespace wyd::d3d9_compat
