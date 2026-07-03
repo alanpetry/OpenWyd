@@ -347,6 +347,17 @@ inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& blend_st
       blend_state.blend_op_alpha);
 }
 
+inline bool WebGLBlendStateFitsLegacyBlendFunc(const WebGLBlendState& state) {
+  if (BlendStateUsesConstantColor(state)) return false;
+  if (state.rgb_op != WebGLBlendEquation::Add || state.alpha_op != WebGLBlendEquation::Add) return false;
+  return state.src_rgb == state.src_alpha && state.dst_rgb == state.dst_alpha;
+}
+
+inline bool D3D9BlendRenderStateFitsLegacyBlendFunc(
+    const D3D9BlendRenderState& blend_state) {
+  return WebGLBlendStateFitsLegacyBlendFunc(BuildWebGLBlendState(blend_state));
+}
+
 inline void ApplyWebGLBlendState(const WebGLBlendState& state,
                                  const WebGLBlendApplyFns& apply) {
   if (BlendStateUsesConstantColor(state) && apply.blend_color) {
