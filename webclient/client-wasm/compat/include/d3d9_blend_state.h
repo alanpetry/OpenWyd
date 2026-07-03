@@ -428,4 +428,16 @@ inline bool ApplyD3D9BlendRenderStateLegacyFuncOrFull(
   return false;
 }
 
+inline bool ApplyD3D9SpriteOverlayBlendRenderState(
+    D3D9BlendRenderState* blend_state,
+    const WebGLLegacyBlendFuncRuntimeFns& legacy_runtime,
+    const WebGLBlendRuntimeFns& full_runtime) {
+  if (!blend_state) return false;
+  SetD3D9SpriteOverlayBlendRenderState(blend_state);
+  return ApplyD3D9BlendRenderStateLegacyFuncOrFull(
+      *blend_state,
+      legacy_runtime,
+      full_runtime);
+}
+
 }  // namespace wyd::d3d9_compat
