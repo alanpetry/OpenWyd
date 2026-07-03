@@ -40,6 +40,10 @@ v769ClientRelease/Env/*.wys@/Env/
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
+# Lowercase aliases match original effect path probes in the WASM filesystem.
+v769ClientRelease/Effect/*.bin@/effect/
+v769ClientRelease/Effect/*.msa@/effect/
+v769ClientRelease/Effect/*.wys@/effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
 v769ClientRelease/Mesh/*.bin@/Mesh/
