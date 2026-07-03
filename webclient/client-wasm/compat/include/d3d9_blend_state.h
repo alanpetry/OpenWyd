@@ -73,6 +73,12 @@ struct WebGLBlendRuntimeFns {
   WebGLBlendApplyFns apply;
 };
 
+struct WebGLLegacyBlendFuncRuntimeFns {
+  void (*enable_blend)() = nullptr;
+  void (*disable_blend)() = nullptr;
+  void (*blend_func)(DWORD src, DWORD dst) = nullptr;
+};
+
 inline D3D9BlendRenderState D3D9SpriteOverlayBlendRenderState() {
   D3D9BlendRenderState blend_state;
   blend_state.alpha_blend_enable = true;
@@ -380,6 +386,16 @@ inline void ApplyD3D9BlendRenderState(const D3D9BlendRenderState& blend_state,
   }
 
   ApplyWebGLBlendState(BuildWebGLBlendState(blend_state), runtime.apply);
+}
+
+inline void ApplyD3D9BlendRenderStateLegacyFunc(
+    const D3D9BlendRenderState& blend_state,
+    const WebGLLegacyBlendFuncRuntimeFns& runtime) {
+  WebGLBlendRuntimeFns full_runtime;
+  full_runtime.enable_blend = runtime.enable_blend;
+  full_runtime.disable_blend = runtime.disable_blend;
+  full_runtime.apply.blend_func = runtime.blend_func;
+  ApplyD3D9BlendRenderState(blend_state, full_runtime);
 }
 
 }  // namespace wyd::d3d9_compat
