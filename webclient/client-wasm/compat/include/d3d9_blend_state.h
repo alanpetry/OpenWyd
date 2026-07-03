@@ -122,6 +122,24 @@ inline WebGLBlendEquation BlendOpToWebGL(DWORD op) {
   }
 }
 
+inline void ApplyBothSourceAlphaBlendPair(DWORD src_blend,
+                                          WebGLBlendFactor* src,
+                                          WebGLBlendFactor* dst) {
+  if (!src || !dst) return;
+  switch (src_blend) {
+    case D3DBLEND_BOTHSRCALPHA:
+      *src = WebGLBlendFactor::SrcAlpha;
+      *dst = WebGLBlendFactor::OneMinusSrcAlpha;
+      break;
+    case D3DBLEND_BOTHINVSRCALPHA:
+      *src = WebGLBlendFactor::OneMinusSrcAlpha;
+      *dst = WebGLBlendFactor::SrcAlpha;
+      break;
+    default:
+      break;
+  }
+}
+
 inline bool BlendFactorUsesConstantColor(WebGLBlendFactor factor) {
   return factor == WebGLBlendFactor::ConstantColor ||
          factor == WebGLBlendFactor::OneMinusConstantColor ||
@@ -160,16 +178,19 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
   WebGLBlendState state;
   state.src_rgb = BlendFactorToWebGL(src_blend);
   state.dst_rgb = BlendFactorToWebGL(dst_blend);
+  ApplyBothSourceAlphaBlendPair(src_blend, &state.src_rgb, &state.dst_rgb);
   state.rgb_op = BlendOpToWebGL(blend_op);
   state.blend_factor = blend_factor;
 
   if (separate_alpha_blend_enable) {
     state.src_alpha = BlendAlphaFactorToWebGL(src_blend_alpha);
     state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend_alpha);
+    ApplyBothSourceAlphaBlendPair(src_blend_alpha, &state.src_alpha, &state.dst_alpha);
     state.alpha_op = BlendOpToWebGL(blend_op_alpha);
   } else {
     state.src_alpha = BlendAlphaFactorToWebGL(src_blend);
     state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend);
+    ApplyBothSourceAlphaBlendPair(src_blend, &state.src_alpha, &state.dst_alpha);
     state.alpha_op = state.rgb_op;
   }
 
