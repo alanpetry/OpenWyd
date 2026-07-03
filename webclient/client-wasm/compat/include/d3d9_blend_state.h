@@ -47,6 +47,12 @@ struct WebGLBlendState {
   DWORD blend_factor = 0xFFFFFFFFu;
 };
 
+struct WebGLBlendApplyFns {
+  void (*blend_color)(float r, float g, float b, float a) = nullptr;
+  void (*blend_func_separate)(DWORD src_rgb, DWORD dst_rgb, DWORD src_alpha, DWORD dst_alpha) = nullptr;
+  void (*blend_equation_separate)(DWORD rgb_op, DWORD alpha_op) = nullptr;
+};
+
 inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
   switch (blend) {
     case D3DBLEND_ZERO:
@@ -195,6 +201,28 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
   }
 
   return state;
+}
+
+inline void ApplyWebGLBlendState(const WebGLBlendState& state,
+                                 const WebGLBlendApplyFns& apply) {
+  if (BlendStateUsesConstantColor(state) && apply.blend_color) {
+    const WebGLBlendColor color = BlendFactorColorToWebGL(state.blend_factor);
+    apply.blend_color(color.r, color.g, color.b, color.a);
+  }
+
+  if (apply.blend_func_separate) {
+    apply.blend_func_separate(
+        static_cast<DWORD>(state.src_rgb),
+        static_cast<DWORD>(state.dst_rgb),
+        static_cast<DWORD>(state.src_alpha),
+        static_cast<DWORD>(state.dst_alpha));
+  }
+
+  if (apply.blend_equation_separate) {
+    apply.blend_equation_separate(
+        static_cast<DWORD>(state.rgb_op),
+        static_cast<DWORD>(state.alpha_op));
+  }
 }
 
 }  // namespace wyd::d3d9_compat
