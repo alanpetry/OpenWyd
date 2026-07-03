@@ -72,6 +72,25 @@ struct WebGLBlendRuntimeFns {
   WebGLBlendApplyFns apply;
 };
 
+inline D3D9BlendRenderState D3D9SpriteOverlayBlendRenderState() {
+  D3D9BlendRenderState blend_state;
+  blend_state.alpha_blend_enable = true;
+  blend_state.src_blend = D3DBLEND_SRCALPHA;
+  blend_state.dst_blend = D3DBLEND_INVSRCALPHA;
+  blend_state.blend_op = D3DBLENDOP_ADD;
+  blend_state.blend_factor = 0xFFFFFFFFu;
+  blend_state.separate_alpha_blend_enable = false;
+  blend_state.src_blend_alpha = D3DBLEND_SRCALPHA;
+  blend_state.dst_blend_alpha = D3DBLEND_INVSRCALPHA;
+  blend_state.blend_op_alpha = D3DBLENDOP_ADD;
+  return blend_state;
+}
+
+inline void SetD3D9SpriteOverlayBlendRenderState(D3D9BlendRenderState* blend_state) {
+  if (!blend_state) return;
+  *blend_state = D3D9SpriteOverlayBlendRenderState();
+}
+
 inline bool SetD3D9BlendRenderState(D3D9BlendRenderState* blend_state,
                                     D3DRENDERSTATETYPE render_state,
                                     DWORD value) {
