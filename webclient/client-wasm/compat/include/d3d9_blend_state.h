@@ -51,6 +51,7 @@ struct WebGLBlendApplyFns {
   void (*blend_color)(float r, float g, float b, float a) = nullptr;
   void (*blend_func_separate)(DWORD src_rgb, DWORD dst_rgb, DWORD src_alpha, DWORD dst_alpha) = nullptr;
   void (*blend_equation_separate)(DWORD rgb_op, DWORD alpha_op) = nullptr;
+  bool supports_min_max_equations = true;
 };
 
 inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
@@ -125,6 +126,19 @@ inline WebGLBlendEquation BlendOpToWebGL(DWORD op) {
     case D3DBLENDOP_ADD:
     default:
       return WebGLBlendEquation::Add;
+  }
+}
+
+inline WebGLBlendEquation BlendEquationForRuntime(
+    WebGLBlendEquation equation,
+    bool supports_min_max_equations) {
+  if (supports_min_max_equations) return equation;
+  switch (equation) {
+    case WebGLBlendEquation::Min:
+    case WebGLBlendEquation::Max:
+      return WebGLBlendEquation::Add;
+    default:
+      return equation;
   }
 }
 
@@ -219,9 +233,13 @@ inline void ApplyWebGLBlendState(const WebGLBlendState& state,
   }
 
   if (apply.blend_equation_separate) {
+    const WebGLBlendEquation rgb_op =
+        BlendEquationForRuntime(state.rgb_op, apply.supports_min_max_equations);
+    const WebGLBlendEquation alpha_op =
+        BlendEquationForRuntime(state.alpha_op, apply.supports_min_max_equations);
     apply.blend_equation_separate(
-        static_cast<DWORD>(state.rgb_op),
-        static_cast<DWORD>(state.alpha_op));
+        static_cast<DWORD>(rgb_op),
+        static_cast<DWORD>(alpha_op));
   }
 }
 
