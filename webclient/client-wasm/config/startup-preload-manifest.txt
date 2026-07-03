@@ -29,7 +29,17 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
-# Environment maps/textures (select-server map uses Env/Character.*).
+# Environment maps/textures (select-server map uses env/*.trn and env/*.dat paths).
+v769ClientRelease/Env/Character.trn@/env/Character.trn
+v769ClientRelease/Env/Character.dat@/env/Character.dat
+v769ClientRelease/Env/Field0813.trn@/env/Field0813.trn
+v769ClientRelease/Env/Field0813.dat@/env/Field0813.dat
+v769ClientRelease/Env/Field1616.trn@/env/Field1616.trn
+v769ClientRelease/Env/Field1616.dat@/env/Field1616.dat
+v769ClientRelease/Env/Field2723.trn@/env/Field2723.trn
+v769ClientRelease/Env/Field2723.dat@/env/Field2723.dat
+v769ClientRelease/Env/Field2922.trn@/env/Field2922.trn
+v769ClientRelease/Env/Field2922.dat@/env/Field2922.dat
 v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
