@@ -61,6 +61,7 @@ struct D3D9BlendRenderState {
 
 struct WebGLBlendApplyFns {
   void (*blend_color)(float r, float g, float b, float a) = nullptr;
+  void (*blend_func)(DWORD src, DWORD dst) = nullptr;
   void (*blend_func_separate)(DWORD src_rgb, DWORD dst_rgb, DWORD src_alpha, DWORD dst_alpha) = nullptr;
   void (*blend_equation_separate)(DWORD rgb_op, DWORD alpha_op) = nullptr;
   bool supports_min_max_equations = true;
@@ -316,6 +317,10 @@ inline void ApplyWebGLBlendState(const WebGLBlendState& state,
         static_cast<DWORD>(state.dst_rgb),
         static_cast<DWORD>(state.src_alpha),
         static_cast<DWORD>(state.dst_alpha));
+  } else if (apply.blend_func) {
+    apply.blend_func(
+        static_cast<DWORD>(state.src_rgb),
+        static_cast<DWORD>(state.dst_rgb));
   }
 
   if (apply.blend_equation_separate) {
