@@ -168,6 +168,14 @@ int TMSun::Render()
 		g_pDevice->m_pd3dDevice->SetFVF(324u);
 		g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
 	}
+
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 	return 1;
 }
 
