@@ -117,6 +117,7 @@ constexpr DWORD D3DXSPRITE_DO_NOT_ADDREF_TEXTURE = 0x00000100u;
 
 struct D3DXSpriteBeginStatePolicy {
   bool save_device_state = true;
+  bool restore_device_state = true;
   bool modify_render_state = true;
   bool enable_alpha_blend = false;
 };
@@ -135,6 +136,7 @@ struct D3DXSpriteDrawStateIntent {
 inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
   D3DXSpriteBeginStatePolicy policy;
   policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
+  policy.restore_device_state = policy.save_device_state;
   policy.modify_render_state = (flags & D3DXSPRITE_DONOTMODIFY_RENDERSTATE) == 0u;
   policy.enable_alpha_blend =
       policy.modify_render_state && ((flags & D3DXSPRITE_ALPHABLEND) != 0u);
