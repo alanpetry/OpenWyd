@@ -136,6 +136,26 @@ struct D3DXSpriteDrawStateIntent {
   bool enable_alpha_blend = false;
 };
 
+constexpr DWORD D3DXSPRITE_SCREENSPACE_FVF = 324u;
+
+struct D3DXSpriteScreenSpaceVertex {
+  float x;
+  float y;
+  float z;
+  float rhw;
+  D3DCOLOR diffuse;
+  float u;
+  float v;
+};
+
+inline DWORD D3DXSpriteResolveDrawFVF(const D3DXSpriteDrawStateIntent& intent) {
+  return intent.use_pretransformed_vertices ? D3DXSPRITE_SCREENSPACE_FVF : 0u;
+}
+
+inline bool D3DXSpriteUsesScreenSpaceVertices(const D3DXSpriteDrawStateIntent& intent) {
+  return D3DXSpriteResolveDrawFVF(intent) == D3DXSPRITE_SCREENSPACE_FVF;
+}
+
 inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
   D3DXSpriteBeginStatePolicy policy;
   policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
