@@ -121,6 +121,17 @@ struct D3DXSpriteBeginStatePolicy {
   bool enable_alpha_blend = false;
 };
 
+struct D3DXSpriteDrawStateIntent {
+  bool prepare_overlay_state = true;
+  bool disable_depth_test = true;
+  bool disable_depth_write = true;
+  bool disable_alpha_test = true;
+  bool disable_lighting = true;
+  bool clear_shaders = true;
+  bool configure_texture_stages = true;
+  bool enable_alpha_blend = false;
+};
+
 inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
   D3DXSpriteBeginStatePolicy policy;
   policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
@@ -128,6 +139,24 @@ inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags)
   policy.enable_alpha_blend =
       policy.modify_render_state && ((flags & D3DXSPRITE_ALPHABLEND) != 0u);
   return policy;
+}
+
+inline D3DXSpriteDrawStateIntent D3DXSpriteResolveDrawStateIntent(
+    const D3DXSpriteBeginStatePolicy& policy) {
+  D3DXSpriteDrawStateIntent intent;
+  intent.prepare_overlay_state = policy.modify_render_state;
+  intent.disable_depth_test = policy.modify_render_state;
+  intent.disable_depth_write = policy.modify_render_state;
+  intent.disable_alpha_test = policy.modify_render_state;
+  intent.disable_lighting = policy.modify_render_state;
+  intent.clear_shaders = policy.modify_render_state;
+  intent.configure_texture_stages = policy.modify_render_state;
+  intent.enable_alpha_blend = policy.enable_alpha_blend;
+  return intent;
+}
+
+inline D3DXSpriteDrawStateIntent D3DXSpriteResolveDrawStateIntent(DWORD flags) {
+  return D3DXSpriteResolveDrawStateIntent(D3DXSpriteResolveBeginStatePolicy(flags));
 }
 
 struct ID3DXBuffer : public IUnknown {
