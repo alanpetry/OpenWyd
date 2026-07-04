@@ -77,6 +77,7 @@ struct WebGLLegacyBlendFuncRuntimeFns {
   void (*enable_blend)() = nullptr;
   void (*disable_blend)() = nullptr;
   void (*blend_func)(DWORD src, DWORD dst) = nullptr;
+  void (*blend_equation)(DWORD op) = nullptr;
 };
 
 inline D3D9BlendRenderState D3D9SpriteOverlayBlendRenderState() {
@@ -407,6 +408,9 @@ inline void ApplyD3D9BlendRenderStateLegacyFunc(
   full_runtime.disable_blend = runtime.disable_blend;
   full_runtime.apply.blend_func = runtime.blend_func;
   ApplyD3D9BlendRenderState(blend_state, full_runtime);
+  if (runtime.blend_equation) {
+    runtime.blend_equation(static_cast<DWORD>(WebGLBlendEquation::Add));
+  }
 }
 
 inline bool ApplyD3D9BlendRenderStateLegacyFuncIfExact(
