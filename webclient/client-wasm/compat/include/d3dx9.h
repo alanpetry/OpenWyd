@@ -178,7 +178,6 @@ D3DXMATRIX* D3DXMatrixTranslation(D3DXMATRIX*, float, float, float);
 D3DXMATRIX* D3DXMatrixScaling(D3DXMATRIX*, float, float, float);
 D3DXMATRIX* D3DXMatrixTranspose(D3DXMATRIX*, const D3DXMATRIX*);
 D3DXMATRIX* D3DXMatrixInverse(D3DXMATRIX*, float*, const D3DXMATRIX*);
-D3DXMATRIX* D3DXMatrixLookAtLH(D3DXMATRIX*, const D3DXVECTOR3*, const D3DXVECTOR3*);
 D3DXMATRIX* D3DXMatrixLookAtLH(D3DXMATRIX*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*);
 D3DXMATRIX* D3DXMatrixPerspectiveFovLH(D3DXMATRIX*, float, float, float, float);
 D3DXMATRIX* D3DXMatrixRotationX(D3DXMATRIX*, float);
