@@ -45,6 +45,8 @@ struct WebGLBlendState {
   WebGLBlendEquation rgb_op = WebGLBlendEquation::Add;
   WebGLBlendEquation alpha_op = WebGLBlendEquation::Add;
   DWORD blend_factor = 0xFFFFFFFFu;
+  bool rgb_minmax_op_fell_back = false;
+  bool alpha_minmax_op_fell_back = false;
 };
 
 struct WebGLBlendApplyFns {
@@ -112,16 +114,20 @@ inline WebGLBlendFactor BlendAlphaFactorToWebGL(DWORD blend) {
   }
 }
 
-inline WebGLBlendEquation BlendOpToWebGL(DWORD op) {
+inline bool BlendOpNeedsMinMaxSupport(DWORD op) {
+  return op == D3DBLENDOP_MIN || op == D3DBLENDOP_MAX;
+}
+
+inline WebGLBlendEquation BlendOpToWebGL(DWORD op, bool blend_minmax_supported = false) {
   switch (op) {
     case D3DBLENDOP_SUBTRACT:
       return WebGLBlendEquation::Subtract;
     case D3DBLENDOP_REVSUBTRACT:
       return WebGLBlendEquation::ReverseSubtract;
     case D3DBLENDOP_MIN:
-      return WebGLBlendEquation::Min;
+      return blend_minmax_supported ? WebGLBlendEquation::Min : WebGLBlendEquation::Add;
     case D3DBLENDOP_MAX:
-      return WebGLBlendEquation::Max;
+      return blend_minmax_supported ? WebGLBlendEquation::Max : WebGLBlendEquation::Add;
     case D3DBLENDOP_ADD:
     default:
       return WebGLBlendEquation::Add;
@@ -180,24 +186,28 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
                                             bool separate_alpha_blend_enable,
                                             DWORD src_blend_alpha,
                                             DWORD dst_blend_alpha,
-                                            DWORD blend_op_alpha) {
+                                            DWORD blend_op_alpha,
+                                            bool blend_minmax_supported = false) {
   WebGLBlendState state;
   state.src_rgb = BlendFactorToWebGL(src_blend);
   state.dst_rgb = BlendFactorToWebGL(dst_blend);
   ApplyBothSourceAlphaBlendPair(src_blend, &state.src_rgb, &state.dst_rgb);
-  state.rgb_op = BlendOpToWebGL(blend_op);
+  state.rgb_op = BlendOpToWebGL(blend_op, blend_minmax_supported);
+  state.rgb_minmax_op_fell_back = BlendOpNeedsMinMaxSupport(blend_op) && !blend_minmax_supported;
   state.blend_factor = blend_factor;
 
   if (separate_alpha_blend_enable) {
     state.src_alpha = BlendAlphaFactorToWebGL(src_blend_alpha);
     state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend_alpha);
     ApplyBothSourceAlphaBlendPair(src_blend_alpha, &state.src_alpha, &state.dst_alpha);
-    state.alpha_op = BlendOpToWebGL(blend_op_alpha);
+    state.alpha_op = BlendOpToWebGL(blend_op_alpha, blend_minmax_supported);
+    state.alpha_minmax_op_fell_back = BlendOpNeedsMinMaxSupport(blend_op_alpha) && !blend_minmax_supported;
   } else {
     state.src_alpha = BlendAlphaFactorToWebGL(src_blend);
     state.dst_alpha = BlendAlphaFactorToWebGL(dst_blend);
     ApplyBothSourceAlphaBlendPair(src_blend, &state.src_alpha, &state.dst_alpha);
     state.alpha_op = state.rgb_op;
+    state.alpha_minmax_op_fell_back = state.rgb_minmax_op_fell_back;
   }
 
   return state;
