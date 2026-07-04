@@ -115,6 +115,21 @@ constexpr DWORD D3DXSPRITE_SORT_DEPTH_FRONTTOBACK = 0x00000040u;
 constexpr DWORD D3DXSPRITE_SORT_DEPTH_BACKTOFRONT = 0x00000080u;
 constexpr DWORD D3DXSPRITE_DO_NOT_ADDREF_TEXTURE = 0x00000100u;
 
+struct D3DXSpriteBeginStatePolicy {
+  bool save_device_state = true;
+  bool modify_render_state = true;
+  bool enable_alpha_blend = false;
+};
+
+inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
+  D3DXSpriteBeginStatePolicy policy;
+  policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
+  policy.modify_render_state = (flags & D3DXSPRITE_DONOTMODIFY_RENDERSTATE) == 0u;
+  policy.enable_alpha_blend =
+      policy.modify_render_state && ((flags & D3DXSPRITE_ALPHABLEND) != 0u);
+  return policy;
+}
+
 struct ID3DXBuffer : public IUnknown {
   void* data = nullptr;
   DWORD size = 0;
