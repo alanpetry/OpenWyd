@@ -125,7 +125,12 @@ int TMSun::Render()
 	vCenterPosFromFlare.z = 0.0f;
 
 	g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
-	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	g_pDevice->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
 	g_pDevice->SetRenderState(D3DRS_FOGENABLE, 0);
 	g_pDevice->SetRenderState(D3DRS_LIGHTING, 0);
 	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 7u);
