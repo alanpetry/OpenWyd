@@ -169,6 +169,15 @@ int TMSun::Render()
 		g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
 	}
 
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+	g_pDevice->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1u);
+	g_pDevice->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+	g_pDevice->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
 	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
 	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
