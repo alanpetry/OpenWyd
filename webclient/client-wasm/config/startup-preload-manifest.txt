@@ -50,6 +50,7 @@ v769ClientRelease/Mesh/*.msh@/Mesh/
 v769ClientRelease/Mesh/*.mshb@/Mesh/
 v769ClientRelease/Mesh/*.msa@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
+v769ClientRelease/Mesh/*.wyt@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
 # Audio assets used by startup scenes.
