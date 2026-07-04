@@ -63,6 +63,7 @@ struct WebGLBlendApplyFns {
   void (*blend_color)(float r, float g, float b, float a) = nullptr;
   void (*blend_func)(DWORD src, DWORD dst) = nullptr;
   void (*blend_func_separate)(DWORD src_rgb, DWORD dst_rgb, DWORD src_alpha, DWORD dst_alpha) = nullptr;
+  void (*blend_equation)(DWORD op) = nullptr;
   void (*blend_equation_separate)(DWORD rgb_op, DWORD alpha_op) = nullptr;
   bool supports_min_max_equations = true;
 };
@@ -378,14 +379,16 @@ inline void ApplyWebGLBlendState(const WebGLBlendState& state,
         static_cast<DWORD>(state.dst_rgb));
   }
 
+  const WebGLBlendEquation rgb_op =
+      BlendEquationForRuntime(state.rgb_op, apply.supports_min_max_equations);
+  const WebGLBlendEquation alpha_op =
+      BlendEquationForRuntime(state.alpha_op, apply.supports_min_max_equations);
   if (apply.blend_equation_separate) {
-    const WebGLBlendEquation rgb_op =
-        BlendEquationForRuntime(state.rgb_op, apply.supports_min_max_equations);
-    const WebGLBlendEquation alpha_op =
-        BlendEquationForRuntime(state.alpha_op, apply.supports_min_max_equations);
     apply.blend_equation_separate(
         static_cast<DWORD>(rgb_op),
         static_cast<DWORD>(alpha_op));
+  } else if (apply.blend_equation && rgb_op == alpha_op) {
+    apply.blend_equation(static_cast<DWORD>(rgb_op));
   }
 }
 
