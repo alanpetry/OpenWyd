@@ -121,6 +121,17 @@ struct D3DXSpriteBeginStatePolicy {
   bool enable_alpha_blend = false;
 };
 
+struct D3DXSpriteDrawStateIntent {
+  bool prepare_overlay_state = true;
+  bool disable_depth_test = true;
+  bool disable_depth_write = true;
+  bool disable_alpha_test = true;
+  bool disable_lighting = true;
+  bool clear_shaders = true;
+  bool configure_texture_stages = true;
+  bool enable_alpha_blend = false;
+};
+
 inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
   D3DXSpriteBeginStatePolicy policy;
   policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
@@ -128,6 +139,24 @@ inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags)
   policy.enable_alpha_blend =
       policy.modify_render_state && ((flags & D3DXSPRITE_ALPHABLEND) != 0u);
   return policy;
+}
+
+inline D3DXSpriteDrawStateIntent D3DXSpriteResolveDrawStateIntent(
+    const D3DXSpriteBeginStatePolicy& policy) {
+  D3DXSpriteDrawStateIntent intent;
+  intent.prepare_overlay_state = policy.modify_render_state;
+  intent.disable_depth_test = policy.modify_render_state;
+  intent.disable_depth_write = policy.modify_render_state;
+  intent.disable_alpha_test = policy.modify_render_state;
+  intent.disable_lighting = policy.modify_render_state;
+  intent.clear_shaders = policy.modify_render_state;
+  intent.configure_texture_stages = policy.modify_render_state;
+  intent.enable_alpha_blend = policy.enable_alpha_blend;
+  return intent;
+}
+
+inline D3DXSpriteDrawStateIntent D3DXSpriteResolveDrawStateIntent(DWORD flags) {
+  return D3DXSpriteResolveDrawStateIntent(D3DXSpriteResolveBeginStatePolicy(flags));
 }
 
 struct ID3DXBuffer : public IUnknown {
@@ -218,36 +247,35 @@ D3DXQUATERNION* D3DXQuaternionSlerp(D3DXQUATERNION*, const D3DXQUATERNION*, cons
 
 BOOL D3DXIntersectTri(const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, const D3DXVECTOR3*, float*, float*, float*);
 D3DXVECTOR3* D3DXVec3Project(D3DXVECTOR3*, const D3DXVECTOR3*, const D3DVIEWPORT9*, const D3DXMATRIX*, const D3DXMATRIX*, const D3DXMATRIX*);
-D3DXCOLOR* D3DXColorLerp(D3DXCOLOR*, const D3DXCOLOR*, const D3DXCOLOR*, float);
-D3DXCOLOR* D3DXColorModulate(D3DXCOLOR*, const D3DXCOLOR*, const D3DXCOLOR*);
+D3DXVECTOR3* D3DXVec3Unproject(D3DXVECTOR3*, const D3DXVECTOR3*, const D3DVIEWPORT9*, const D3DXMATRIX*, const D3DXMATRIX*, const D3DXMATRIX*);
+D3DXMATRIX* D3DXMatrixOrthoLH(D3DXMATRIX*, float, float, float, float);
+D3DXMATRIX* D3DXMatrixOrthoOffCenterLH(D3DXMATRIX*, float, float, float, float, float, float);
+D3DXMATRIX* D3DXMatrixPerspectiveLH(D3DXMATRIX*, float, float, float, float);
+D3DXMATRIX* D3DXMatrixPerspectiveOffCenterLH(D3DXMATRIX*, float, float, float, float, float, float);
+D3DXMATRIX* D3DXMatrixReflect(D3DXMATRIX*, const D3DXPLANE*);
+D3DXMATRIX* D3DXMatrixShadow(D3DXMATRIX*, const D3DXVECTOR4*, const D3DXPLANE*);
+D3DXPLANE* D3DXPlaneFromPointNormal(D3DXPLANE*, const D3DXVECTOR3*, const D3DXVECTOR3*);
+D3DXPLANE* D3DXPlaneNormalize(D3DXPLANE*, const D3DXPLANE*);
+D3DXPLANE* D3DXPlaneTransform(D3DXPLANE*, const D3DXPLANE*, const D3DXMATRIX*);
+D3DXPLANE* D3DXPlaneTransformArray(D3DXPLANE*, UINT, const D3DXPLANE*, UINT, const D3DXMATRIX*, UINT);
 
-HRESULT D3DXCreateTexture(
-    IDirect3DDevice9* pDevice,
-    UINT Width,
-    UINT Height,
-    UINT MipLevels,
-    DWORD Usage,
-    D3DFORMAT Format,
-    D3DPOOL Pool,
-    IDirect3DTexture9** ppTexture);
-HRESULT D3DXCreateTextureFromFileInMemoryEx(
-    IDirect3DDevice9* pDevice,
-    LPCVOID pSrcData,
-    UINT SrcDataSize,
-    UINT Width,
-    UINT Height,
-    UINT MipLevels,
-    DWORD Usage,
-    D3DFORMAT Format,
-    D3DPOOL Pool,
-    DWORD Filter,
-    DWORD MipFilter,
-    D3DCOLOR ColorKey,
-    void* pSrcInfo,
-    PALETTEENTRY* pPalette,
-    IDirect3DTexture9** ppTexture);
-HRESULT D3DXCreateBuffer(DWORD NumBytes, ID3DXBuffer** ppBuffer);
-HRESULT D3DXCreateSprite(IDirect3DDevice9* pDevice, ID3DXSprite** ppSprite);
+HRESULT D3DXCreateSprite(IDirect3DDevice9*, ID3DXSprite**);
+HRESULT D3DXCreateTextureFromFileA(IDirect3DDevice9*, LPCSTR, IDirect3DTexture9**);
+HRESULT D3DXCreateTextureFromFileExA(
+    IDirect3DDevice9*,
+    LPCSTR,
+    UINT,
+    UINT,
+    UINT,
+    DWORD,
+    D3DFORMAT,
+    D3DPOOL,
+    DWORD,
+    DWORD,
+    D3DCOLOR,
+    D3DXIMAGE_INFO*,
+    PALETTEENTRY*,
+    IDirect3DTexture9**);
 HRESULT D3DXSaveSurfaceToFile(
     LPCSTR pDestFile,
     D3DXIMAGE_FILEFORMAT DestFormat,
