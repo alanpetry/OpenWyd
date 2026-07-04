@@ -1,6 +1,8 @@
 #pragma once
 #include "d3d9.h"
 
+#include <cmath>
+
 struct D3DXVECTOR2 {
   float x, y;
   D3DXVECTOR2() : x(0), y(0) {}
@@ -154,6 +156,51 @@ inline DWORD D3DXSpriteResolveDrawFVF(const D3DXSpriteDrawStateIntent& intent) {
 
 inline bool D3DXSpriteUsesScreenSpaceVertices(const D3DXSpriteDrawStateIntent& intent) {
   return D3DXSpriteResolveDrawFVF(intent) == D3DXSPRITE_SCREENSPACE_FVF;
+}
+
+inline bool D3DXSpriteBuildScreenSpaceQuad(
+    const RECT& src,
+    float texture_width,
+    float texture_height,
+    const D3DXVECTOR2& scaling,
+    const D3DXVECTOR2& rotation_center,
+    float rotation,
+    const D3DXVECTOR2& translation,
+    D3DCOLOR color,
+    D3DXSpriteScreenSpaceVertex out_vertices[4]) {
+  if (!out_vertices || texture_width <= 0.0f || texture_height <= 0.0f) return false;
+  if (src.right <= src.left || src.bottom <= src.top) return false;
+
+  const float cs = std::cos(rotation);
+  const float sn = std::sin(rotation);
+  auto transform_point = [&](float sx, float sy, float* out_x, float* out_y) {
+    const float dx = (sx - rotation_center.x) * scaling.x;
+    const float dy = (sy - rotation_center.y) * scaling.y;
+    const float rx = dx * cs - dy * sn;
+    const float ry = dx * sn + dy * cs;
+    *out_x = translation.x + rotation_center.x * scaling.x + rx;
+    *out_y = translation.y + rotation_center.y * scaling.y + ry;
+  };
+
+  float x0 = 0.0f, y0 = 0.0f;
+  float x1 = 0.0f, y1 = 0.0f;
+  float x2 = 0.0f, y2 = 0.0f;
+  float x3 = 0.0f, y3 = 0.0f;
+  transform_point(static_cast<float>(src.left), static_cast<float>(src.top), &x0, &y0);
+  transform_point(static_cast<float>(src.right), static_cast<float>(src.top), &x1, &y1);
+  transform_point(static_cast<float>(src.right), static_cast<float>(src.bottom), &x2, &y2);
+  transform_point(static_cast<float>(src.left), static_cast<float>(src.bottom), &x3, &y3);
+
+  const float u0 = static_cast<float>(src.left) / texture_width;
+  const float v0 = static_cast<float>(src.top) / texture_height;
+  const float u1 = static_cast<float>(src.right) / texture_width;
+  const float v1 = static_cast<float>(src.bottom) / texture_height;
+
+  out_vertices[0] = {x0, y0, 0.0f, 1.0f, color, u0, v0};
+  out_vertices[1] = {x1, y1, 0.0f, 1.0f, color, u1, v0};
+  out_vertices[2] = {x2, y2, 0.0f, 1.0f, color, u1, v1};
+  out_vertices[3] = {x3, y3, 0.0f, 1.0f, color, u0, v1};
+  return true;
 }
 
 inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags) {
