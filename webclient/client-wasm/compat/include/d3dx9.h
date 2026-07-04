@@ -119,10 +119,13 @@ struct D3DXSpriteBeginStatePolicy {
   bool save_device_state = true;
   bool restore_device_state = true;
   bool modify_render_state = true;
+  bool object_space = false;
   bool enable_alpha_blend = false;
 };
 
 struct D3DXSpriteDrawStateIntent {
+  bool screen_space_overlay = true;
+  bool use_pretransformed_vertices = true;
   bool prepare_overlay_state = true;
   bool disable_depth_test = true;
   bool disable_depth_write = true;
@@ -138,6 +141,7 @@ inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags)
   policy.save_device_state = (flags & D3DXSPRITE_DONOTSAVESTATE) == 0u;
   policy.restore_device_state = policy.save_device_state;
   policy.modify_render_state = (flags & D3DXSPRITE_DONOTMODIFY_RENDERSTATE) == 0u;
+  policy.object_space = (flags & D3DXSPRITE_OBJECTSPACE) != 0u;
   policy.enable_alpha_blend =
       policy.modify_render_state && ((flags & D3DXSPRITE_ALPHABLEND) != 0u);
   return policy;
@@ -146,9 +150,11 @@ inline D3DXSpriteBeginStatePolicy D3DXSpriteResolveBeginStatePolicy(DWORD flags)
 inline D3DXSpriteDrawStateIntent D3DXSpriteResolveDrawStateIntent(
     const D3DXSpriteBeginStatePolicy& policy) {
   D3DXSpriteDrawStateIntent intent;
-  intent.prepare_overlay_state = policy.modify_render_state;
-  intent.disable_depth_test = policy.modify_render_state;
-  intent.disable_depth_write = policy.modify_render_state;
+  intent.screen_space_overlay = !policy.object_space;
+  intent.use_pretransformed_vertices = !policy.object_space;
+  intent.prepare_overlay_state = policy.modify_render_state && intent.screen_space_overlay;
+  intent.disable_depth_test = policy.modify_render_state && intent.screen_space_overlay;
+  intent.disable_depth_write = policy.modify_render_state && intent.screen_space_overlay;
   intent.disable_alpha_test = policy.modify_render_state;
   intent.disable_lighting = policy.modify_render_state;
   intent.clear_shaders = policy.modify_render_state;
