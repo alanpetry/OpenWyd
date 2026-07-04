@@ -449,6 +449,19 @@ inline bool SetAndApplyD3D9BlendRenderState(
   return true;
 }
 
+inline bool RestoreD3D9BlendRenderState(
+    D3D9BlendRenderState* blend_state,
+    const D3D9BlendRenderState& saved_blend_state,
+    const WebGLLegacyBlendFuncRuntimeFns& legacy_runtime,
+    const WebGLBlendRuntimeFns& full_runtime) {
+  if (!blend_state) return false;
+  *blend_state = saved_blend_state;
+  return ApplyD3D9BlendRenderStateLegacyFuncOrFull(
+      *blend_state,
+      legacy_runtime,
+      full_runtime);
+}
+
 inline bool ApplyD3D9SpriteOverlayBlendRenderState(
     D3D9BlendRenderState* blend_state,
     const WebGLLegacyBlendFuncRuntimeFns& legacy_runtime,
