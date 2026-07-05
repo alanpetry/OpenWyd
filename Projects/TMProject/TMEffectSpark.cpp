@@ -16,7 +16,7 @@ TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 ve
 	m_fWidth = fWidth;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
-	if (m_nSparkCount <= 5)
+	if (nSparkCount <= 5)
 		m_nSparkCount = nSparkCount;
 	else
 		m_nSparkCount = 5;
