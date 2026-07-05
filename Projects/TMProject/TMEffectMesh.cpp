@@ -136,7 +136,19 @@ int TMEffectMesh::Render()
 			else
 			{
 				if (!pMesh->m_pVB)
+				{
+					g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
+					g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+					g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+					g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+					g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+					g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+					g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+					g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+					g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, 4u);
+					g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 					return 0;
+				}
 
 				RDLVERTEX* pVertex{};
 				D3DVERTEXBUFFER_DESC vDesc{};
