@@ -69,19 +69,25 @@ TMSkillHolyTouch::TMSkillHolyTouch(TMVector3 vecPosition, int nType)
 	int nSoundIndex = 159;
 	if (!nType)
 	{
-		pEffect20->SetColor(0xFFAAAAAA);
-		pLightMap->SetColor(0x55555555u);
+		if (pEffect20)
+			pEffect20->SetColor(0xFFAAAAAA);
+		if (pLightMap)
+			pLightMap->SetColor(0x55555555u);
 	}
 	else if (nType == 1)
 	{
-		pEffect20->SetColor(0xFFAA77FF);
-		pLightMap->SetColor(0x55553388u);
+		if (pEffect20)
+			pEffect20->SetColor(0xFFAA77FF);
+		if (pLightMap)
+			pLightMap->SetColor(0x55553388u);
 		nSoundIndex = 158;
 	}
 	else if (nType == 2)
 	{
-		pEffect20->SetColor(0xFFAA0000);
-		pLightMap->SetColor(0x55883333u);
+		if (pEffect20)
+			pEffect20->SetColor(0xFFAA0000);
+		if (pLightMap)
+			pLightMap->SetColor(0x55883333u);
 	}
 
 	if (!nType || nType == 2)
