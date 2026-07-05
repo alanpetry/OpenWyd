@@ -241,7 +241,9 @@ int TMEffectSkinMesh::Render()
 			m_pSkinMesh2->Render(vecPosScale.x, vecPosScale.y, vecPosScale.z);
 		}
 
+		g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 		g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
 		g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 		g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
