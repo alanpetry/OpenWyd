@@ -95,6 +95,8 @@ int TMEffectBillBoard2::Render()
 
 		if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 			g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+		else
+			g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
 	}
 	return 1;
 }
