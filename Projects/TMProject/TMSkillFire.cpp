@@ -14,6 +14,7 @@ TMSkillFire::TMSkillFire(TMVector3 vecPosition, int nType, TMObject* pOwner, uns
 	m_dwLifeTime = 2400;
 	m_dwLastTime = 0;
 	m_pOwner = pOwner;
+	m_pLightMap = nullptr;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
 	
