@@ -7,6 +7,8 @@
 
 TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 vecEnd, unsigned int dwColor, unsigned int dwColor2, unsigned int dwLifeTime, float fWidth, int nSparkCount, float fProgress) :
 	TMEffect(),
+	m_pSpark{},
+	m_pShade{},
 	m_vecStartPos{ vecStart },
 	m_vecEndPos{ vecEnd }
 {
