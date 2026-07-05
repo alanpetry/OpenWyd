@@ -135,7 +135,7 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
     if (m_fProgress <= 1.0f)
     {
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
-        if (pMesh)
+        if (pMesh && pMesh->m_pVB)
         {
             D3DVERTEXBUFFER_DESC vDesc;
             pMesh->m_pVB->GetDesc(&vDesc);
