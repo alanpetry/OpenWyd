@@ -146,7 +146,10 @@ int TMSkillFire::FrameMove(unsigned int dwServerTime)
 					pEffect = new TMEffectBillBoard(33, 500u, 0.69999999f, 0.69999999f, 0.69999999f, 0.001f, 9, 11);
 
 				if (!pEffect)
-					return 0;
+				{
+					m_dwLastTime = dwServerTime;
+					return 1;
+				}
 
 				pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
 				pEffect->m_vecStartPos = { static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.x, m_vecPosition.y, static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.z };
