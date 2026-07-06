@@ -42,22 +42,25 @@ TMEffectLevelUp::TMEffectLevelUp(TMVector3 vecPosition, int nType)
 					1,
 					80);
 
-				pParticle->m_fParticleH = 0.5f;
-				pParticle->m_fParticleV = 1.5f;
-				pParticle->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-				pParticle->m_nParticleType = 3;
+				if (pParticle)
+				{
+					pParticle->m_fParticleH = 0.5f;
+					pParticle->m_fParticleV = 1.5f;
+					pParticle->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+					pParticle->m_nParticleType = 3;
 
-				float iZ = ((float)(rand() % 5 - 3) * 0.2f) + vecPosition.z;
-				float iY = vecPosition.y + 0.3f;
-				pParticle->m_vecStartPos = TMVector3(((float)(rand() % 5 - 3) * 0.2f) + vecPosition.x, iY, iZ);
-				pParticle->m_vecPosition = pParticle->m_vecStartPos;
+					float iZ = ((float)(rand() % 5 - 3) * 0.2f) + vecPosition.z;
+					float iY = vecPosition.y + 0.3f;
+					pParticle->m_vecStartPos = TMVector3(((float)(rand() % 5 - 3) * 0.2f) + vecPosition.x, iY, iZ);
+					pParticle->m_vecPosition = pParticle->m_vecStartPos;
 
-				if (nType == 1)
-					pParticle->SetColor(0xFFFFFF00);
-				else
-					pParticle->SetColor(0xFFFFEEFF);
+					if (nType == 1)
+						pParticle->SetColor(0xFFFFFF00);
+					else
+						pParticle->SetColor(0xFFFFEEFF);
 
-				g_pCurrentScene->m_pEffectContainer->AddChild(pParticle);
+					g_pCurrentScene->m_pEffectContainer->AddChild(pParticle);
+				}
 			}
 		}
 		TMEffectBillBoard* mpBill[4]{};
@@ -72,15 +75,18 @@ TMEffectLevelUp::TMEffectLevelUp(TMVector3 vecPosition, int nType)
 				1,
 				80);
 
-			mpBill[j]->m_vecPosition = TMVector3(((float)nX[j] * 0.5f) + m_vecPosition.x,
-				m_vecPosition.y - 1.0f,
-				((float)nY[j] * 0.5f) + m_vecPosition.z);
+			if (mpBill[j])
+			{
+				mpBill[j]->m_vecPosition = TMVector3(((float)nX[j] * 0.5f) + m_vecPosition.x,
+					m_vecPosition.y - 1.0f,
+					((float)nY[j] * 0.5f) + m_vecPosition.z);
 
-			mpBill[j]->m_fScaleVelY = ((float)j * 0.001f) + 0.002f;
-			mpBill[j]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-			mpBill[j]->m_bStickGround = 1;
-			mpBill[j]->SetColor(dwColor[nType][0]);
-			g_pCurrentScene->m_pEffectContainer->AddChild(mpBill[j]);
+				mpBill[j]->m_fScaleVelY = ((float)j * 0.001f) + 0.002f;
+				mpBill[j]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+				mpBill[j]->m_bStickGround = 1;
+				mpBill[j]->SetColor(dwColor[nType][0]);
+				g_pCurrentScene->m_pEffectContainer->AddChild(mpBill[j]);
+			}
 		}
 	}
 
@@ -91,26 +97,35 @@ TMEffectLevelUp::TMEffectLevelUp(TMVector3 vecPosition, int nType)
 		0.0099999998f,
 		0.0020000001f,
 		0);
-	pEffect2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-	pEffect2->m_vecPosition = m_vecPosition;
-	pEffect2->m_vecPosition.y = pEffect2->m_vecPosition.y + 0.1f;
-	pEffect2->SetColor(dwColor[nType][0]);
-	g_pCurrentScene->m_pEffectContainer->AddChild(pEffect2);
+	if (pEffect2)
+	{
+		pEffect2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+		pEffect2->m_vecPosition = m_vecPosition;
+		pEffect2->m_vecPosition.y = pEffect2->m_vecPosition.y + 0.1f;
+		pEffect2->SetColor(dwColor[nType][0]);
+		g_pCurrentScene->m_pEffectContainer->AddChild(pEffect2);
+	}
 
 	auto pEffect20 = new TMEffectBillBoard2(2, 2000, 2.0f, 2.0f, 2.0f, 0.0f, 0);
-	pEffect20->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-	pEffect20->m_vecPosition = m_vecPosition;
-	pEffect20->m_bSlope = 1;
-	pEffect20->m_vecPosition.y = pEffect20->m_vecPosition.y + 0.30000001f;
-	pEffect20->SetColor(0xFF555555);
-	g_pCurrentScene->m_pEffectContainer->AddChild(pEffect20);
+	if (pEffect20)
+	{
+		pEffect20->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+		pEffect20->m_vecPosition = m_vecPosition;
+		pEffect20->m_bSlope = 1;
+		pEffect20->m_vecPosition.y = pEffect20->m_vecPosition.y + 0.30000001f;
+		pEffect20->SetColor(0xFF555555);
+		g_pCurrentScene->m_pEffectContainer->AddChild(pEffect20);
+	}
 
 	auto pLightMap = new TMShade(4, 7, 1.0f);
-	pLightMap->SetColor(dwColor[nType][1]);
-	pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-	pLightMap->SetPosition(TMVector2(m_vecPosition.x, m_vecPosition.z));
-	pLightMap->m_dwLifeTime = 3000;
-	g_pCurrentScene->m_pEffectContainer->AddChild(pLightMap);
+	if (pLightMap)
+	{
+		pLightMap->SetColor(dwColor[nType][1]);
+		pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+		pLightMap->SetPosition(TMVector2(m_vecPosition.x, m_vecPosition.z));
+		pLightMap->m_dwLifeTime = 3000;
+		g_pCurrentScene->m_pEffectContainer->AddChild(pLightMap);
+	}
 
 	m_dwLifeTime = 1000;
 }
