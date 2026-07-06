@@ -34,6 +34,10 @@ v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
+v769ClientRelease/Env/*.bmp@/Env/
+v769ClientRelease/Env/*.tga@/Env/
+v769ClientRelease/Env/*.dds@/Env/
+v769ClientRelease/Env/*.wyt@/Env/
 v769ClientRelease/Env/*.wys@/Env/
 
 # Effect texture/animation bundles.
