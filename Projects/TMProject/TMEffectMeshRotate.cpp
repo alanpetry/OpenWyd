@@ -85,6 +85,9 @@ int TMEffectMeshRotate::Render()
 		if (pMesh == nullptr)
 			return 0;
 
+		if (!pMesh->m_pVB)
+			return 0;
+
 		g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
 		g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
 		g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
