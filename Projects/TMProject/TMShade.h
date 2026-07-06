@@ -11,7 +11,7 @@ public:
 
 	virtual int SetPosition(TMVector2 vecPosition);
 	int Render() override;
-	virtual void RenderUnder();
+	virtual int RenderUnder();
 	virtual void SetColor(unsigned int dwColor);
 	int FrameMove(unsigned int dwServerTime) override;
 	int IsVisible() override;
