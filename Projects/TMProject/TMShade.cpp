@@ -212,12 +212,12 @@ int TMShade::Render()
     if (g_bHideEffect == 1)
         return 0;
     if (IsVisible() == 1)
-        RenderUnder();
+        return RenderUnder();
 
     return 1;
 }
 
-void TMShade::RenderUnder()
+int TMShade::RenderUnder()
 {
     if (m_wpIndex && m_pVertex)
     {
@@ -263,7 +263,7 @@ void TMShade::RenderUnder()
         g_pDevice->m_pd3dDevice->SetFVF(322);
         g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nTextureIndex, 10000));
 
-        g_pDevice->m_pd3dDevice->DrawIndexedPrimitiveUP(
+        auto nDrawResult = g_pDevice->m_pd3dDevice->DrawIndexedPrimitiveUP(
             D3DPT_TRIANGLELIST,
             0,
             m_nVertexNum,
@@ -281,7 +281,11 @@ void TMShade::RenderUnder()
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+
+        return nDrawResult < 0 ? 0 : 1;
     }
+
+    return 0;
 }
 
 void TMShade::SetColor(unsigned int dwColor)
