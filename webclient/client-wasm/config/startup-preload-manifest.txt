@@ -11,6 +11,7 @@ v769ClientRelease/itemhelp.dat@/itemhelp.dat
 v769ClientRelease/Mixhelp.dat@/Mixhelp.dat
 v769ClientRelease/sn.bin@/sn.bin
 v769ClientRelease/Config.bin@/Config.bin
+v769ClientRelease/demo2.bin@/demo2.bin
 v769ClientRelease/AniSound4.txt@/AniSound4.txt
 v769ClientRelease/Music.txt@/Music.txt
 v769ClientRelease/sound.txt@/sound.txt
