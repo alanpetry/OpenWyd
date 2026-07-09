@@ -103,6 +103,7 @@ int TMRain::Render()
     m_vertex[3].position.z = (float)(vecNegXAxis.z + vecNegYAxis.z) * fSize;
 
     g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(9, 5000));
+    int bDrawFailed = 0;
     for (int i = 0; i < 50; ++i)
     {
         int nX4 = (int)(m_vecRainPosition[i].x + vecCam.x) / 4;
@@ -118,7 +119,8 @@ int TMRain::Render()
             D3DXMatrixTranslation(&m_matEffect, m_vecRainPosition[i].x + vecCam.x, m_vecRainPosition[i].y, m_vecRainPosition[i].z + vecCam.y);
             g_pDevice->m_pd3dDevice->SetTransform(D3DTS_WORLD, &m_matEffect);
             g_pDevice->m_pd3dDevice->SetFVF(322);
-            g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u);
+            if (g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u) < 0)
+                bDrawFailed = 1;
         }
     }
 
@@ -130,7 +132,7 @@ int TMRain::Render()
     g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
-    return 1;
+    return bDrawFailed ? 0 : 1;
 }
 
 int TMRain::FrameMove(unsigned int dwServerTime)
