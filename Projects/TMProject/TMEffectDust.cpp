@@ -292,7 +292,7 @@ int TMEffectDust::Render()
                 m_pMeshDropStone[i]->Render(m_vecStonePos[i].x, m_vecStonePos[i].y, m_vecStonePos[i].z, 0, 0, 0, 0, 0);
         }
 
-        g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
+        g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
         g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 1u);
         g_pDevice->SetTextureStageState(1u, D3DTSS_TEXCOORDINDEX, 1u);
     }
