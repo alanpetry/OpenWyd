@@ -61,6 +61,7 @@ function parseArgs(argv) {
     allStates: false,
     summaryOnly: false,
     mouseTests: [],
+    mouseMoveTicks: 90,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -192,6 +193,11 @@ function parseArgs(argv) {
     }
     if (a === "--mouse-test" && argv[i + 1]) {
       opts.mouseTests.push(String(argv[i + 1] || "").toLowerCase());
+      i += 1;
+      continue;
+    }
+    if (a === "--mouse-move-ticks" && argv[i + 1]) {
+      opts.mouseMoveTicks = Number.parseInt(argv[i + 1], 10) || opts.mouseMoveTicks;
       i += 1;
       continue;
     }
@@ -489,7 +495,7 @@ async function runFieldMoveMouseTest(page, opts) {
   await page.mouse.down({ button: "left" });
   await tickWasm(page, 4, opts.tickMs);
   await page.mouse.up({ button: "left" });
-  await tickWasm(page, 90, opts.tickMs);
+  await tickWasm(page, opts.mouseMoveTicks, opts.tickMs);
 
   const after = await readFieldMouseState(page);
   const humanDelta = Math.hypot((after.humanX ?? 0) - (before.humanX ?? 0), (after.humanY ?? 0) - (before.humanY ?? 0));
