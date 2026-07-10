@@ -37,6 +37,8 @@ static float g_wydDebugCameraY = 0.0f;
 static float g_wydDebugCameraZ = 0.0f;
 static float g_wydDebugCameraH = 0.0f;
 static float g_wydDebugCameraV = 0.0f;
+static float g_wydDebugCameraSightLength = 0.0f;
+static float g_wydDebugCameraWantLength = 0.0f;
 static int g_wydLastCriticalType = 0;
 static int g_wydLastCriticalID = 0;
 static int g_wydLastCriticalMesh = 0;
@@ -60,6 +62,8 @@ static void WydRecordDebugCamera(TMCamera* pCamera)
 	g_wydDebugCameraZ = pCamera->m_cameraPos.z;
 	g_wydDebugCameraH = pCamera->m_fHorizonAngle;
 	g_wydDebugCameraV = pCamera->m_fVerticalAngle;
+	g_wydDebugCameraSightLength = pCamera->m_fSightLength;
+	g_wydDebugCameraWantLength = pCamera->m_fWantLength;
 }
 
 static void WydApplyDebugDemoCameraOffset(TMCamera* pCamera)
@@ -83,6 +87,8 @@ extern "C" float wyd_debug_camera_y() { return g_wydDebugCameraY; }
 extern "C" float wyd_debug_camera_z() { return g_wydDebugCameraZ; }
 extern "C" float wyd_debug_camera_h() { return g_wydDebugCameraH; }
 extern "C" float wyd_debug_camera_v() { return g_wydDebugCameraV; }
+extern "C" float wyd_debug_camera_sight_length() { return g_wydDebugCameraSightLength; }
+extern "C" float wyd_debug_camera_want_length() { return g_wydDebugCameraWantLength; }
 extern "C" void wyd_debug_record_camera_now(TMCamera* pCamera) { WydRecordDebugCamera(pCamera); }
 extern "C" int wyd_debug_last_critical_type() { return g_wydLastCriticalType; }
 extern "C" int wyd_debug_last_critical_id() { return g_wydLastCriticalID; }

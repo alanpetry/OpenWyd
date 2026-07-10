@@ -361,6 +361,14 @@ uint64_t g_invalid_indexed_draws = 0;
 uint64_t g_invalid_indices_total = 0;
 uint64_t g_fvf_3d_vertices_total = 0;
 uint64_t g_fvf_3d_vertices_in_clip = 0;
+uint64_t g_indexed_compact_draws = 0;
+uint64_t g_indexed_compact_source_vertices = 0;
+uint64_t g_indexed_compact_vertices_decoded = 0;
+uint64_t g_indexed_compact_vertices_saved = 0;
+uint64_t g_decl_indexed_compact_draws = 0;
+uint64_t g_decl_indexed_compact_source_vertices = 0;
+uint64_t g_decl_indexed_compact_vertices_decoded = 0;
+uint64_t g_decl_indexed_compact_vertices_saved = 0;
 uint64_t g_draw_alpha_test_enabled = 0;
 uint64_t g_draw_alpha_test_disabled = 0;
 uint64_t g_draw_blend_enabled = 0;
@@ -435,6 +443,10 @@ uint64_t g_fvf530_large_bounds_skip_draws = 0;
 uint64_t g_fvf530_unstable_w_draws = 0;
 uint64_t g_fvf530_inside_vertices = 0;
 uint64_t g_fvf530_vertices = 0;
+uint64_t g_fvf530_indexed_compact_draws = 0;
+uint64_t g_fvf530_indexed_compact_source_vertices = 0;
+uint64_t g_fvf530_indexed_compact_vertices_decoded = 0;
+uint64_t g_fvf530_indexed_compact_vertices_saved = 0;
 std::vector<std::string> g_fvf530_large_bound_samples;
 std::unordered_set<std::string> g_fvf530_large_bound_seen;
 uint32_t g_fvf530_last_vertex_count = 0;
@@ -670,6 +682,7 @@ constexpr uint32_t kDebugEnableLegacyDepthWriteGuard = 1u << 25;
 constexpr uint32_t kDebugEnableSkyScreenQuad = 1u << 26;
 constexpr uint32_t kDebugTerrainDepthTestOff = 1u << 27;
 constexpr uint32_t kDebugEnableFVF530LargeBoundsSkip = 1u << 28;
+constexpr uint32_t kDebugCollectFVF530Stats = 1u << 29;
 
 bool DrawTraceIsEnabled();
 void ResetDrawOrderFrame();
@@ -709,6 +722,53 @@ std::string ToLowerCopy(const std::string& src) {
     return static_cast<char>(std::tolower(c));
   });
   return out;
+}
+
+constexpr uint32_t kTexCatEnv = 1u << 0;
+constexpr uint32_t kTexCatEffect = 1u << 1;
+constexpr uint32_t kTexCatUi = 1u << 2;
+constexpr uint32_t kTexCatChar = 1u << 3;
+constexpr uint32_t kTexCatSky = 1u << 4;
+constexpr uint32_t kTexCatWater = 1u << 5;
+constexpr uint32_t kTexCatBright = 1u << 6;
+constexpr uint32_t kTexCatGround = 1u << 7;
+constexpr uint32_t kTexCatShadow = 1u << 8;
+constexpr uint32_t kTexCatLightmap = 1u << 9;
+constexpr uint32_t kTexCatRain = 1u << 10;
+constexpr uint32_t kTexCatPattern = 1u << 11;
+
+uint32_t ComputeTextureCategoryFlags(const std::string& path) {
+  uint32_t flags = 0;
+  const auto has = [&path](const char* needle) {
+    return needle && path.find(needle) != std::string::npos;
+  };
+
+  if (has("env/") || has("chao") || has("terra") || has("grama") ||
+      has("areia") || has("dirt") || has("sand") || has("neve") ||
+      has("snow") || has("lava") || has("mount") || has("wood") ||
+      has("stone") || has("tree") || has("house") || has("leaf")) {
+    flags |= kTexCatEnv;
+  }
+  if (has("effect/")) flags |= kTexCatEffect;
+  if (has("ui/") || has("hud/") || has("panel") || has("interface") ||
+      has("button") || has("grid") || has("icon") || has("bar") ||
+      has("art/")) {
+    flags |= kTexCatUi;
+  }
+  if (has("char/")) flags |= kTexCatChar;
+  if (has("sky")) flags |= kTexCatSky;
+  if (has("water")) flags |= kTexCatWater;
+  if (has("effect/bright.wys")) flags |= kTexCatBright;
+  if (has("shadow")) flags |= kTexCatShadow;
+  if (has("lightmap")) flags |= kTexCatLightmap;
+  if (has("rain")) flags |= kTexCatRain;
+  if (has("pattern")) flags |= kTexCatPattern;
+  if (has("chao") || has("terra") || has("grama") || has("areia") ||
+      has("dirt") || has("sand") || has("neve") || has("snow") ||
+      has("lava") || has("mount") || has("wood") || has("stone")) {
+    flags |= kTexCatGround;
+  }
+  return flags;
 }
 
 void TrackShaderFileOpen(const char* raw_path, bool success) {
@@ -1151,6 +1211,7 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
   GLuint gl_texture = 0;
   bool gl_dirty = true;
   std::string debug_source_path;
+  uint32_t debug_category_flags = 0;
 };
 
 DummyDirect3DSurface9::~DummyDirect3DSurface9() {
@@ -1166,6 +1227,110 @@ class DummyDirectSound8 final : public IDirectSound8, private ComRefBase {
   ULONG AddRef() override { return AddRefImpl(); }
   ULONG Release() override { return ReleaseImpl(); }
 };
+
+constexpr unsigned int kWydMouseMove = 0x0200u;
+constexpr unsigned int kWydLButtonDown = 0x0201u;
+constexpr unsigned int kWydLButtonUp = 0x0202u;
+constexpr unsigned int kWydRButtonDown = 0x0204u;
+constexpr unsigned int kWydRButtonUp = 0x0205u;
+constexpr unsigned int kWydMButtonDown = 0x0207u;
+constexpr unsigned int kWydMButtonUp = 0x0208u;
+constexpr unsigned int kWydMouseWheel = 0x020Au;
+constexpr unsigned int kWydMkLButton = 0x0001u;
+constexpr unsigned int kWydMkRButton = 0x0002u;
+constexpr unsigned int kWydMkMButton = 0x0010u;
+
+struct WydDInputMouseState {
+  std::mutex mutex;
+  bool has_position = false;
+  LONG x = 0;
+  LONG y = 0;
+  LONG dx = 0;
+  LONG dy = 0;
+  LONG wheel = 0;
+  BYTE buttons[8] = {};
+  unsigned int event_count = 0;
+  unsigned int last_msg = 0;
+  unsigned int last_wparam = 0;
+};
+
+WydDInputMouseState g_wydDInputMouse;
+
+void WydSetMouseButtonLocked(int index, bool down) {
+  if (index < 0 || index >= 8) return;
+  g_wydDInputMouse.buttons[index] = down ? 0x80 : 0x00;
+}
+
+void WydSyncMouseButtonsFromWParamLocked(unsigned int wParam) {
+  WydSetMouseButtonLocked(0, (wParam & kWydMkLButton) != 0);
+  WydSetMouseButtonLocked(1, (wParam & kWydMkRButton) != 0);
+  WydSetMouseButtonLocked(2, (wParam & kWydMkMButton) != 0);
+}
+
+void WydDInputMouseEvent(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  const LONG next_x = static_cast<LONG>(x);
+  const LONG next_y = static_cast<LONG>(y);
+  if (g_wydDInputMouse.has_position) {
+    g_wydDInputMouse.dx += next_x - g_wydDInputMouse.x;
+    g_wydDInputMouse.dy += next_y - g_wydDInputMouse.y;
+  } else {
+    g_wydDInputMouse.has_position = true;
+  }
+  g_wydDInputMouse.x = next_x;
+  g_wydDInputMouse.y = next_y;
+  g_wydDInputMouse.wheel += static_cast<LONG>(wheel_delta);
+  g_wydDInputMouse.last_msg = msg;
+  g_wydDInputMouse.last_wparam = wParam;
+  ++g_wydDInputMouse.event_count;
+
+  switch (msg) {
+    case kWydLButtonDown:
+      WydSetMouseButtonLocked(0, true);
+      break;
+    case kWydLButtonUp:
+      WydSetMouseButtonLocked(0, false);
+      break;
+    case kWydRButtonDown:
+      WydSetMouseButtonLocked(1, true);
+      break;
+    case kWydRButtonUp:
+      WydSetMouseButtonLocked(1, false);
+      break;
+    case kWydMButtonDown:
+      WydSetMouseButtonLocked(2, true);
+      break;
+    case kWydMButtonUp:
+      WydSetMouseButtonLocked(2, false);
+      break;
+    case kWydMouseMove:
+    case kWydMouseWheel:
+      WydSyncMouseButtonsFromWParamLocked(wParam);
+      break;
+    default:
+      break;
+  }
+}
+
+HRESULT WydCopyDInputMouseState(DWORD cbData, LPVOID lpvData) {
+  if (!lpvData || cbData == 0) return E_POINTER;
+
+  DIMOUSESTATE2 dims2{};
+  {
+    std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+    dims2.lX = g_wydDInputMouse.dx;
+    dims2.lY = g_wydDInputMouse.dy;
+    dims2.lZ = g_wydDInputMouse.wheel;
+    std::memcpy(dims2.rgbButtons, g_wydDInputMouse.buttons, sizeof(dims2.rgbButtons));
+    g_wydDInputMouse.dx = 0;
+    g_wydDInputMouse.dy = 0;
+    g_wydDInputMouse.wheel = 0;
+  }
+
+  std::memset(lpvData, 0, cbData);
+  std::memcpy(lpvData, &dims2, std::min<size_t>(cbData, sizeof(dims2)));
+  return S_OK;
+}
 
 class DummyDirectInputDevice8 final : public IDirectInputDevice8A, private ComRefBase {
  public:
@@ -1187,8 +1352,7 @@ class DummyDirectInputDevice8 final : public IDirectInputDevice8A, private ComRe
   HRESULT Unacquire() override { return S_OK; }
 
   HRESULT GetDeviceState(DWORD cbData, LPVOID lpvData) override {
-    if (lpvData && cbData > 0) std::memset(lpvData, 0, cbData);
-    return S_OK;
+    return WydCopyDInputMouseState(cbData, lpvData);
   }
 
   HRESULT SetDataFormat(const DIDATAFORMAT*) override { return S_OK; }
@@ -1773,6 +1937,50 @@ void ApplyColorKeyRGBA(std::vector<uint8_t>* rgba, D3DCOLOR color_key) {
 }  // namespace
 
 extern "C" {
+
+void wyd_dinput_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
+  WydDInputMouseEvent(msg, wParam, x, y, wheel_delta);
+}
+
+int wyd_input_mouse_x() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return static_cast<int>(g_wydDInputMouse.x);
+}
+
+int wyd_input_mouse_y() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return static_cast<int>(g_wydDInputMouse.y);
+}
+
+int wyd_input_mouse_left_down() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return (g_wydDInputMouse.buttons[0] & 0x80) ? 1 : 0;
+}
+
+int wyd_input_mouse_right_down() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return (g_wydDInputMouse.buttons[1] & 0x80) ? 1 : 0;
+}
+
+int wyd_input_mouse_middle_down() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return (g_wydDInputMouse.buttons[2] & 0x80) ? 1 : 0;
+}
+
+unsigned int wyd_input_mouse_event_count() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return g_wydDInputMouse.event_count;
+}
+
+unsigned int wyd_input_mouse_last_msg() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return g_wydDInputMouse.last_msg;
+}
+
+unsigned int wyd_input_mouse_last_wparam() {
+  std::lock_guard<std::mutex> lock(g_wydDInputMouse.mutex);
+  return g_wydDInputMouse.last_wparam;
+}
 
 int MessageBoxA(HWND, LPCSTR lpText, LPCSTR lpCaption, UINT) {
   std::fprintf(stderr, "[MessageBoxA] %s: %s\n", lpCaption ? lpCaption : "msg", lpText ? lpText : "");
@@ -3727,6 +3935,7 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
   if (!tex) return E_OUTOFMEMORY;
   if (pSrcData && SrcDataSize > 0 && !g_last_closed_debug_source_path.empty()) {
     tex->debug_source_path = g_last_closed_debug_source_path;
+    tex->debug_category_flags = ComputeTextureCategoryFlags(tex->debug_source_path);
     g_last_closed_debug_source_path.clear();
   }
   if (!decoded_rgba.empty() && decoded_w > 0 && decoded_h > 0) {
@@ -4715,6 +4924,11 @@ bool TexturePathContains(IDirect3DBaseTexture9* texture, const char* needle) {
   return tex->debug_source_path.find(needle) != std::string::npos;
 }
 
+bool TextureHasCategory(IDirect3DBaseTexture9* texture, uint32_t category) {
+  auto* tex = AsTexture(texture);
+  return tex && ((tex->debug_category_flags & category) != 0u);
+}
+
 bool CurrentDrawUsesTexturePath(const char* needle) {
   for (auto* texture : g_ffp_state.textures) {
     if (TexturePathContains(texture, needle)) return true;
@@ -4722,23 +4936,39 @@ bool CurrentDrawUsesTexturePath(const char* needle) {
   return false;
 }
 
+bool CurrentDrawUsesTextureCategory(uint32_t category) {
+  for (auto* texture : g_ffp_state.textures) {
+    if (TextureHasCategory(texture, category)) return true;
+  }
+  return false;
+}
+
+uint32_t CurrentDrawTextureCategoryFlags() {
+  uint32_t flags = 0;
+  for (auto* texture : g_ffp_state.textures) {
+    auto* tex = AsTexture(texture);
+    if (tex) flags |= tex->debug_category_flags;
+  }
+  return flags;
+}
+
 bool CurrentDrawUsesSnowBillboardTexture() {
   // TMSnow renders 3D billboards with Effect/bright.wys and FVF322. Their
   // local vertices look screen-like, but must still go through the world matrix.
-  return CurrentDrawUsesTexturePath("effect/bright.wys");
+  return CurrentDrawUsesTextureCategory(kTexCatBright);
 }
 
 bool CurrentDrawUsesEffectTexture() {
   // All billboard/particle effect textures live under Effect/ directory.
   // Their local vertices may look screen-like, but the world matrix carries
   // the camera-facing rotation and must not be bypassed by screen-like replay.
-  return CurrentDrawUsesTexturePath("effect/");
+  return CurrentDrawUsesTextureCategory(kTexCatEffect);
 }
 
 bool CurrentDrawUsesSkyTexture() {
   // TMSky is also FVF322 and can look screen-like in raw local coordinates.
   // Replaying it as 2D screen geometry expands the sky dome into huge planes.
-  return CurrentDrawUsesTexturePath("sky");
+  return CurrentDrawUsesTextureCategory(kTexCatSky);
 }
 
 void TrackSpecialTextureDraws(DWORD active_fvf) {
@@ -4747,10 +4977,10 @@ void TrackSpecialTextureDraws(DWORD active_fvf) {
   bool saw_bright = false;
   bool saw_effect = false;
   for (auto* texture : g_ffp_state.textures) {
-    saw_sky = saw_sky || TexturePathContains(texture, "sky");
-    saw_water = saw_water || TexturePathContains(texture, "water");
-    saw_bright = saw_bright || TexturePathContains(texture, "effect/bright.wys");
-    saw_effect = saw_effect || TexturePathContains(texture, "effect/");
+    saw_sky = saw_sky || TextureHasCategory(texture, kTexCatSky);
+    saw_water = saw_water || TextureHasCategory(texture, kTexCatWater);
+    saw_bright = saw_bright || TextureHasCategory(texture, kTexCatBright);
+    saw_effect = saw_effect || TextureHasCategory(texture, kTexCatEffect);
   }
   if (saw_sky) g_texture_draws_sky += 1;
   if (saw_water) g_texture_draws_water += 1;
@@ -4991,17 +5221,13 @@ const char* Fvf322ClassName(uint32_t class_id) {
 }
 
 uint32_t ClassifyFvf322Draw() {
-  const std::string stage0_path = ToLowerCopy(CurrentDrawTraceTexturePath(0));
-  const std::string stage1_path = ToLowerCopy(CurrentDrawTraceTexturePath(1));
-  const std::string label = ToLowerCopy(CurrentDrawTraceLabel());
-  const std::string combined = stage0_path + "|" + stage1_path + "|" + label;
-  if (combined.find("sky") != std::string::npos) return kFvf322ClassSky;
-  if (combined.find("shadow") != std::string::npos) return kFvf322ClassShadow;
-  if (combined.find("lightmap") != std::string::npos) return kFvf322ClassLightmap;
-  if (combined.find("rain") != std::string::npos) return kFvf322ClassRain;
-  if (combined.find("bright") != std::string::npos) return kFvf322ClassBright;
-  if (combined.find("pattern") != std::string::npos) return kFvf322ClassPattern;
-  if (combined.find("billboard") != std::string::npos) return kFvf322ClassBillboard;
+  const uint32_t tex_flags = CurrentDrawTextureCategoryFlags();
+  if ((tex_flags & kTexCatSky) != 0u) return kFvf322ClassSky;
+  if ((tex_flags & kTexCatShadow) != 0u) return kFvf322ClassShadow;
+  if ((tex_flags & kTexCatLightmap) != 0u) return kFvf322ClassLightmap;
+  if ((tex_flags & kTexCatRain) != 0u) return kFvf322ClassRain;
+  if ((tex_flags & kTexCatBright) != 0u) return kFvf322ClassBright;
+  if ((tex_flags & kTexCatPattern) != 0u) return kFvf322ClassPattern;
 
   // Ground-projected lightmap decals (TMShade) render through FVF 322 with
   // DESTBLEND=ONE (additive).  When the texture path does not contain a
@@ -5012,13 +5238,11 @@ uint32_t ClassifyFvf322Draw() {
       g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
       stage0_alpha_op == D3DTOP_SELECTARG1 &&
       stage0_color_op == D3DTOP_MODULATE &&
-      !stage0_path.empty()) {
+      tex_flags != 0u) {
     return kFvf322ClassLightmap;
   }
 
-  if (stage0_path.find("effect/") != std::string::npos ||
-      stage1_path.find("effect/") != std::string::npos ||
-      label.find("effect/") != std::string::npos) return kFvf322ClassBillboard;
+  if ((tex_flags & kTexCatEffect) != 0u) return kFvf322ClassBillboard;
   return kFvf322ClassOther;
 }
 
@@ -5159,27 +5383,14 @@ void TrackFieldVisualDraw(DWORD active_fvf, bool current_sky_texture_draw) {
   bool saw_sky = false;
   bool saw_water = false;
   for (auto* texture : g_ffp_state.textures) {
-    if (!saw_env && (TexturePathContains(texture, "env/") || TexturePathContains(texture, "chao") ||
-        TexturePathContains(texture, "terra") || TexturePathContains(texture, "grama") ||
-        TexturePathContains(texture, "areia") || TexturePathContains(texture, "dirt") ||
-        TexturePathContains(texture, "sand") || TexturePathContains(texture, "neve") ||
-        TexturePathContains(texture, "snow") || TexturePathContains(texture, "lava") ||
-        TexturePathContains(texture, "mount") || TexturePathContains(texture, "wood") ||
-        TexturePathContains(texture, "stone") || TexturePathContains(texture, "tree") ||
-        TexturePathContains(texture, "house") || TexturePathContains(texture, "leaf"))) {
-      saw_env = true;
-    }
-    if (!saw_effect && TexturePathContains(texture, "effect/")) saw_effect = true;
-    if (!saw_ui && (TexturePathContains(texture, "ui/") || TexturePathContains(texture, "hud/") ||
-        TexturePathContains(texture, "panel") || TexturePathContains(texture, "interface") ||
-        TexturePathContains(texture, "button") || TexturePathContains(texture, "grid") ||
-        TexturePathContains(texture, "icon") || TexturePathContains(texture, "bar") ||
-        TexturePathContains(texture, "art/"))) {
-      saw_ui = true;
-    }
-    if (!saw_char && TexturePathContains(texture, "char/")) saw_char = true;
-    if (!saw_sky && TexturePathContains(texture, "sky")) saw_sky = true;
-    if (!saw_water && TexturePathContains(texture, "water")) saw_water = true;
+    auto* tex = AsTexture(texture);
+    const uint32_t flags = tex ? tex->debug_category_flags : 0u;
+    saw_env = saw_env || ((flags & kTexCatEnv) != 0u);
+    saw_effect = saw_effect || ((flags & kTexCatEffect) != 0u);
+    saw_ui = saw_ui || ((flags & kTexCatUi) != 0u);
+    saw_char = saw_char || ((flags & kTexCatChar) != 0u);
+    saw_sky = saw_sky || ((flags & kTexCatSky) != 0u);
+    saw_water = saw_water || ((flags & kTexCatWater) != 0u);
   }
   if (saw_env) g_field_visual_tex_bucket_env += 1;
   if (saw_effect) g_field_visual_tex_bucket_effect += 1;
@@ -5195,15 +5406,7 @@ void TrackFieldVisualDraw(DWORD active_fvf, bool current_sky_texture_draw) {
     g_field_visual_frame_hud += 1;
     bool has_ui_tex = false;
     for (auto* texture : g_ffp_state.textures) {
-      if (TexturePathContains(texture, "ui") ||
-          TexturePathContains(texture, "hud") ||
-          TexturePathContains(texture, "panel") ||
-          TexturePathContains(texture, "interface") ||
-          TexturePathContains(texture, "button") ||
-          TexturePathContains(texture, "grid") ||
-          TexturePathContains(texture, "icon") ||
-          TexturePathContains(texture, "bar") ||
-          TexturePathContains(texture, "art/")) {
+      if (TextureHasCategory(texture, kTexCatUi)) {
         has_ui_tex = true;
         break;
       }
@@ -5220,18 +5423,7 @@ void TrackFieldVisualDraw(DWORD active_fvf, bool current_sky_texture_draw) {
   } else if (active_fvf == 530u) {
     bool is_ground = false;
     for (auto* texture : g_ffp_state.textures) {
-      if (TexturePathContains(texture, "chao") ||
-          TexturePathContains(texture, "terra") ||
-          TexturePathContains(texture, "grama") ||
-          TexturePathContains(texture, "areia") ||
-          TexturePathContains(texture, "dirt") ||
-          TexturePathContains(texture, "sand") ||
-          TexturePathContains(texture, "neve") ||
-          TexturePathContains(texture, "snow") ||
-          TexturePathContains(texture, "lava") ||
-          TexturePathContains(texture, "mount") ||
-          TexturePathContains(texture, "wood") ||
-          TexturePathContains(texture, "stone")) {
+      if (TextureHasCategory(texture, kTexCatGround)) {
         is_ground = true;
         break;
       }
@@ -6707,11 +6899,15 @@ HRESULT BuildVerticesFromDeclarationStream(
     UINT vertex_count,
     UINT stride,
     const DummyDirect3DVertexDeclaration9& decl,
-    std::vector<FFPVertex>* out_vertices) {
+    std::vector<FFPVertex>* out_vertices,
+    const uint8_t* rgba_probe_src = nullptr,
+    UINT rgba_probe_vertex_count = 0) {
   if (!src || !out_vertices || vertex_count == 0 || stride == 0) return D3DERR_INVALIDCALL;
 
   const UINT palette_size = EstimateSkinPaletteSizeFromConstants();
-  const bool rgba_index_order = PreferRGBAIndexOrder(decl, src, vertex_count, stride, palette_size);
+  const uint8_t* order_probe_src = rgba_probe_src ? rgba_probe_src : src;
+  const UINT order_probe_vertex_count = rgba_probe_vertex_count != 0 ? rgba_probe_vertex_count : vertex_count;
+  const bool rgba_index_order = PreferRGBAIndexOrder(decl, order_probe_src, order_probe_vertex_count, stride, palette_size);
   const bool uses_skinning = (BlendInfluenceCountFromDeclaration(decl) > 1u) || DeclarationUsesD3DColorBlendIndices(decl, nullptr);
   g_decl_draw_calls += 1;
   if (uses_skinning) g_decl_skinned_draw_calls += 1;
@@ -6745,6 +6941,85 @@ HRESULT BuildVerticesFromDeclarationStream(
     }
   }
   return S_OK;
+}
+
+HRESULT BuildIndexedDrawIndices(
+    const DummyDirect3DIndexBuffer9* ib,
+    UINT start_index,
+    UINT index_count,
+    INT base_vertex_index,
+    UINT vertex_total,
+    std::vector<uint32_t>* out_indices,
+    uint32_t* out_min_index,
+    uint32_t* out_max_index,
+    bool* out_invalid_index) {
+  if (!ib || !out_indices || !out_min_index || !out_max_index || !out_invalid_index) {
+    return D3DERR_INVALIDCALL;
+  }
+
+  out_indices->clear();
+  out_indices->reserve(index_count);
+  *out_min_index = std::numeric_limits<uint32_t>::max();
+  *out_max_index = 0;
+  *out_invalid_index = false;
+
+  const size_t index_size = (ib->format == D3DFMT_INDEX32) ? 4u : 2u;
+  if (ib->format != D3DFMT_INDEX16 && ib->format != D3DFMT_INDEX32) return D3DERR_INVALIDCALL;
+  const size_t index_start_byte = static_cast<size_t>(start_index) * index_size;
+  if (index_start_byte + static_cast<size_t>(index_count) * index_size > ib->data.size()) {
+    return D3DERR_INVALIDCALL;
+  }
+
+  auto push_index = [&](int64_t v) {
+    if (v < 0 || v >= static_cast<int64_t>(vertex_total)) {
+      *out_invalid_index = true;
+      g_invalid_indices_total += 1;
+      return;
+    }
+    const uint32_t index = static_cast<uint32_t>(v);
+    out_indices->push_back(index);
+    *out_min_index = std::min(*out_min_index, index);
+    *out_max_index = std::max(*out_max_index, index);
+  };
+
+  if (ib->format == D3DFMT_INDEX32) {
+    auto* idx32 = reinterpret_cast<const uint32_t*>(ib->data.data() + index_start_byte);
+    for (UINT i = 0; i < index_count; ++i) {
+      push_index(static_cast<int64_t>(idx32[i]) + static_cast<int64_t>(base_vertex_index));
+    }
+  } else {
+    auto* idx16 = reinterpret_cast<const uint16_t*>(ib->data.data() + index_start_byte);
+    for (UINT i = 0; i < index_count; ++i) {
+      push_index(static_cast<int64_t>(idx16[i]) + static_cast<int64_t>(base_vertex_index));
+    }
+  }
+
+  if (*out_invalid_index) {
+    g_invalid_indexed_draws += 1;
+  }
+  return S_OK;
+}
+
+bool ShouldUseIndexedCompactRange(
+    const std::vector<uint32_t>& indices,
+    UINT vertex_total,
+    uint32_t min_index_used,
+    uint32_t max_index_used,
+    UINT* out_compact_vertex_count) {
+  if (out_compact_vertex_count) *out_compact_vertex_count = 0;
+  if (indices.empty()) return false;
+  if (min_index_used > max_index_used) return false;
+  const uint64_t compact_count64 =
+      static_cast<uint64_t>(max_index_used) - static_cast<uint64_t>(min_index_used) + 1ull;
+  if (compact_count64 == 0 || compact_count64 > static_cast<uint64_t>(vertex_total)) return false;
+  const UINT compact_count = static_cast<UINT>(compact_count64);
+  if (out_compact_vertex_count) *out_compact_vertex_count = compact_count;
+  return min_index_used != 0u || compact_count < vertex_total;
+}
+
+void RemapIndicesToCompactRange(std::vector<uint32_t>* indices, uint32_t min_index_used) {
+  if (!indices || min_index_used == 0u) return;
+  for (uint32_t& index : *indices) index -= min_index_used;
 }
 
 bool CompileShader(GLuint shader, const char* source) {
@@ -8140,6 +8415,22 @@ void TrackFVF530DrawStats(const std::vector<FFPVertex>& vertices, const std::vec
   }
 }
 
+void TrackFVF530DrawSummary(const std::vector<FFPVertex>& vertices, const std::vector<uint32_t>* indices) {
+  g_fvf530_draws += 1;
+  g_fvf530_last_vertex_count = static_cast<uint32_t>(std::min<size_t>(vertices.size(), UINT32_MAX));
+  g_fvf530_last_index_count = static_cast<uint32_t>(std::min<size_t>(indices ? indices->size() : 0u, UINT32_MAX));
+  g_fvf530_last_stable_w_vertices = 0;
+  g_fvf530_last_inside_vertices = 0;
+  g_fvf530_last_large_ndc_vertices = 0;
+  g_fvf530_last_min_ndc_x = 0.0f;
+  g_fvf530_last_max_ndc_x = 0.0f;
+  g_fvf530_last_min_ndc_y = 0.0f;
+  g_fvf530_last_max_ndc_y = 0.0f;
+  g_fvf530_last_min_ndc_z = 0.0f;
+  g_fvf530_last_max_ndc_z = 0.0f;
+  g_fvf530_vertices += static_cast<uint64_t>(vertices.size());
+}
+
 bool ShouldSkipFVF530LargeBoundsDraw() {
   if ((g_debug_ffp_flags & kDebugEnableFVF530LargeBoundsSkip) == 0u) return false;
   if ((g_debug_ffp_flags & kDebugDisableFVF530LargeBoundsSkip) != 0u) return false;
@@ -8321,8 +8612,12 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   }
   TrackSpecialTextureDraws(active_fvf);
   if (active_fvf == 530u) {
-    TrackFVF530DrawStats(vertices, indices);
-    if (ShouldSkipFVF530LargeBoundsDraw()) {
+    const bool collect_fvf530_stats =
+        ((g_debug_ffp_flags & kDebugCollectFVF530Stats) != 0u) ||
+        ((g_debug_ffp_flags & kDebugEnableFVF530LargeBoundsSkip) != 0u);
+    if (collect_fvf530_stats) TrackFVF530DrawStats(vertices, indices);
+    else TrackFVF530DrawSummary(vertices, indices);
+    if (collect_fvf530_stats && ShouldSkipFVF530LargeBoundsDraw()) {
       g_fvf530_large_bounds_skip_draws += 1;
       RecordDrawTrace(
           gl_mode,
@@ -8985,7 +9280,7 @@ HRESULT WydD3D9Device_SetTransform(IDirect3DDevice9*, D3DTRANSFORMSTATETYPE stat
 HRESULT WydD3D9Device_SetTexture(IDirect3DDevice9*, DWORD stage, IDirect3DBaseTexture9* texture) {
   EnsureFFPStateInitialized();
   if (stage >= kMaxTextureStages) return D3DERR_INVALIDCALL;
-  if (TexturePathContains(texture, "sky")) {
+  if (TextureHasCategory(texture, kTexCatSky)) {
     if (stage == 0) g_set_texture_stage0_sky_calls += 1;
     if (stage == 1) g_set_texture_stage1_sky_calls += 1;
   }
@@ -9169,7 +9464,7 @@ HRESULT WydD3D9Device_DrawPrimitiveUP(
     UINT vertex_stream_zero_stride) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
-  if (CurrentDrawUsesTexturePath("sky")) {
+  if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_up += 1;
     g_draw_attempts_with_sky_last_fvf = g_ffp_state.current_fvf;
@@ -9237,7 +9532,7 @@ HRESULT WydD3D9Device_DrawIndexedPrimitiveUP(
     UINT vertex_stream_zero_stride) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
-  if (CurrentDrawUsesTexturePath("sky")) {
+  if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_up += 1;
     g_draw_attempts_with_sky_last_fvf = g_ffp_state.current_fvf;
@@ -9336,13 +9631,13 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
     IDirect3DDevice9*,
     D3DPRIMITIVETYPE primitive_type,
     INT base_vertex_index,
-    UINT,
-    UINT,
+    UINT min_vertex_index,
+    UINT num_vertices,
     UINT start_index,
     UINT primitive_count) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
-  if (CurrentDrawUsesTexturePath("sky")) {
+  if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_indexed += 1;
     g_draw_attempts_with_sky_last_fvf = g_ffp_state.current_fvf;
@@ -9376,51 +9671,52 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
     const UINT vertex_total = static_cast<UINT>(vb_bytes / stride);
     if (vertex_total == 0) return D3DERR_INVALIDCALL;
 
-    std::vector<FFPVertex> vertices;
-    HRESULT hr = BuildVerticesFromDeclarationStream(vb_data, vertex_total, stride, *decl, &vertices);
-    if (FAILED(hr)) return hr;
-
     const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
     if (index_count == 0) return D3DERR_INVALIDCALL;
     std::vector<uint32_t> indices;
-    indices.reserve(index_count);
+    uint32_t min_index_used = 0;
+    uint32_t max_index_used = 0;
+    bool invalid_index = false;
+    HRESULT hr = BuildIndexedDrawIndices(
+        ib,
+        start_index,
+        index_count,
+        base_vertex_index,
+        vertex_total,
+        &indices,
+        &min_index_used,
+        &max_index_used,
+        &invalid_index);
+    if (FAILED(hr)) return hr;
+    if (invalid_index) return S_OK;
 
-    const size_t index_size = (ib->format == D3DFMT_INDEX32) ? 4u : 2u;
-    const size_t index_start_byte = static_cast<size_t>(start_index) * index_size;
-    if (index_start_byte + static_cast<size_t>(index_count) * index_size > ib->data.size()) return D3DERR_INVALIDCALL;
-
-    if (ib->format == D3DFMT_INDEX32) {
-      auto* idx32 = reinterpret_cast<const uint32_t*>(ib->data.data() + index_start_byte);
-      bool invalid_index = false;
-      for (UINT i = 0; i < index_count; ++i) {
-        int64_t v = static_cast<int64_t>(idx32[i]) + static_cast<int64_t>(base_vertex_index);
-        if (v < 0 || v >= static_cast<int64_t>(vertex_total)) {
-          invalid_index = true;
-          g_invalid_indices_total += 1;
-          continue;
-        }
-        indices.push_back(static_cast<uint32_t>(v));
-      }
-      if (invalid_index) {
-        g_invalid_indexed_draws += 1;
-        return S_OK;
+    std::vector<FFPVertex> vertices;
+    UINT compact_vertex_count = 0;
+    if (ShouldUseIndexedCompactRange(
+            indices,
+            vertex_total,
+            min_index_used,
+            max_index_used,
+            &compact_vertex_count)) {
+      hr = BuildVerticesFromDeclarationStream(
+          vb_data + static_cast<size_t>(min_index_used) * stride,
+          compact_vertex_count,
+          stride,
+          *decl,
+          &vertices,
+          vb_data,
+          vertex_total);
+      if (FAILED(hr)) return hr;
+      RemapIndicesToCompactRange(&indices, min_index_used);
+      g_decl_indexed_compact_draws += 1;
+      g_decl_indexed_compact_source_vertices += vertex_total;
+      g_decl_indexed_compact_vertices_decoded += compact_vertex_count;
+      if (vertex_total > compact_vertex_count) {
+        g_decl_indexed_compact_vertices_saved += vertex_total - compact_vertex_count;
       }
     } else {
-      auto* idx16 = reinterpret_cast<const uint16_t*>(ib->data.data() + index_start_byte);
-      bool invalid_index = false;
-      for (UINT i = 0; i < index_count; ++i) {
-        int64_t v = static_cast<int64_t>(idx16[i]) + static_cast<int64_t>(base_vertex_index);
-        if (v < 0 || v >= static_cast<int64_t>(vertex_total)) {
-          invalid_index = true;
-          g_invalid_indices_total += 1;
-          continue;
-        }
-        indices.push_back(static_cast<uint32_t>(v));
-      }
-      if (invalid_index) {
-        g_invalid_indexed_draws += 1;
-        return S_OK;
-      }
+      hr = BuildVerticesFromDeclarationStream(vb_data, vertex_total, stride, *decl, &vertices);
+      if (FAILED(hr)) return hr;
     }
 
     const DWORD saved_current_fvf = g_ffp_state.current_fvf;
@@ -9453,51 +9749,58 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
   const UINT vertex_total = static_cast<UINT>(vb_bytes / stride);
   if (vertex_total == 0) return D3DERR_INVALIDCALL;
 
-  std::vector<FFPVertex> vertices;
-  HRESULT hr = BuildVerticesFromLinearStream(vb_data, vertex_total, stride, fvf, &vertices);
-  if (FAILED(hr)) return hr;
-
   const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
   if (index_count == 0) return D3DERR_INVALIDCALL;
   std::vector<uint32_t> indices;
-  indices.reserve(index_count);
+  uint32_t min_index_used = 0;
+  uint32_t max_index_used = 0;
+  bool invalid_index = false;
+  HRESULT hr = BuildIndexedDrawIndices(
+      ib,
+      start_index,
+      index_count,
+      base_vertex_index,
+      vertex_total,
+      &indices,
+      &min_index_used,
+      &max_index_used,
+      &invalid_index);
+  if (FAILED(hr)) return hr;
+  if (invalid_index) return S_OK;
 
-  const size_t index_size = (ib->format == D3DFMT_INDEX32) ? 4u : 2u;
-  const size_t index_start_byte = static_cast<size_t>(start_index) * index_size;
-  if (index_start_byte + static_cast<size_t>(index_count) * index_size > ib->data.size()) return D3DERR_INVALIDCALL;
-
-  if (ib->format == D3DFMT_INDEX32) {
-    auto* idx32 = reinterpret_cast<const uint32_t*>(ib->data.data() + index_start_byte);
-    bool invalid_index = false;
-    for (UINT i = 0; i < index_count; ++i) {
-      int64_t v = static_cast<int64_t>(idx32[i]) + static_cast<int64_t>(base_vertex_index);
-      if (v < 0 || v >= static_cast<int64_t>(vertex_total)) {
-        invalid_index = true;
-        g_invalid_indices_total += 1;
-        continue;
-      }
-      indices.push_back(static_cast<uint32_t>(v));
+  std::vector<FFPVertex> vertices;
+  UINT compact_vertex_count = 0;
+  if (ShouldUseIndexedCompactRange(
+          indices,
+          vertex_total,
+          min_index_used,
+          max_index_used,
+          &compact_vertex_count)) {
+    hr = BuildVerticesFromLinearStream(
+        vb_data + static_cast<size_t>(min_index_used) * stride,
+        compact_vertex_count,
+        stride,
+        fvf,
+        &vertices);
+    if (FAILED(hr)) return hr;
+    RemapIndicesToCompactRange(&indices, min_index_used);
+    g_indexed_compact_draws += 1;
+    g_indexed_compact_source_vertices += vertex_total;
+    g_indexed_compact_vertices_decoded += compact_vertex_count;
+    if (vertex_total > compact_vertex_count) {
+      g_indexed_compact_vertices_saved += vertex_total - compact_vertex_count;
     }
-    if (invalid_index) {
-      g_invalid_indexed_draws += 1;
-      return S_OK;
+    if (fvf == 530u) {
+      g_fvf530_indexed_compact_draws += 1;
+      g_fvf530_indexed_compact_source_vertices += vertex_total;
+      g_fvf530_indexed_compact_vertices_decoded += compact_vertex_count;
+      if (vertex_total > compact_vertex_count) {
+        g_fvf530_indexed_compact_vertices_saved += vertex_total - compact_vertex_count;
+      }
     }
   } else {
-    auto* idx16 = reinterpret_cast<const uint16_t*>(ib->data.data() + index_start_byte);
-    bool invalid_index = false;
-    for (UINT i = 0; i < index_count; ++i) {
-      int64_t v = static_cast<int64_t>(idx16[i]) + static_cast<int64_t>(base_vertex_index);
-      if (v < 0 || v >= static_cast<int64_t>(vertex_total)) {
-        invalid_index = true;
-        g_invalid_indices_total += 1;
-        continue;
-      }
-      indices.push_back(static_cast<uint32_t>(v));
-    }
-    if (invalid_index) {
-      g_invalid_indexed_draws += 1;
-      return S_OK;
-    }
+    hr = BuildVerticesFromLinearStream(vb_data, vertex_total, stride, fvf, &vertices);
+    if (FAILED(hr)) return hr;
   }
 
   if (!UploadAndDraw(PrimitiveToGL(primitive_type), vertices, &indices)) return E_FAIL;
@@ -10036,6 +10339,22 @@ extern "C" uint32_t wyd_d3d9_decl_bgra_index_order_draws() {
   return static_cast<uint32_t>(g_decl_bgra_index_order_draws);
 }
 
+extern "C" uint32_t wyd_d3d9_decl_indexed_compact_draws() {
+  return static_cast<uint32_t>(g_decl_indexed_compact_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_decl_indexed_compact_source_vertices() {
+  return static_cast<uint32_t>(g_decl_indexed_compact_source_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_decl_indexed_compact_vertices_decoded() {
+  return static_cast<uint32_t>(g_decl_indexed_compact_vertices_decoded);
+}
+
+extern "C" uint32_t wyd_d3d9_decl_indexed_compact_vertices_saved() {
+  return static_cast<uint32_t>(g_decl_indexed_compact_vertices_saved);
+}
+
 extern "C" uint32_t wyd_d3d9_invalid_indexed_draws() {
   return static_cast<uint32_t>(g_invalid_indexed_draws);
 }
@@ -10073,6 +10392,22 @@ extern "C" uint32_t wyd_d3d9_fvf_3d_vertices_total() {
 
 extern "C" uint32_t wyd_d3d9_fvf_3d_vertices_in_clip() {
   return static_cast<uint32_t>(g_fvf_3d_vertices_in_clip);
+}
+
+extern "C" uint32_t wyd_d3d9_indexed_compact_draws() {
+  return static_cast<uint32_t>(g_indexed_compact_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_indexed_compact_source_vertices() {
+  return static_cast<uint32_t>(g_indexed_compact_source_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_indexed_compact_vertices_decoded() {
+  return static_cast<uint32_t>(g_indexed_compact_vertices_decoded);
+}
+
+extern "C" uint32_t wyd_d3d9_indexed_compact_vertices_saved() {
+  return static_cast<uint32_t>(g_indexed_compact_vertices_saved);
 }
 
 extern "C" uint32_t wyd_d3d9_stage1_generated_tci_draws() {
@@ -10710,6 +11045,22 @@ extern "C" uint32_t wyd_d3d9_fvf530_inside_vertices() {
   return static_cast<uint32_t>(g_fvf530_inside_vertices);
 }
 
+extern "C" uint32_t wyd_d3d9_fvf530_indexed_compact_draws() {
+  return static_cast<uint32_t>(g_fvf530_indexed_compact_draws);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf530_indexed_compact_source_vertices() {
+  return static_cast<uint32_t>(g_fvf530_indexed_compact_source_vertices);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf530_indexed_compact_vertices_decoded() {
+  return static_cast<uint32_t>(g_fvf530_indexed_compact_vertices_decoded);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf530_indexed_compact_vertices_saved() {
+  return static_cast<uint32_t>(g_fvf530_indexed_compact_vertices_saved);
+}
+
 extern "C" uint32_t wyd_d3d9_fvf530_last_vertex_count() {
   return g_fvf530_last_vertex_count;
 }
@@ -10998,6 +11349,10 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_decl_vertices_in_clip = 0;
   g_decl_rgba_index_order_draws = 0;
   g_decl_bgra_index_order_draws = 0;
+  g_decl_indexed_compact_draws = 0;
+  g_decl_indexed_compact_source_vertices = 0;
+  g_decl_indexed_compact_vertices_decoded = 0;
+  g_decl_indexed_compact_vertices_saved = 0;
   g_invalid_indexed_draws = 0;
   g_invalid_indices_total = 0;
   g_clip_w_reject_draws = 0;
@@ -11005,6 +11360,10 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_clip_w_keep_triangles = 0;
   g_fvf_3d_vertices_total = 0;
   g_fvf_3d_vertices_in_clip = 0;
+  g_indexed_compact_draws = 0;
+  g_indexed_compact_source_vertices = 0;
+  g_indexed_compact_vertices_decoded = 0;
+  g_indexed_compact_vertices_saved = 0;
   g_draw_alpha_test_enabled = 0;
   g_draw_alpha_test_disabled = 0;
   g_draw_blend_enabled = 0;
@@ -11069,6 +11428,10 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_fvf530_unstable_w_draws = 0;
   g_fvf530_inside_vertices = 0;
   g_fvf530_vertices = 0;
+  g_fvf530_indexed_compact_draws = 0;
+  g_fvf530_indexed_compact_source_vertices = 0;
+  g_fvf530_indexed_compact_vertices_decoded = 0;
+  g_fvf530_indexed_compact_vertices_saved = 0;
   g_fvf530_large_bound_samples.clear();
   g_fvf530_large_bound_seen.clear();
   g_fvf530_last_vertex_count = 0;

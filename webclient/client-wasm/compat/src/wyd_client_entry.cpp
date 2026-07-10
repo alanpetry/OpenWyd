@@ -38,6 +38,17 @@ MSG g_wyd_msg{};
 bool g_wyd_msg_initialized = false;
 bool g_wyd_boot_in_progress = false;
 
+constexpr unsigned int kWydMouseMove = 0x0200u;
+constexpr unsigned int kWydLButtonDown = 0x0201u;
+constexpr unsigned int kWydLButtonUp = 0x0202u;
+constexpr unsigned int kWydRButtonDown = 0x0204u;
+constexpr unsigned int kWydRButtonUp = 0x0205u;
+constexpr unsigned int kWydMButtonDown = 0x0207u;
+constexpr unsigned int kWydMButtonUp = 0x0208u;
+constexpr unsigned int kWydMouseWheel = 0x020Au;
+constexpr unsigned int kWydMkShift = 0x0004u;
+constexpr unsigned int kWydMkControl = 0x0008u;
+
 void WydBootLog(const char* msg) {
 #if defined(__EMSCRIPTEN__)
   emscripten_console_log(msg ? msg : "(null)");
@@ -47,6 +58,36 @@ void WydBootLog(const char* msg) {
 }
 
 }  // namespace
+
+extern "C" void wyd_dinput_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta);
+
+extern "C" int wyd_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
+  wyd_dinput_mouse_event(msg, wParam, x, y, wheel_delta);
+
+  if (!g_pEventTranslator) return 0;
+
+  g_pEventTranslator->m_bShift = (wParam & kWydMkShift) ? 1 : 0;
+  g_pEventTranslator->m_bCtrl = (wParam & kWydMkControl) ? 1 : 0;
+
+  switch (msg) {
+    case kWydMouseMove:
+    case kWydLButtonDown:
+    case kWydLButtonUp:
+    case kWydRButtonDown:
+    case kWydRButtonUp:
+    case kWydMButtonDown:
+    case kWydMButtonUp:
+      g_pEventTranslator->OnMouseEvent(msg, wParam, x, y);
+      break;
+    case kWydMouseWheel:
+      g_pEventTranslator->OnMouseEvent(kWydMouseMove, wParam, x, y);
+      break;
+    default:
+      break;
+  }
+
+  return 1;
+}
 
 extern "C" int wyd_boot_client(int fullscreen) {
   if (g_wyd_boot_in_progress) {

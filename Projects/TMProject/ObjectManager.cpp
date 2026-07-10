@@ -15,6 +15,7 @@
 #include "TMMesh.h"
 #include "TMItem.h"
 #include "TMGround.h"
+#include "TMHuman.h"
 
 #if defined(__EMSCRIPTEN__)
 #include "RenderDevice.h"
@@ -32,6 +33,10 @@ ESCENE_TYPE g_wasmStateSceneType = ESCENE_TYPE::ESCENE_NONE;
 char g_wasmStateDebugLabel[128] = "None";
 int g_wasmFieldMode = 1;
 bool g_wasmFieldDebugFixtureUsed = false;
+float g_wasmLastFieldPickX = 0.0f;
+float g_wasmLastFieldPickY = -10000.0f;
+float g_wasmLastFieldPickZ = 0.0f;
+int g_wasmLastFieldPickValid = 0;
 
 void WasmEnsureFieldDebugMobData(ObjectManager* objectManager);
 
@@ -430,6 +435,117 @@ extern "C" float wyd_field_myhuman_y()
 	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
 		? g_pCurrentScene->m_pMyHuman->m_vecPosition.y
 		: 0.0f;
+}
+
+extern "C" int wyd_field_myhuman_motion()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? static_cast<int>(g_pCurrentScene->m_pMyHuman->m_eMotion)
+		: -1;
+}
+
+extern "C" int wyd_field_myhuman_sent_motion()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? static_cast<int>(g_pCurrentScene->m_pMyHuman->m_SendeMotion)
+		: -1;
+}
+
+extern "C" int wyd_field_myhuman_moving()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pMyHuman)
+		return 0;
+	auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+	return pScene->m_bMoveing || g_pCurrentScene->m_pMyHuman->m_bMoveing ? 1 : 0;
+}
+
+extern "C" float wyd_field_myhuman_progress_rate()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_fProgressRate
+		: 0.0f;
+}
+
+extern "C" int wyd_field_myhuman_last_route_index()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_nLastRouteIndex
+		: -1;
+}
+
+extern "C" int wyd_field_myhuman_max_route_index()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_nMaxRouteIndex
+		: -1;
+}
+
+extern "C" int wyd_field_myhuman_target_x()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecTargetPos.x
+		: 0;
+}
+
+extern "C" int wyd_field_myhuman_target_y()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecTargetPos.y
+		: 0;
+}
+
+extern "C" float wyd_field_myhuman_move_to_x()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecMoveToPos.x
+		: 0.0f;
+}
+
+extern "C" float wyd_field_myhuman_move_to_y()
+{
+	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
+		? g_pCurrentScene->m_pMyHuman->m_vecMoveToPos.y
+		: 0.0f;
+}
+
+extern "C" int wyd_field_pick_at(int x, int y)
+{
+	if (!g_pCurrentScene || g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD || !g_pCurrentScene->m_pGround || !g_pCursor)
+	{
+		g_wasmLastFieldPickX = 0.0f;
+		g_wasmLastFieldPickY = -10000.0f;
+		g_wasmLastFieldPickZ = 0.0f;
+		g_wasmLastFieldPickValid = 0;
+		return 0;
+	}
+
+	g_pCursor->SetPosition(x, y);
+	D3DXVECTOR3 pick = g_pCurrentScene->GroundGetPickPos();
+	g_wasmLastFieldPickX = pick.x;
+	g_wasmLastFieldPickY = pick.y;
+	g_wasmLastFieldPickZ = pick.z;
+	g_wasmLastFieldPickValid = pick.y > -5000.0f ? 1 : 0;
+	return g_wasmLastFieldPickValid;
+}
+
+extern "C" int wyd_field_last_pick_valid()
+{
+	return g_wasmLastFieldPickValid;
+}
+
+extern "C" float wyd_field_last_pick_x()
+{
+	return g_wasmLastFieldPickX;
+}
+
+extern "C" float wyd_field_last_pick_y()
+{
+	return g_wasmLastFieldPickY;
+}
+
+extern "C" float wyd_field_last_pick_z()
+{
+	return g_wasmLastFieldPickZ;
 }
 
 extern "C" int wyd_field_ground_mask_at(int x, int y)

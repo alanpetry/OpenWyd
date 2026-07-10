@@ -4,6 +4,107 @@
 #include "SControl.h"
 #include "TMGlobal.h"
 
+#if defined(__EMSCRIPTEN__)
+namespace {
+unsigned int g_wydLastControlEventID = 0;
+unsigned int g_wydLastControlEventType = 0;
+unsigned int g_wydControlEventCount = 0;
+unsigned int g_wydLastMouseProcessedControlID = 0;
+unsigned int g_wydLastMouseProcessedFlags = 0;
+int g_wydLastMouseProcessedType = -1;
+int g_wydLastMouseProcessedX = 0;
+int g_wydLastMouseProcessedY = 0;
+
+SControl* WydFindControl(unsigned int idwControlID)
+{
+	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
+		return nullptr;
+
+	return g_pCurrentScene->m_pControlContainer->FindControl(idwControlID);
+}
+
+float WydControlAbsX(SControl* pControl)
+{
+	float x = 0.0f;
+	for (SControl* pNode = pControl; pNode != nullptr; pNode = static_cast<SControl*>(pNode->m_pTop))
+		x += pNode->m_nPosX;
+	return x;
+}
+
+float WydControlAbsY(SControl* pControl)
+{
+	float y = 0.0f;
+	for (SControl* pNode = pControl; pNode != nullptr; pNode = static_cast<SControl*>(pNode->m_pTop))
+		y += pNode->m_nPosY;
+	return y;
+}
+} // namespace
+
+extern "C" unsigned int wyd_control_last_event_id() { return g_wydLastControlEventID; }
+extern "C" unsigned int wyd_control_last_event_type() { return g_wydLastControlEventType; }
+extern "C" unsigned int wyd_control_event_count() { return g_wydControlEventCount; }
+extern "C" unsigned int wyd_control_last_mouse_processed_id() { return g_wydLastMouseProcessedControlID; }
+extern "C" unsigned int wyd_control_last_mouse_processed_flags() { return g_wydLastMouseProcessedFlags; }
+extern "C" int wyd_control_last_mouse_processed_type() { return g_wydLastMouseProcessedType; }
+extern "C" int wyd_control_last_mouse_processed_x() { return g_wydLastMouseProcessedX; }
+extern "C" int wyd_control_last_mouse_processed_y() { return g_wydLastMouseProcessedY; }
+extern "C" int wyd_control_exists(unsigned int idwControlID) { return WydFindControl(idwControlID) ? 1 : 0; }
+extern "C" int wyd_control_visible(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? pControl->m_bVisible : 0;
+}
+extern "C" int wyd_control_enabled(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? pControl->m_bEnable : 0;
+}
+extern "C" int wyd_control_select_enabled(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? pControl->m_bSelectEnable : 0;
+}
+extern "C" int wyd_control_selected(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_BUTTON)
+		return 0;
+	return static_cast<SButton*>(pControl)->m_bSelected == 1 ? 1 : 0;
+}
+extern "C" int wyd_control_pressed(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_BUTTON)
+		return 0;
+	return static_cast<SButton*>(pControl)->m_bPressed == 1 ? 1 : 0;
+}
+extern "C" int wyd_control_type(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? static_cast<int>(pControl->m_eCtrlType) : -1;
+}
+extern "C" float wyd_control_abs_x(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? WydControlAbsX(pControl) : -1.0f;
+}
+extern "C" float wyd_control_abs_y(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? WydControlAbsY(pControl) : -1.0f;
+}
+extern "C" float wyd_control_width(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? pControl->m_nWidth : 0.0f;
+}
+extern "C" float wyd_control_height(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	return pControl ? pControl->m_nHeight : 0.0f;
+}
+#endif
+
 SControlContainer::SControlContainer(TMScene* pScene) 
 	: TreeNode(0)
 	, m_pScene(pScene)
@@ -62,6 +163,16 @@ int SControlContainer::OnMouseEvent(unsigned int dwFlags, unsigned int wParam, i
 			before = pCurrentControl->m_bFocused;
 
 			int ret = pCurrentControl->OnMouseEvent(dwFlags, wParam, nX - ParentPosX, nY - ParentPosY);
+#if defined(__EMSCRIPTEN__)
+			if (ret == 1)
+			{
+				g_wydLastMouseProcessedControlID = pCurrentControl->m_dwControlID;
+				g_wydLastMouseProcessedFlags = dwFlags;
+				g_wydLastMouseProcessedType = static_cast<int>(pCurrentControl->m_eCtrlType);
+				g_wydLastMouseProcessedX = nX - ParentPosX;
+				g_wydLastMouseProcessedY = nY - ParentPosY;
+			}
+#endif
 			if (pCurrentControl->m_bFocused && !before && ret == 1 && pCurrentControl->m_eCtrlType == CONTROL_TYPE::CTRL_TYPE_EDITABLETEXT)
 				SetFocusedControl(pCurrentControl);
 
@@ -248,6 +359,11 @@ void SControlContainer::SetFocusedControl(SControl* pControl)
 
 int SControlContainer::OnControlEvent(DWORD idwControlID, DWORD idwEvent)
 {
+#if defined(__EMSCRIPTEN__)
+	g_wydLastControlEventID = idwControlID;
+	g_wydLastControlEventType = idwEvent;
+	++g_wydControlEventCount;
+#endif
 	return m_pScene ? m_pScene->OnControlEvent(idwControlID, idwEvent) : 0;
 }
 

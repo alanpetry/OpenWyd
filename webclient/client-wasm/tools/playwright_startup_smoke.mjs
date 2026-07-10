@@ -60,6 +60,7 @@ function parseArgs(argv) {
     loginTicks: 120,
     allStates: false,
     summaryOnly: false,
+    mouseTests: [],
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -189,6 +190,11 @@ function parseArgs(argv) {
       opts.dummyLogin = true;
       continue;
     }
+    if (a === "--mouse-test" && argv[i + 1]) {
+      opts.mouseTests.push(String(argv[i + 1] || "").toLowerCase());
+      i += 1;
+      continue;
+    }
     if (a === "--login-ticks" && argv[i + 1]) {
       opts.loginTicks = Number.parseInt(argv[i + 1], 10) || opts.loginTicks;
       i += 1;
@@ -312,6 +318,231 @@ function materializeTraceProbes(opts, width, height) {
       y: normalized ? Math.round(probe.y * height) : Math.round(probe.y),
     };
   });
+}
+
+async function tickWasm(page, count, tickMs) {
+  return page.evaluate(({ count: tickCount, tickMs: tickDelta }) => {
+    const out = [];
+    for (let i = 0; i < tickCount; i += 1) {
+      if (tickDelta > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
+        Module._wyd_debug_advance_fake_time(tickDelta >>> 0);
+      }
+      out.push(Module._wyd_tick_client());
+    }
+    return out;
+  }, { count, tickMs });
+}
+
+async function logicalToPagePoint(page, logicalX, logicalY) {
+  return page.evaluate(({ logicalX: x, logicalY: y }) => {
+    const canvas = document.getElementById("canvas");
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + (Number(x) * rect.width) / canvas.width,
+      y: rect.top + (Number(y) * rect.height) / canvas.height,
+    };
+  }, { logicalX, logicalY });
+}
+
+async function readFieldMouseState(page) {
+  return page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    return {
+      humanX: call("_wyd_field_myhuman_x"),
+      humanY: call("_wyd_field_myhuman_y"),
+      motion: call("_wyd_field_myhuman_motion"),
+      sentMotion: call("_wyd_field_myhuman_sent_motion"),
+      moving: call("_wyd_field_myhuman_moving"),
+      progress: call("_wyd_field_myhuman_progress_rate"),
+      lastRoute: call("_wyd_field_myhuman_last_route_index"),
+      maxRoute: call("_wyd_field_myhuman_max_route_index"),
+      targetX: call("_wyd_field_myhuman_target_x"),
+      targetY: call("_wyd_field_myhuman_target_y"),
+      moveToX: call("_wyd_field_myhuman_move_to_x"),
+      moveToY: call("_wyd_field_myhuman_move_to_y"),
+      mouseX: call("_wyd_input_mouse_x"),
+      mouseY: call("_wyd_input_mouse_y"),
+      mouseEvents: call("_wyd_input_mouse_event_count"),
+      lastMouseMsg: call("_wyd_input_mouse_last_msg"),
+      controlEventCount: call("_wyd_control_event_count"),
+      lastControlId: call("_wyd_control_last_event_id"),
+      lastControlType: call("_wyd_control_last_event_type"),
+      cameraH: call("_wyd_debug_camera_h"),
+      cameraV: call("_wyd_debug_camera_v"),
+      cameraSightLength: call("_wyd_debug_camera_sight_length"),
+      cameraWantLength: call("_wyd_debug_camera_want_length"),
+    };
+  });
+}
+
+async function runFieldUiMouseTest(page, opts) {
+  const candidates = [
+    { id: 65790, label: "B_CHAR" },
+    { id: 65791, label: "B_EQUIP" },
+    { id: 65793, label: "B_QUESTLOG" },
+    { id: 65787, label: "P_MINIBTNPANEL_BTN" },
+    { id: 65795, label: "B_HELP" },
+    { id: 65796, label: "B_SYSTEM" },
+  ];
+  const attempts = [];
+
+  for (const candidate of candidates) {
+    const before = await page.evaluate((controlId) => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    return {
+      exists: call("_wyd_control_exists", controlId),
+      visible: call("_wyd_control_visible", controlId),
+      enabled: call("_wyd_control_enabled", controlId),
+      selectEnabled: call("_wyd_control_select_enabled", controlId),
+      selected: call("_wyd_control_selected", controlId),
+      x: call("_wyd_control_abs_x", controlId),
+      y: call("_wyd_control_abs_y", controlId),
+      w: call("_wyd_control_width", controlId),
+      h: call("_wyd_control_height", controlId),
+      eventCount: call("_wyd_control_event_count"),
+      humanX: call("_wyd_field_myhuman_x"),
+      humanY: call("_wyd_field_myhuman_y"),
+    };
+  }, candidate.id);
+
+    if (before.exists !== 1 || before.visible !== 1 || before.enabled !== 1 ||
+        before.selectEnabled !== 1 || before.w <= 0 || before.h <= 0) {
+      attempts.push({ ...candidate, ok: false, before, error: "control is not clickable" });
+      continue;
+    }
+
+    const point = await logicalToPagePoint(page, before.x + before.w * 0.5, before.y + before.h * 0.5);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: "left" });
+    await tickWasm(page, 3, opts.tickMs);
+    await page.mouse.up({ button: "left" });
+    await tickWasm(page, 8, opts.tickMs);
+
+    const after = await page.evaluate((controlId) => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    return {
+      selected: call("_wyd_control_selected", controlId),
+      pressed: call("_wyd_control_pressed", controlId),
+      eventCount: call("_wyd_control_event_count"),
+      lastControlId: call("_wyd_control_last_event_id"),
+      lastControlType: call("_wyd_control_last_event_type"),
+      lastMouseProcessedId: call("_wyd_control_last_mouse_processed_id"),
+      lastMouseProcessedFlags: call("_wyd_control_last_mouse_processed_flags"),
+      lastMouseProcessedType: call("_wyd_control_last_mouse_processed_type"),
+      lastMouseProcessedX: call("_wyd_control_last_mouse_processed_x"),
+      lastMouseProcessedY: call("_wyd_control_last_mouse_processed_y"),
+      humanX: call("_wyd_field_myhuman_x"),
+      humanY: call("_wyd_field_myhuman_y"),
+      mouseEvents: call("_wyd_input_mouse_event_count"),
+      lastMouseMsg: call("_wyd_input_mouse_last_msg"),
+    };
+  }, candidate.id);
+
+    const humanDelta = Math.hypot((after.humanX ?? 0) - (before.humanX ?? 0), (after.humanY ?? 0) - (before.humanY ?? 0));
+    const ok = after.lastControlId === candidate.id && after.eventCount > before.eventCount && humanDelta < 0.25;
+    const attempt = { name: "field-ui", ok, controlId: candidate.id, label: candidate.label, point, before, after, humanDelta };
+    attempts.push(attempt);
+    if (ok) return { ...attempt, attempts };
+  }
+
+  return { name: "field-ui", ok: false, attempts, error: "no official field UI button produced OnControlEvent" };
+}
+
+async function chooseFieldMoveTarget(page) {
+  return page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    const humanX = call("_wyd_field_myhuman_x");
+    const humanY = call("_wyd_field_myhuman_y");
+    const candidates = [
+      [400, 260],
+      [470, 300],
+      [330, 300],
+      [520, 240],
+      [280, 250],
+      [600, 300],
+      [210, 280],
+    ];
+    for (const [x, y] of candidates) {
+      const valid = call("_wyd_field_pick_at", x, y);
+      const pickX = call("_wyd_field_last_pick_x");
+      const pickZ = call("_wyd_field_last_pick_z");
+      const distance = Math.hypot((pickX ?? 0) - (humanX ?? 0), (pickZ ?? 0) - (humanY ?? 0));
+      if (valid === 1 && distance > 1.5) {
+        return { logicalX: x, logicalY: y, pickX, pickZ, distance, humanX, humanY };
+      }
+    }
+    return null;
+  });
+}
+
+async function runFieldMoveMouseTest(page, opts) {
+  const target = await chooseFieldMoveTarget(page);
+  const before = await readFieldMouseState(page);
+  if (!target) return { name: "field-move", ok: false, before, error: "no valid ground pick target" };
+
+  const point = await logicalToPagePoint(page, target.logicalX, target.logicalY);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down({ button: "left" });
+  await tickWasm(page, 4, opts.tickMs);
+  await page.mouse.up({ button: "left" });
+  await tickWasm(page, 90, opts.tickMs);
+
+  const after = await readFieldMouseState(page);
+  const humanDelta = Math.hypot((after.humanX ?? 0) - (before.humanX ?? 0), (after.humanY ?? 0) - (before.humanY ?? 0));
+  const routeChanged = after.targetX !== before.targetX || after.targetY !== before.targetY ||
+    after.moveToX !== before.moveToX || after.moveToY !== before.moveToY ||
+    after.maxRoute !== before.maxRoute || after.lastRoute !== before.lastRoute;
+  const ok = humanDelta > 0.05 || routeChanged || after.moving === 1;
+  return { name: "field-move", ok, target, point, before, after, humanDelta, routeChanged };
+}
+
+async function runFieldCameraMouseTest(page, opts) {
+  const before = await readFieldMouseState(page);
+  const start = await logicalToPagePoint(page, 400, 300);
+  const end = await logicalToPagePoint(page, 500, 340);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(end.x, end.y, { steps: 8 });
+  await tickWasm(page, 5, opts.tickMs);
+  await page.mouse.up({ button: "middle" });
+  await tickWasm(page, 5, opts.tickMs);
+  const after = await readFieldMouseState(page);
+  const cameraDelta = Math.hypot((after.cameraH ?? 0) - (before.cameraH ?? 0), (after.cameraV ?? 0) - (before.cameraV ?? 0));
+  return { name: "field-camera", ok: cameraDelta > 0.0001, before, after, cameraDelta };
+}
+
+async function runFieldWheelMouseTest(page, opts) {
+  const before = await readFieldMouseState(page);
+  const point = await logicalToPagePoint(page, 400, 300);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.wheel(0, -120);
+  await tickWasm(page, 8, opts.tickMs);
+  const after = await readFieldMouseState(page);
+  const sightDelta = Math.abs((after.cameraSightLength ?? 0) - (before.cameraSightLength ?? 0));
+  const wantDelta = Math.abs((after.cameraWantLength ?? 0) - (before.cameraWantLength ?? 0));
+  return { name: "field-wheel", ok: sightDelta > 0.0001 || wantDelta > 0.0001, before, after, sightDelta, wantDelta };
+}
+
+async function runMouseTests(page, opts) {
+  const tests = [];
+  for (const test of opts.mouseTests) {
+    if (test === "field-ui") {
+      tests.push(await runFieldUiMouseTest(page, opts));
+    } else if (test === "field-move") {
+      tests.push(await runFieldMoveMouseTest(page, opts));
+    } else if (test === "field-camera") {
+      tests.push(await runFieldCameraMouseTest(page, opts));
+    } else if (test === "field-wheel") {
+      tests.push(await runFieldWheelMouseTest(page, opts));
+    } else {
+      tests.push({ name: test, ok: false, error: "unknown mouse test" });
+    }
+  }
+  return tests;
 }
 
 const opts = parseArgs(process.argv);
@@ -611,6 +842,7 @@ let result = {
   fieldVisual: null,
   fieldCaptures: null,
   fieldCapturesDir: null,
+  mouseTests: [],
   socket: null,
   dummyLoginReturn: null,
   pixel: null,
@@ -835,6 +1067,10 @@ try {
       }
       return out;
     }, { count: opts.ticks, tickMs: opts.tickMs });
+  }
+  if (opts.mouseTests.length > 0) {
+    result.step = "mouse-tests";
+    result.mouseTests = await runMouseTests(page, opts);
   }
   await page.waitForTimeout(120);
   if (opts.trace) {
@@ -2317,6 +2553,16 @@ try {
       mapY: call("_wyd_field_map_y"),
       myHumanX: call("_wyd_field_myhuman_x"),
       myHumanY: call("_wyd_field_myhuman_y"),
+      motion: call("_wyd_field_myhuman_motion"),
+      sentMotion: call("_wyd_field_myhuman_sent_motion"),
+      moving: call("_wyd_field_myhuman_moving"),
+      progressRate: call("_wyd_field_myhuman_progress_rate"),
+      lastRouteIndex: call("_wyd_field_myhuman_last_route_index"),
+      maxRouteIndex: call("_wyd_field_myhuman_max_route_index"),
+      targetX: call("_wyd_field_myhuman_target_x"),
+      targetY: call("_wyd_field_myhuman_target_y"),
+      moveToX: call("_wyd_field_myhuman_move_to_x"),
+      moveToY: call("_wyd_field_myhuman_move_to_y"),
       groundHeightUnderPlayer: call("_wyd_field_ground_height_under_player"),
       groundMaskUnderPlayer: call("_wyd_field_ground_mask_under_player"),
       myHumanHeight: call("_wyd_field_myhuman_height"),
@@ -2352,6 +2598,22 @@ try {
         y: call("_wyd_debug_last_critical_y"),
         mobX: call("_wyd_debug_last_critical_mob_x"),
         mobY: call("_wyd_debug_last_critical_mob_y"),
+      },
+      inputMouse: {
+        x: call("_wyd_input_mouse_x"),
+        y: call("_wyd_input_mouse_y"),
+        left: call("_wyd_input_mouse_left_down"),
+        right: call("_wyd_input_mouse_right_down"),
+        middle: call("_wyd_input_mouse_middle_down"),
+        events: call("_wyd_input_mouse_event_count"),
+        lastMsg: call("_wyd_input_mouse_last_msg"),
+        lastWParam: call("_wyd_input_mouse_last_wparam"),
+      },
+      controlEvent: {
+        count: call("_wyd_control_event_count"),
+        lastId: call("_wyd_control_last_event_id"),
+        lastType: call("_wyd_control_last_event_type"),
+        bCharSelected: call("_wyd_control_selected", 65790),
       },
     };
   });
@@ -2458,6 +2720,9 @@ try {
     result.field.heightDelta == null ||
     result.field.heightDelta === -9999 ||
     Math.abs(result.field.heightDelta) < 100;
+  const mouseTestsOk =
+    !result.mouseTests ||
+    result.mouseTests.every((test) => test.ok === true);
   result.ok =
     result.boot === 1 &&
     result.shutdown === 1 &&
@@ -2476,7 +2741,8 @@ try {
     fieldGroundOk &&
     fieldCriticalOk &&
     fieldHeightDeltaOk &&
-    fieldCapturesAllOk;
+    fieldCapturesAllOk &&
+    mouseTestsOk;
 } catch (err) {
   result.error = err?.message || String(err);
 }
@@ -2498,6 +2764,7 @@ const output = opts.summaryOnly
       layout: result.layout,
       field: result.field,
       fieldVisual: result.fieldVisual,
+      mouseTests: result.mouseTests,
       glErrorTotal: result.glErrorTotal,
       consoleErrorCount: result.consoleErrorCount,
       screenshot: result.screenshot,
