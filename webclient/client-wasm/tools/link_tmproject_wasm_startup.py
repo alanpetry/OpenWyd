@@ -19,6 +19,7 @@ UNDEF_RE = re.compile(r"undefined symbol: (.+)$")
 
 def compile_source(repo_root: Path, src: Path, out_obj: Path) -> None:
     compat_include = repo_root / "webclient/client-wasm/compat/include"
+    case_shims_include = compat_include / "case_shims"
     tmproject_include = repo_root / "Projects/TMProject"
     directx_include = repo_root / "Dependencies/Directx/Include"
     preinclude = compat_include / "tm_emscripten_prelude.h"
@@ -35,6 +36,7 @@ def compile_source(repo_root: Path, src: Path, out_obj: Path) -> None:
         "-Wno-unknown-pragmas",
         "-include",
         str(preinclude),
+        f"-I{case_shims_include}",
         f"-I{compat_include}",
         f"-I{tmproject_include}",
         f"-I{directx_include}",

@@ -77,6 +77,7 @@ def run_compile(
         "-Wno-unknown-pragmas",
         "-include",
         str(preinclude),
+        f"-I{compat_include / 'case_shims'}",
         f"-I{compat_include}",
         f"-I{tmproject_include}",
         f"-I{directx_include}",
@@ -243,4 +244,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
