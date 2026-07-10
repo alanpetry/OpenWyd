@@ -1,0 +1,92 @@
+name: Deploy Field Preview
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webclient/package-lock.json
+
+      - name: Install browser test dependencies
+        working-directory: webclient
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build the original client runtime
+        run: |
+          bash webclient/client-wasm/tools/run_tmproject_wasm_objects.sh
+          bash webclient/client-wasm/tools/run_tmproject_wasm_startup_link.sh
+
+      - name: Validate Field runtime
+        run: |
+          python3 -m http.server 8877 --directory . > /tmp/openwyd-http.log 2>&1 &
+          HTTP_PID=$!
+          trap 'kill $HTTP_PID' EXIT
+          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
+            --state 0 --logical 800x600 --layout panel --ticks 180 \
+            --mouse-test field-ui --mouse-test field-move --mouse-test field-camera \
+            --summary-only
+          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
+            --all-states --logical 800x600 --layout panel --ticks 10 --summary-only
+
+      - name: Package GitHub Pages site
+        run: |
+          python3 webclient/client-wasm/tools/prepare_pages_site.py
+          test -s webclient/client-wasm/build/pages/tmproject_startup.data
+          test -s webclient/client-wasm/build/pages/tmproject_startup.wasm
+
+      - name: Validate public Field entrypoint
+        run: |
+          python3 -m http.server 8878 --directory webclient/client-wasm/build/pages > /tmp/openwyd-pages-http.log 2>&1 &
+          HTTP_PID=$!
+          trap 'kill $HTTP_PID' EXIT
+          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
+            --url http://127.0.0.1:8878/ --state 0 --logical 800x600 \
+            --layout panel --ticks 60 --summary-only
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: webclient/client-wasm/build/pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
