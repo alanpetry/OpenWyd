@@ -140,6 +140,7 @@ int TMSun::Render()
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
 
 	m_vFlareDirection.y = m_fDefSize * 0.69999999f;
+	bool bDrawFailed = false;
 
 	for (int i = 0; i < 12; ++i)
 	{
@@ -166,7 +167,8 @@ int TMSun::Render()
 		g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_stFlareArray[i].nTexIndex, 5000));
 
 		g_pDevice->m_pd3dDevice->SetFVF(324u);
-		g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
+		if (FAILED(g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u)))
+			bDrawFailed = true;
 	}
 
 	g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
@@ -185,7 +187,7 @@ int TMSun::Render()
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
-	return 1;
+	return bDrawFailed ? 0 : 1;
 }
 
 int TMSun::FrameMove()
