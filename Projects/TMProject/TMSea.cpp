@@ -324,8 +324,12 @@ int TMSea::FrameMove(unsigned int dwServerTime)
 
     if (m_pMesh)
     {
+        if (!m_pMesh->m_pVB)
+            return 0;
+
         RDLVERTEX2* pVertex{};
-        m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+        if (m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0) < 0 || !pVertex)
+            return 0;
 
         int nIndex0 = dwServerTime % 12000;
         int nIndex1 = dwServerTime % 18000;
