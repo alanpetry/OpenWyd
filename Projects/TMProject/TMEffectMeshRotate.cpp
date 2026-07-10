@@ -82,7 +82,7 @@ int TMEffectMeshRotate::Render()
 	{
 		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
 
-		if (pMesh == nullptr)
+		if (pMesh == nullptr || !pMesh->m_pVB)
 			return 0;
 
 		g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
