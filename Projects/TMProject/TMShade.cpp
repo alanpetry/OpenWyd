@@ -98,7 +98,7 @@ int TMShade::SetPosition(TMVector2 vecPosition)
     if (vecPosition.y > 0.0f && (vecPosition.y - ((float)(nY + 1) * 2.0f)) > (((float)(nY + 2) * 2.0f) - vecPosition.y))
         ++nY;
 
-    auto pGround = g_pCurrentScene->m_pGround;
+    auto pGround = g_pCurrentScene ? g_pCurrentScene->m_pGround : nullptr;
     if (g_pCurrentScene && pGround)
     {
         auto pTileMapData = pGround->m_TileMapData;
