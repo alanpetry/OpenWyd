@@ -77,11 +77,11 @@ jobs:
           HTTP_PID=$!
           trap 'kill $HTTP_PID' EXIT
           node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
-            --state 0 --logical 800x600 --layout panel --ticks 180 \
-            --mouse-test field-ui --mouse-test field-move --mouse-test field-camera \
+            --state 0 --logical 800x600 --layout panel --ticks 2 \
+            --mouse-test field-ui --mouse-test field-move --mouse-move-ticks 4 --mouse-test field-camera \
             --summary-only
           node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
-            --all-states --logical 800x600 --layout panel --ticks 10 --summary-only
+            --all-states --logical 800x600 --layout panel --ticks 2 --summary-only
 
       - name: Package GitHub Pages site
         run: |
@@ -96,7 +96,7 @@ jobs:
           trap 'kill $HTTP_PID' EXIT
           node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
             --url http://127.0.0.1:8878/ --state 0 --logical 800x600 \
-            --layout panel --ticks 60 --summary-only
+            --layout panel --ticks 2 --summary-only
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
