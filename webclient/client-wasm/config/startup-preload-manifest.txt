@@ -56,6 +56,10 @@ v769ClientRelease/Mesh/*.ani@/Mesh/
 v769ClientRelease/Mesh/*.msh@/Mesh/
 v769ClientRelease/Mesh/*.mshb@/Mesh/
 v769ClientRelease/Mesh/*.msa@/Mesh/
+v769ClientRelease/Mesh/*.bmp@/Mesh/
+v769ClientRelease/Mesh/*.tga@/Mesh/
+v769ClientRelease/Mesh/*.dds@/Mesh/
+v769ClientRelease/Mesh/*.wyt@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
