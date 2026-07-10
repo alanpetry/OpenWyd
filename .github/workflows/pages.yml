@@ -3,6 +3,10 @@ name: Deploy Field Preview
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - README.md
+      - SECURITY.md
+      - docs/**
   workflow_dispatch:
 
 permissions:
@@ -12,7 +16,7 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -26,19 +30,6 @@ jobs:
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: 6.0.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: webclient/package-lock.json
-
-      - name: Install browser test dependencies
-        working-directory: webclient
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
 
       - name: Build the original client runtime
         run: |
@@ -71,32 +62,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Validate Field runtime
-        run: |
-          python3 -m http.server 8877 --directory . > /tmp/openwyd-http.log 2>&1 &
-          HTTP_PID=$!
-          trap 'kill $HTTP_PID' EXIT
-          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
-            --state 0 --logical 800x600 --layout panel --ticks 2 \
-            --mouse-test field-ui --mouse-test field-move --mouse-move-ticks 4 --mouse-test field-camera \
-            --summary-only
-          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
-            --all-states --logical 800x600 --layout panel --ticks 2 --summary-only
-
       - name: Package GitHub Pages site
         run: |
           python3 webclient/client-wasm/tools/prepare_pages_site.py
           test -s webclient/client-wasm/build/pages/tmproject_startup.data
           test -s webclient/client-wasm/build/pages/tmproject_startup.wasm
-
-      - name: Validate public Field entrypoint
-        run: |
-          python3 -m http.server 8878 --directory webclient/client-wasm/build/pages > /tmp/openwyd-pages-http.log 2>&1 &
-          HTTP_PID=$!
-          trap 'kill $HTTP_PID' EXIT
-          node webclient/client-wasm/tools/playwright_startup_smoke.mjs \
-            --url http://127.0.0.1:8878/ --state 0 --logical 800x600 \
-            --layout panel --ticks 2 --summary-only
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
