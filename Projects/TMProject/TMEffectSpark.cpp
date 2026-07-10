@@ -153,7 +153,10 @@ int TMEffectSpark::SetLifeTime(unsigned int dwLifeTime)
 	for (int i = 0; i < m_nSparkCount; ++i)
 	{
 		if (m_pSpark[i])
-			m_pSpark[i]->m_dwCreateTime = dwLifeTime;
+			m_pSpark[i]->m_dwLifeTime = dwLifeTime;
+
+		if (m_pShade[i])
+			m_pShade[i]->m_dwLifeTime = dwLifeTime;
 	}
 	return 1;
 }
