@@ -283,9 +283,6 @@ test-results/
 # Local helper tools downloaded by Codex
 ../.tools/
 
-# GitHub workflow files need an auth token with workflow scope to push.
-.github/workflows/
-
 # SQL Server files
 *.mdf
 *.ldf

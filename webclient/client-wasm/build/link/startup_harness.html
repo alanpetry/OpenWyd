@@ -80,6 +80,7 @@
     #status { color: #a0cfff; margin-bottom: 8px; }
     #state-info { color: #b8d8ff; margin-bottom: 8px; font-size: 12px; line-height: 1.35; }
     .canvas-wrap {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -95,6 +96,22 @@
       border: 0;
       border-radius: 0;
     }
+    body.play .layout {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      padding: 24px;
+    }
+    body.play .panel {
+      display: none;
+    }
+    body.play .canvas-wrap {
+      width: min(800px, 100%);
+      height: auto;
+      aspect-ratio: 4 / 3;
+      flex: 0 1 800px;
+    }
     #canvas {
       width: 800px;
       height: 600px;
@@ -103,6 +120,24 @@
       display: block;
       background: #000;
       image-rendering: pixelated;
+    }
+    .loading-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+      background: #070707;
+      color: #d5e8ff;
+      font-family: monospace;
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    body.play.loading .loading-overlay {
+      display: flex;
     }
     .ok { color: #7CFC7C; }
     .err { color: #ff7070; }
@@ -158,6 +193,7 @@
     </div>
     <div class="canvas-wrap">
       <canvas id="canvas" width="800" height="600"></canvas>
+      <div id="loading-overlay" class="loading-overlay">Loading OpenWyd Field preview...</div>
     </div>
   </div>
   <script>
@@ -165,6 +201,7 @@
     const statusEl = document.getElementById('status');
     const stateInfoEl = document.getElementById('state-info');
     const canvasEl = document.getElementById('canvas');
+    const loadingOverlayEl = document.getElementById('loading-overlay');
     const bootBtn = document.getElementById('boot-btn');
     const tickBtn = document.getElementById('tick-btn');
     const tick120Btn = document.getElementById('tick120-btn');
@@ -184,6 +221,7 @@
     let autoTickFrames = 0;
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
+    const publicPlayMode = query.get('mode') === 'play';
     const LAST_STATE_STORAGE_KEY = 'openwyd.lastState';
     const screenStates = {
       none: -1,
@@ -257,9 +295,22 @@
     debugHostInput.value = autoConfig.debugHost;
     debugAccountInput.value = autoConfig.debugAccount;
     debugPasswordInput.value = autoConfig.debugPassword;
-    if (autoConfig.layout === 'capture') {
+    if (publicPlayMode) {
+      document.body.classList.add('play', 'loading');
+      document.title = 'OpenWyd Field Preview';
+    } else if (autoConfig.layout === 'capture') {
       document.body.classList.add('capture');
     }
+
+    const setLoadingStatus = (message) => {
+      if (publicPlayMode && loadingOverlayEl) {
+        loadingOverlayEl.textContent = message || 'Loading OpenWyd Field preview...';
+      }
+    };
+
+    const hideLoadingOverlay = () => {
+      if (publicPlayMode) document.body.classList.remove('loading');
+    };
 
     const syncCanvasSize = () => {
       const logical = autoConfig.logicalSize;
@@ -752,6 +803,14 @@
     window.Module = {
       canvas: canvasEl,
       wydSocketProxyUrl: autoConfig.socketProxyUrl,
+      setStatus: (message) => {
+        setLoadingStatus(message || 'Loading OpenWyd Field preview...');
+      },
+      monitorRunDependencies: (left) => {
+        setLoadingStatus(left > 0
+          ? `Loading OpenWyd Field preview (${left} runtime dependencies remaining)...`
+          : 'Starting OpenWyd Field preview...');
+      },
       print: (txt) => write(`[stdout] ${txt}`),
       printErr: (txt) => write(`[stderr] ${txt}`, 'err'),
       onRuntimeInitialized() {
@@ -782,8 +841,10 @@
           }
           if (autoConfig.autostart) {
             window.startAutoTick();
+            hideLoadingOverlay();
           } else {
             setStatus('runtime initialized; autostart disabled');
+            hideLoadingOverlay();
           }
         }
       }
