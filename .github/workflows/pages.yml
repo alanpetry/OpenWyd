@@ -42,8 +42,34 @@ jobs:
 
       - name: Build the original client runtime
         run: |
-          bash webclient/client-wasm/tools/run_tmproject_wasm_objects.sh
+          # The object builder captures compiler stderr per translation unit. Keep
+          # the actionable diagnostics visible in Actions when a Linux-only build
+          # regression occurs.
+          set +e
+          bash webclient/client-wasm/tools/run_tmproject_wasm_objects.sh --jobs 4
+          OBJECT_STATUS=$?
+          if [ "$OBJECT_STATUS" -ne 0 ]; then
+            echo "::group::TMProject object build report"
+            cat webclient/client-wasm/build/reports/tmproject-wasm-objects.md || true
+            echo "::endgroup::"
+            echo "::group::First failed compiler diagnostics"
+            find webclient/client-wasm/build/reports/logs-objects -name '*.stderr.txt' -size +0c -print -exec sed -n '1,80p' {} \; | head -1000 || true
+            echo "::endgroup::"
+            exit "$OBJECT_STATUS"
+          fi
           bash webclient/client-wasm/tools/run_tmproject_wasm_startup_link.sh
+
+      - name: Upload failed build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-build-diagnostics
+          path: |
+            webclient/client-wasm/build/reports/tmproject-wasm-objects.json
+            webclient/client-wasm/build/reports/tmproject-wasm-objects.md
+            webclient/client-wasm/build/reports/logs-objects
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Validate Field runtime
         run: |
