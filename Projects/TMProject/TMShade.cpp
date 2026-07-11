@@ -16,9 +16,9 @@ TMShade::TMShade(int nGridNum, int nTextureIndex, float fScale)
     m_nVertexNum = (m_nGridNum + 1) * (m_nGridNum + 1);
     m_nIndexNum = 6 * m_nGridNum * m_nGridNum;
     m_wpIndex = 0;
-    m_wpIndex = new unsigned short[sizeof(unsigned short) * m_nIndexNum];
+    m_wpIndex = new unsigned short[m_nIndexNum];
     m_pVertex = 0;
-    m_pVertex = new RDLVERTEX[sizeof(RDLVERTEX) * m_nVertexNum];
+    m_pVertex = new RDLVERTEX[m_nVertexNum];
     m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
     m_bFI = 1;
     m_bShow = 1;
@@ -31,6 +31,10 @@ TMShade::TMShade(int nGridNum, int nTextureIndex, float fScale)
             delete[] m_wpIndex;
         if (m_pVertex)
             delete[] m_pVertex;
+        m_wpIndex = nullptr;
+        m_pVertex = nullptr;
+        m_nIndexNum = 0;
+        m_nVertexNum = 0;
     }
 
     if (m_wpIndex)
@@ -279,6 +283,8 @@ void TMShade::RenderUnder()
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+        g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+        g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
     }
 }
 
