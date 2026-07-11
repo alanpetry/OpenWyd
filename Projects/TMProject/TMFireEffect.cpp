@@ -5,24 +5,28 @@
 #include "TMUtil.h"
 #include "TMEffectBillBoard.h"
 
-TMFireEffect::TMFireEffect(TMVector3 vecStart, TMObject* pTarget, int nTextureIndex) : TreeNode(0)
+TMFireEffect::TMFireEffect(TMVector3 vecStart, TMObject* pTarget, int nTextureIndex)
+    : TreeNode(0),
+    m_vecStartPos{ vecStart },
+    m_vecTargetPos{},
+    m_vecDistance{},
+    m_dwCreateTime{ g_pTimerManager->GetServerTime() },
+    m_dwLifeTime{ 1 },
+    m_nEntity{ 0 },
+    m_nTextureIndex{ nTextureIndex },
+    m_fLen{ 1.0f }
 {
     if (pTarget)
     {
         m_pOwner = 0;
-        m_nEntity = 0;
-        m_fLen = 1.0f;
-        m_vecStartPos = vecStart;
         m_vecTargetPos = { pTarget->m_vecPosition.x, pTarget->m_fHeight + 1.0f, pTarget->m_vecPosition.y };
         m_vecDistance = m_vecTargetPos - m_vecStartPos;
         m_fLen = m_vecDistance.Length();
-        m_nTextureIndex = nTextureIndex;
 
         D3DXVECTOR3 vec{ m_vecDistance.x, m_vecDistance.y, m_vecDistance.z };
         D3DXVec3Normalize(&vec, &vec);
         m_vecDistance = *reinterpret_cast<TMVector3*>(&vec);
         m_dwLifeTime = (unsigned int)((m_fLen * 1000.0f) - 10.0f);
-        m_dwCreateTime = g_pTimerManager->GetServerTime();
         if (m_dwLifeTime > 2500)
             m_dwLifeTime = 2500;
         else if (m_dwLifeTime == 0)
@@ -63,12 +67,15 @@ int TMFireEffect::FrameMove(unsigned int dwServerTime)
             1,
             80);
 
-        pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-        pEffect->m_vecStartPos = m_vecStartPos;
-        pEffect->m_vecPosition = pEffect->m_vecStartPos;
-        pEffect->m_nParticleType = 17;
-        pEffect->m_vecDir = m_vecDistance;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+        if (pEffect)
+        {
+            pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+            pEffect->m_vecStartPos = m_vecStartPos;
+            pEffect->m_vecPosition = pEffect->m_vecStartPos;
+            pEffect->m_nParticleType = 17;
+            pEffect->m_vecDir = m_vecDistance;
+            g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+        }
     }
     
     return 1;
