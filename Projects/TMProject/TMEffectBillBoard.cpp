@@ -572,7 +572,7 @@ int TMEffectBillBoard::FrameMove(unsigned int dwServerTime)
 			}
 
 			D3DXMatrixMultiply(&m_matEffect, &m_matEffect, &matScale);
-			D3DXMatrixMultiply(&m_matEffect, &matTrans);
+			D3DXMatrixMultiply(&m_matEffect, &m_matEffect, &matTrans);
 		}
 	}
 
