@@ -43,6 +43,13 @@ v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
 
+# Legacy root-level texture bundles referenced outside UI/Env/Effect/Mesh paths.
+v769ClientRelease/*.wyt@/
+v769ClientRelease/*.wys@/
+v769ClientRelease/*.tga@/
+v769ClientRelease/*.bmp@/
+v769ClientRelease/*.dds@/
+
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
