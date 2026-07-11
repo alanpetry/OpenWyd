@@ -29,7 +29,7 @@ TMEffectBillBoard3::TMEffectBillBoard3(TMVector3 vecStart, TMVector3 vecEnd, int
 	m_vertex2[0].position = TMVector3{ vecStart.x - m_fScaleV, vecStart.y, vecStart.z };
 	m_vertex2[1].position = TMVector3{ vecEnd.x - m_fScaleV, vecEnd.y, vecEnd.z };
 	m_vertex2[2].position = TMVector3{ vecEnd.x + m_fScaleV, vecEnd.y, vecEnd.z };
-	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecStart.z };
+	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecEnd.z };
 
 	m_vertex2[0].tu = 0.02f;
 	m_vertex2[0].tv = 0.98000002f;
@@ -85,19 +85,23 @@ int TMEffectBillBoard3::Render()
 	g_pDevice->m_pd3dDevice->SetFVF(322u);
 	
 	g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nTextureIndex, 5000));
-	g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex1, 24u);
-	g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex2, 24u);
+	HRESULT hr1 = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex1, 24u);
+	HRESULT hr2 = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex2, 24u);
 	g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
 	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
 	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
 	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 
 	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 	else
 		g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
+	if (hr1 < 0 || hr2 < 0)
+		return 0;
 
 	return 1;
 }
