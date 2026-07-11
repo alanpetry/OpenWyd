@@ -476,4 +476,4 @@ int TMEffectMesh::IsInView()
 
 	RECT returnRect;
 	return IntersectRect(&returnRect, &rcRect, &WinRect) == 1;
-}\n
+}
