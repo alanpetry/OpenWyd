@@ -140,6 +140,7 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
         if (pMesh)
         {
+            float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
             if (pMesh->m_pVB)
             {
                 D3DVERTEXBUFFER_DESC vDesc{};
@@ -149,7 +150,6 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
                 if (SUCCEEDED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) && pVertex)
                 {
                     int nCount = vDesc.Size / sizeof(RDLVERTEX);
-                    float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
                     for (int i = 0; i < nCount; ++i)
                     {
                         unsigned char ucColor = (unsigned char)(255.0f * fDif);
