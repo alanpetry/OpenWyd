@@ -24,10 +24,13 @@ TMEffectStart::TMEffectStart(TMVector3 vecPosition, int nType, TMHuman* pOwner) 
     if (!m_nType)
     {
         auto pBill2 = new TMEffectBillBoard2(1, 2000, 0.5f, 0.5f, 0.5f, 0.0020000001f, 0);
-        pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-        pBill2->m_vecPosition = vecPosition;
-        pBill2->m_vecPosition.y += 0.05f;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pBill2);
+        if (pBill2)
+        {
+            pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+            pBill2->m_vecPosition = vecPosition;
+            pBill2->m_vecPosition.y += 0.05f;
+            g_pCurrentScene->m_pEffectContainer->AddChild(pBill2);
+        }
     }
 }
 
@@ -100,6 +103,7 @@ int TMEffectStart::Render()
             }
 
             g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+            g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
             g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
             g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
             g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
@@ -136,10 +140,14 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
         if (pMesh)
         {
-            D3DVERTEXBUFFER_DESC vDesc;
+            if (!pMesh->m_pVB)
+                return 0;
+
+            D3DVERTEXBUFFER_DESC vDesc{};
             pMesh->m_pVB->GetDesc(&vDesc);
-            RDLVERTEX* pVertex;
-            pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+            RDLVERTEX* pVertex{};
+            if (FAILED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || pVertex == nullptr)
+                return 0;
 
             int nCount = vDesc.Size / sizeof(RDLVERTEX);           
             float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
