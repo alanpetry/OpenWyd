@@ -4,6 +4,23 @@
 #include "TMGlobal.h"
 #include "TMCamera.h"
 
+namespace
+{
+void RestoreEffectMeshRenderState()
+{
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
+	g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+	g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, 4u);
+	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+}
+}
+
 TMEffectMesh::TMEffectMesh(int nMeshIndex, unsigned int dwColor, float fAngle, int nType)
 	: TMEffect()
 {
@@ -136,7 +153,10 @@ int TMEffectMesh::Render()
 			else
 			{
 				if (!pMesh->m_pVB)
+				{
+					RestoreEffectMeshRenderState();
 					return 0;
+				}
 
 				RDLVERTEX* pVertex{};
 				D3DVERTEXBUFFER_DESC vDesc{};
@@ -230,15 +250,7 @@ int TMEffectMesh::Render()
 
 			pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, m_fAngle2, m_fAngle3, 0, 0);
 
-			g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
-			g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
-			g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
-			g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
-			g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
-			g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
-			g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
-			g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, 4u);
-			g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+			RestoreEffectMeshRenderState();
 		}
 	}
 
