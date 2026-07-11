@@ -482,10 +482,11 @@ int TMSky::FrameMove(unsigned int dwServerTime)
         return 0;
 
     D3DVERTEXBUFFER_DESC vDesc;
-    RDLVERTEX* pVertex;
+    RDLVERTEX* pVertex{};
 
     pMesh->m_pVB->GetDesc(&vDesc);
-    pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+    if (FAILED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || pVertex == nullptr)
+        return 0;
     int nCount = vDesc.Size / 24;
     g_ClipFar = 70.0f;
     unsigned int dwAlpha = 0x00808080;
