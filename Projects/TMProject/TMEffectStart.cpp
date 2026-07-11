@@ -24,10 +24,13 @@ TMEffectStart::TMEffectStart(TMVector3 vecPosition, int nType, TMHuman* pOwner) 
     if (!m_nType)
     {
         auto pBill2 = new TMEffectBillBoard2(1, 2000, 0.5f, 0.5f, 0.5f, 0.0020000001f, 0);
-        pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-        pBill2->m_vecPosition = vecPosition;
-        pBill2->m_vecPosition.y += 0.05f;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pBill2);
+        if (pBill2)
+        {
+            pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+            pBill2->m_vecPosition = vecPosition;
+            pBill2->m_vecPosition.y += 0.05f;
+            g_pCurrentScene->m_pEffectContainer->AddChild(pBill2);
+        }
     }
 }
 
@@ -99,6 +102,7 @@ int TMEffectStart::Render()
                     0);
             }
 
+            g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
             g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
             g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
             g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
@@ -136,24 +140,28 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
         if (pMesh)
         {
-            D3DVERTEXBUFFER_DESC vDesc;
-            pMesh->m_pVB->GetDesc(&vDesc);
-            RDLVERTEX* pVertex;
-            pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
-
-            int nCount = vDesc.Size / sizeof(RDLVERTEX);           
-            float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
-            for (int i = 0; i < nCount; ++i)
+            if (pMesh->m_pVB)
             {
-                unsigned char ucColor = (unsigned char)(255.0f * fDif);
-                unsigned int dwR = (unsigned char)ucColor << 16;
-                unsigned int dwG = (unsigned char)ucColor << 8;
-                unsigned int dwB = (unsigned char)ucColor;
+                D3DVERTEXBUFFER_DESC vDesc{};
+                RDLVERTEX* pVertex{};
+                pMesh->m_pVB->GetDesc(&vDesc);
 
-                pVertex[i].diffuse = ucColor | dwG | (ucColor << 16);
+                if (SUCCEEDED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) && pVertex)
+                {
+                    int nCount = vDesc.Size / sizeof(RDLVERTEX);
+                    float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
+                    for (int i = 0; i < nCount; ++i)
+                    {
+                        unsigned char ucColor = (unsigned char)(255.0f * fDif);
+                        unsigned int dwG = (unsigned char)ucColor << 8;
+
+                        pVertex[i].diffuse = ucColor | dwG | (ucColor << 16);
+                    }
+
+                    pMesh->m_pVB->Unlock();
+                }
             }
 
-            pMesh->m_pVB->Unlock();
             switch (m_nType)
             {
             case 1:
