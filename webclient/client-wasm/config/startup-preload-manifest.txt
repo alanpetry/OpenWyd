@@ -20,6 +20,12 @@ v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
 v769ClientRelease/notice.txt@/notice.txt
 
+# Select-server demo rosters opened directly by TMSelectServerScene::ResetDemoPlayer().
+v769ClientRelease/UI/demo.bin@/UI/demo.bin
+v769ClientRelease/UI/demo2.bin@/UI/demo2.bin
+v769ClientRelease/UI/demo3.bin@/UI/demo3.bin
+v769ClientRelease/UI/demo4.bin@/UI/demo4.bin
+
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
 v769ClientRelease/UI/*.txt@/UI/
