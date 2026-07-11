@@ -16,9 +16,9 @@ TMShade::TMShade(int nGridNum, int nTextureIndex, float fScale)
     m_nVertexNum = (m_nGridNum + 1) * (m_nGridNum + 1);
     m_nIndexNum = 6 * m_nGridNum * m_nGridNum;
     m_wpIndex = 0;
-    m_wpIndex = new unsigned short[sizeof(unsigned short) * m_nIndexNum];
+    m_wpIndex = new unsigned short[m_nIndexNum];
     m_pVertex = 0;
-    m_pVertex = new RDLVERTEX[sizeof(RDLVERTEX) * m_nVertexNum];
+    m_pVertex = new RDLVERTEX[m_nVertexNum];
     m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
     m_bFI = 1;
     m_bShow = 1;
