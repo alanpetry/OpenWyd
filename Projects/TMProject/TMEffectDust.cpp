@@ -288,7 +288,7 @@ int TMEffectDust::Render()
 
         for (int i = 0; i < 4; ++i)
         {
-            if (m_pMeshDropStone[i])
+            if (m_pMeshDropStone[i] && m_pMeshDropStone[i]->m_pVB)
                 m_pMeshDropStone[i]->Render(m_vecStonePos[i].x, m_vecStonePos[i].y, m_vecStonePos[i].z, 0, 0, 0, 0, 0);
         }
 
