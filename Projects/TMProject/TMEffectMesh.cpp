@@ -99,6 +99,8 @@ int TMEffectMesh::Render()
 			g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
 			g_pDevice->SetRenderState(D3DRS_LIGHTING, 0);
 
+			bool bRenderMesh = true;
+
 			if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_ALPHA)
 			{
 				_D3DMATERIAL9 materials{};
@@ -136,102 +138,110 @@ int TMEffectMesh::Render()
 			else
 			{
 				if (!pMesh->m_pVB)
-					return 0;
-
-				RDLVERTEX* pVertex{};
-				D3DVERTEXBUFFER_DESC vDesc{};
-
-				pMesh->m_pVB->GetDesc(&vDesc);
-				pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
-
-				int nCount = vDesc.Size / 0x18;
-
-				DWORD dwColor = m_dwColor;
-
-				if (m_cShine == 1)
 				{
-					float fAlpha = (float)((sinf((m_fProgress * 3.1415927f) * 2.0f)) * 0.2f) + 0.80000001f;
-	
-					DWORD dwA = (unsigned int)((float)m_dwA * fAlpha);
-					DWORD dwR = (unsigned int)((float)m_dwR * fAlpha);
-					DWORD dwG = (unsigned int)((float)m_dwG * fAlpha);
-					DWORD dwB = (unsigned int)((float)m_dwB * fAlpha);
-
-					dwColor = dwB | (dwG << 8) | (dwR << 16) | (dwA << 24);
-				}
-
-				if (m_nType == 4)
-				{
-					float fAlpha = sinf(m_fProgress * 3.1415927f);
-
-					DWORD dwA = (unsigned int)((float)m_dwA * fAlpha);
-					DWORD dwR = (unsigned int)((float)m_dwR * fAlpha);
-					DWORD dwG = (unsigned int)((float)m_dwG * fAlpha);
-					DWORD dwB = (unsigned int)((float)m_dwB * fAlpha);
-
-					dwColor = dwB | (dwG << 8) | (dwR << 16) | (dwA << 24);
-				}
-
-				for (int i = 0; i < nCount; ++i)
-				{
-					pVertex[i].diffuse = dwColor;
-
-					if (m_cUScroll == 1)
-						pVertex[i].tu += (m_fProgress * 0.001f);
-
-					if (m_cUScroll == 2)
-					{
-						DWORD dwServerTime = g_pTimerManager->GetServerTime();
-
-						float fPro = (float)(dwServerTime % 100) / 100.0f;
-
-						pVertex[i].tv += (fPro * 0.1f);
-					}
-				}
-
-				pMesh->m_pVB->Unlock();
-			}
-
-			pMesh->m_fScaleH = m_fScaleH;
-			pMesh->m_fScaleV = m_fScaleV;
-
-			switch (m_nType)
-			{
-			case 1:
-				pMesh->m_nTextureIndex[0] = m_nTextureIndex;
-				break;
-			case 2:
-				pMesh->m_fScaleV = (m_fScaleH * m_fProgress) * 3.0f;
-				m_fAngle = m_fProgress * 3.1415927f;
-				break;
-			case 3:
-				m_fAngle = m_fProgress * 3.1415927f;
-				break;
-			case 4:
-				pMesh->m_nTextureIndex[0] = m_nTextureIndex;
-
-				if (m_fProgress >= 0.2)
-				{
-					float fSin = sinf(((m_fProgress - 0.2f) * 3.1415927f) * 0.5f);
-
-					pMesh->m_fScaleH = (fSin + 1.5f) * m_fScaleH;
-					pMesh->m_fScaleV = (fSin + 1.5f) * m_fScaleV;
+					bRenderMesh = false;
 				}
 				else
 				{
-					pMesh->m_fScaleH = ((m_fProgress * 5.0f) + 0.5f) * m_fScaleH;
-					pMesh->m_fScaleV = ((m_fProgress * 5.0f) + 0.5f) * m_fScaleV;
+					RDLVERTEX* pVertex{};
+					D3DVERTEXBUFFER_DESC vDesc{};
+
+					pMesh->m_pVB->GetDesc(&vDesc);
+					pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+
+					int nCount = vDesc.Size / 0x18;
+
+					DWORD dwColor = m_dwColor;
+
+					if (m_cShine == 1)
+					{
+						float fAlpha = (float)((sinf((m_fProgress * 3.1415927f) * 2.0f)) * 0.2f) + 0.80000001f;
+	
+						DWORD dwA = (unsigned int)((float)m_dwA * fAlpha);
+						DWORD dwR = (unsigned int)((float)m_dwR * fAlpha);
+						DWORD dwG = (unsigned int)((float)m_dwG * fAlpha);
+						DWORD dwB = (unsigned int)((float)m_dwB * fAlpha);
+
+						dwColor = dwB | (dwG << 8) | (dwR << 16) | (dwA << 24);
+					}
+
+					if (m_nType == 4)
+					{
+						float fAlpha = sinf(m_fProgress * 3.1415927f);
+
+						DWORD dwA = (unsigned int)((float)m_dwA * fAlpha);
+						DWORD dwR = (unsigned int)((float)m_dwR * fAlpha);
+						DWORD dwG = (unsigned int)((float)m_dwG * fAlpha);
+						DWORD dwB = (unsigned int)((float)m_dwB * fAlpha);
+
+						dwColor = dwB | (dwG << 8) | (dwR << 16) | (dwA << 24);
+					}
+
+					for (int i = 0; i < nCount; ++i)
+					{
+						pVertex[i].diffuse = dwColor;
+
+						if (m_cUScroll == 1)
+							pVertex[i].tu += (m_fProgress * 0.001f);
+
+						if (m_cUScroll == 2)
+						{
+							DWORD dwServerTime = g_pTimerManager->GetServerTime();
+
+							float fPro = (float)(dwServerTime % 100) / 100.0f;
+
+							pVertex[i].tv += (fPro * 0.1f);
+						}
+					}
+
+					pMesh->m_pVB->Unlock();
 				}
-				break;
-			case 5:
-				pMesh->m_nTextureIndex[0] = m_nTextureIndex;
-				break;
 			}
 
-			pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, m_fAngle2, m_fAngle3, 0, 0);
+			if (bRenderMesh)
+			{
+				pMesh->m_fScaleH = m_fScaleH;
+				pMesh->m_fScaleV = m_fScaleV;
+
+				switch (m_nType)
+				{
+				case 1:
+					pMesh->m_nTextureIndex[0] = m_nTextureIndex;
+					break;
+				case 2:
+					pMesh->m_fScaleV = (m_fScaleH * m_fProgress) * 3.0f;
+					m_fAngle = m_fProgress * 3.1415927f;
+					break;
+				case 3:
+					m_fAngle = m_fProgress * 3.1415927f;
+					break;
+				case 4:
+					pMesh->m_nTextureIndex[0] = m_nTextureIndex;
+
+					if (m_fProgress >= 0.2)
+					{
+						float fSin = sinf(((m_fProgress - 0.2f) * 3.1415927f) * 0.5f);
+
+						pMesh->m_fScaleH = (fSin + 1.5f) * m_fScaleH;
+						pMesh->m_fScaleV = (fSin + 1.5f) * m_fScaleV;
+					}
+					else
+					{
+						pMesh->m_fScaleH = ((m_fProgress * 5.0f) + 0.5f) * m_fScaleH;
+						pMesh->m_fScaleV = ((m_fProgress * 5.0f) + 0.5f) * m_fScaleV;
+					}
+					break;
+				case 5:
+					pMesh->m_nTextureIndex[0] = m_nTextureIndex;
+					break;
+				}
+
+				pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, m_fAngle2, m_fAngle3, 0, 0);
+			}
 
 			g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
 			g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+			g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 			g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
 			g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
 			g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
@@ -239,6 +249,9 @@ int TMEffectMesh::Render()
 			g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
 			g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, 4u);
 			g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+
+			if (!bRenderMesh)
+				return 0;
 		}
 	}
 
