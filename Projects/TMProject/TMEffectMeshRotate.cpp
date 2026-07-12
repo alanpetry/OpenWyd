@@ -78,6 +78,14 @@ int TMEffectMeshRotate::Render()
 
 	TMMesh* pMesh{};
 
+	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
+		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
+	else
+		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 0, 180000);
+
+	if (pMesh == nullptr)
+		return 0;
+
 	g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
@@ -86,11 +94,6 @@ int TMEffectMeshRotate::Render()
 
 	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 	{
-		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
-
-		if (pMesh == nullptr)
-			return 0;
-
 		g_pDevice->SetRenderState(D3DRS_FOGENABLE, 0);
 		g_pDevice->SetRenderState(D3DRS_CULLMODE, 1u);
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 5u);
@@ -124,11 +127,6 @@ int TMEffectMeshRotate::Render()
 	}
 	else
 	{
-		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 0, 180000);
-
-		if (pMesh == nullptr)
-			return 0;
-
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 5u);
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 		g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
@@ -160,9 +158,6 @@ int TMEffectMeshRotate::Render()
 		g_pDevice->m_pd3dDevice->SetMaterial(&materials);
 	}
 
-	if (pMesh == nullptr)
-		return 0;
-
 	pMesh->m_fScaleV = m_fScale;
 	pMesh->m_fScaleH = m_fScale;
 
@@ -170,6 +165,16 @@ int TMEffectMeshRotate::Render()
 		pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, m_fAngle2, 1.5707964f, 0, 0);
 	else
 		pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, 0, 1.5707964f, 0, 0);
+
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
+	g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
 
 	return 1;
 }
