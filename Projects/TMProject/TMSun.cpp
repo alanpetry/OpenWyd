@@ -247,6 +247,7 @@ int TMSun::Render()
 
 	m_vFlareDirection.y = m_fDefSize * 0.69999999f;
 
+	bool bDrawFailed = false;
 	for (int i = 0; i < 12; ++i)
 	{
 		float flareXSize = (vCenterPosFromFlare.x * m_stFlareArray[i].fLoc) + vFlarePos.x;
@@ -272,10 +273,25 @@ int TMSun::Render()
 		g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_stFlareArray[i].nTexIndex, 5000));
 
 		g_pDevice->m_pd3dDevice->SetFVF(324u);
-		g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
+		HRESULT hr = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vecTLVertex, 28u);
+		if (hr < 0)
+			bDrawFailed = true;
 	}
 	g_wydSunFlareDraws += 12;
 	g_wydSunLastFlareCount = 12;
+
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+	g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
+	if (bDrawFailed)
+		return 0;
+
 	return 1;
 }
 
