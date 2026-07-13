@@ -43,10 +43,8 @@ v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
 
-# Effect texture/animation bundles.
-v769ClientRelease/Effect/*.bin@/Effect/
-v769ClientRelease/Effect/*.msa@/Effect/
-v769ClientRelease/Effect/*.wys@/Effect/
+# Effect textures, catalogs, and animation bundles used by sky, sun, rain, and billboards.
+v769ClientRelease/Effect/*@/Effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
 v769ClientRelease/Mesh/*.bin@/Mesh/
