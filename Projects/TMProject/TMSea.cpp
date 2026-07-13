@@ -173,6 +173,7 @@ int TMSea::Render()
         g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 1u);
         g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
         g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+        g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 0);
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
