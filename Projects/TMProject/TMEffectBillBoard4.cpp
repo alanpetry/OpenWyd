@@ -85,9 +85,10 @@ int TMEffectBillBoard4::Render()
 
         g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nCycleIndex + m_nTextureIndex, 5000));
 
-        g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 28u);
+        HRESULT hr = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 28u);
 
         g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+        g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
         g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
         g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
@@ -98,6 +99,9 @@ int TMEffectBillBoard4::Render()
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
         else
             g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
+        if (FAILED(hr))
+            return 0;
     }
     return 1;
 }
@@ -115,7 +119,7 @@ void TMEffectBillBoard4::SetColor(unsigned int dwColor)
 
 int TMEffectBillBoard4::FrameMove(unsigned int dwServerTime)
 {
-    dwServerTime = g_pTimerManager->GetServerTime();
+	dwServerTime = g_pTimerManager->GetServerTime();
 
     if (!m_dwCreateTime)
         m_dwCreateTime = dwServerTime;
