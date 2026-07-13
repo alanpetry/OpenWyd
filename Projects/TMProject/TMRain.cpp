@@ -102,6 +102,8 @@ int TMRain::Render()
     m_vertex[3].position.x = (float)(vecNegXAxis.x + vecNegYAxis.x) * fSize;
     m_vertex[3].position.z = (float)(vecNegXAxis.z + vecNegYAxis.z) * fSize;
 
+    bool bDrawFailed = false;
+
     g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(9, 5000));
     for (int i = 0; i < 50; ++i)
     {
@@ -118,18 +120,21 @@ int TMRain::Render()
             D3DXMatrixTranslation(&m_matEffect, m_vecRainPosition[i].x + vecCam.x, m_vecRainPosition[i].y, m_vecRainPosition[i].z + vecCam.y);
             g_pDevice->m_pd3dDevice->SetTransform(D3DTS_WORLD, &m_matEffect);
             g_pDevice->m_pd3dDevice->SetFVF(322);
-            g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u);
+            HRESULT hr = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u);
+            if (FAILED(hr))
+                bDrawFailed = true;
         }
     }
 
     g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+    g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
     g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
     g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
     g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
     g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
-    return 1;
+    return bDrawFailed ? 0 : 1;
 }
 
 int TMRain::FrameMove(unsigned int dwServerTime)
