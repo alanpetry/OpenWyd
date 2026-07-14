@@ -216,7 +216,7 @@ int TMEffectSWSwing::Render()
 
                     TMMesh *pMesh = g_pMeshManager->GetCommonMesh(nMeshIndex[i], 1, 3_min);
 
-                    if (pMesh)
+                    if (pMesh && pMesh->m_pVB)
                     {
                         unsigned int dwR = (unsigned int)(float)((float)dwColorR[i] * fTerm);                      
                         unsigned int dwG = (unsigned int)(float)((float)dwColorG[i] * fTerm);
@@ -241,6 +241,7 @@ int TMEffectSWSwing::Render()
             }
 
             g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+            g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
             g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
             g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
             g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
