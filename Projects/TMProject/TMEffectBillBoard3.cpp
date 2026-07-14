@@ -85,9 +85,10 @@ int TMEffectBillBoard3::Render()
 	g_pDevice->m_pd3dDevice->SetFVF(322u);
 	
 	g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nTextureIndex, 5000));
-	g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex1, 24u);
-	g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex2, 24u);
+	HRESULT hr1 = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex1, 24u);
+	HRESULT hr2 = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex2, 24u);
 	g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
 	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
 	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
@@ -98,6 +99,9 @@ int TMEffectBillBoard3::Render()
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 	else
 		g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
+	if (FAILED(hr1) || FAILED(hr2))
+		return 0;
 
 	return 1;
 }
@@ -176,7 +180,7 @@ void TMEffectBillBoard3::SetPosition(TMVector3 vecStart, TMVector3 vecEnd)
 	m_vertex2[0].position = TMVector3{ vecStart.x - m_fScaleV, vecStart.y, vecStart.z };
 	m_vertex2[1].position = TMVector3{ vecEnd.x - m_fScaleV, vecEnd.y, vecEnd.z };
 	m_vertex2[2].position = TMVector3{ vecEnd.x + m_fScaleV, vecEnd.y, vecEnd.z };
-	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecStart.z };
+	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecEnd.z };
 }
 
 void TMEffectBillBoard3::SetShort(unsigned int dwTime)
