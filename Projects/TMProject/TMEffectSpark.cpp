@@ -16,7 +16,13 @@ TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 ve
 	m_fWidth = fWidth;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
-	if (m_nSparkCount <= 5)
+	for (int i = 0; i < 5; ++i)
+	{
+		m_pSpark[i] = nullptr;
+		m_pShade[i] = nullptr;
+	}
+
+	if (nSparkCount <= 5)
 		m_nSparkCount = nSparkCount;
 	else
 		m_nSparkCount = 5;
