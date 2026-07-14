@@ -105,6 +105,7 @@ int TMEffectStart::Render()
             g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
             g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
             g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+            g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
         }
     }
@@ -134,7 +135,7 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
     if (m_fProgress <= 1.0f)
     {
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
-        if (pMesh)
+        if (pMesh && pMesh->m_pVB)
         {
             D3DVERTEXBUFFER_DESC vDesc;
             pMesh->m_pVB->GetDesc(&vDesc);
