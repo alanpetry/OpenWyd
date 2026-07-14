@@ -261,6 +261,18 @@ class ScopedD3D9SpriteDeviceBlendRuntimeState {
     ApplyD3D9SpriteBlendRuntimeState(device_);
   }
 
+  ScopedD3D9SpriteDeviceBlendRuntimeState(
+      IDirect3DDevice9* device,
+      bool alpha_blend_enable,
+      DWORD src_blend,
+      DWORD dst_blend)
+      : ScopedD3D9SpriteDeviceBlendRuntimeState(
+            device,
+            CaptureD3D9BlendRuntimeState(
+                alpha_blend_enable,
+                src_blend,
+                dst_blend)) {}
+
   ScopedD3D9SpriteDeviceBlendRuntimeState(const ScopedD3D9SpriteDeviceBlendRuntimeState&) = delete;
   ScopedD3D9SpriteDeviceBlendRuntimeState& operator=(const ScopedD3D9SpriteDeviceBlendRuntimeState&) = delete;
 
