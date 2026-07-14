@@ -47,12 +47,61 @@ struct WebGLBlendState {
   DWORD blend_factor = 0xFFFFFFFFu;
 };
 
+struct D3D9BlendRenderState {
+  bool alpha_blend_enable = false;
+  DWORD src_blend = D3DBLEND_SRCALPHA;
+  DWORD dst_blend = D3DBLEND_INVSRCALPHA;
+  DWORD blend_op = D3DBLENDOP_ADD;
+  DWORD blend_factor = 0xFFFFFFFFu;
+  bool separate_alpha_blend_enable = false;
+  DWORD src_blend_alpha = D3DBLEND_SRCALPHA;
+  DWORD dst_blend_alpha = D3DBLEND_INVSRCALPHA;
+  DWORD blend_op_alpha = D3DBLENDOP_ADD;
+};
+
 struct WebGLBlendApplyFns {
   void (*blend_color)(float r, float g, float b, float a) = nullptr;
   void (*blend_func_separate)(DWORD src_rgb, DWORD dst_rgb, DWORD src_alpha, DWORD dst_alpha) = nullptr;
   void (*blend_equation_separate)(DWORD rgb_op, DWORD alpha_op) = nullptr;
   bool supports_min_max_equations = true;
 };
+
+inline bool SetD3D9BlendRenderState(D3D9BlendRenderState* blend_state,
+                                    D3DRENDERSTATETYPE render_state,
+                                    DWORD value) {
+  if (!blend_state) return false;
+  switch (render_state) {
+    case D3DRS_ALPHABLENDENABLE:
+      blend_state->alpha_blend_enable = (value != 0u);
+      return true;
+    case D3DRS_SRCBLEND:
+      blend_state->src_blend = value;
+      return true;
+    case D3DRS_DESTBLEND:
+      blend_state->dst_blend = value;
+      return true;
+    case D3DRS_BLENDOP:
+      blend_state->blend_op = value;
+      return true;
+    case D3DRS_BLENDFACTOR:
+      blend_state->blend_factor = value;
+      return true;
+    case D3DRS_SEPARATEALPHABLENDENABLE:
+      blend_state->separate_alpha_blend_enable = (value != 0u);
+      return true;
+    case D3DRS_SRCBLENDALPHA:
+      blend_state->src_blend_alpha = value;
+      return true;
+    case D3DRS_DESTBLENDALPHA:
+      blend_state->dst_blend_alpha = value;
+      return true;
+    case D3DRS_BLENDOPALPHA:
+      blend_state->blend_op_alpha = value;
+      return true;
+    default:
+      return false;
+  }
+}
 
 inline WebGLBlendFactor BlendFactorToWebGL(DWORD blend) {
   switch (blend) {
@@ -215,6 +264,18 @@ inline WebGLBlendState BuildWebGLBlendState(DWORD src_blend,
   }
 
   return state;
+}
+
+inline WebGLBlendState BuildWebGLBlendState(const D3D9BlendRenderState& blend_state) {
+  return BuildWebGLBlendState(
+      blend_state.src_blend,
+      blend_state.dst_blend,
+      blend_state.blend_op,
+      blend_state.blend_factor,
+      blend_state.separate_alpha_blend_enable,
+      blend_state.src_blend_alpha,
+      blend_state.dst_blend_alpha,
+      blend_state.blend_op_alpha);
 }
 
 inline void ApplyWebGLBlendState(const WebGLBlendState& state,
