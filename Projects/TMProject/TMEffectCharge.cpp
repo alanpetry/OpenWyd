@@ -91,6 +91,7 @@ int TMEffectCharge::Render()
 
         g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
         g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+        g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
         g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
@@ -150,7 +151,7 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
         }
 
         auto pMesh = g_pMeshManager->GetCommonMesh(704, 1, 180000);
-        if (!pMesh)
+        if (!pMesh || !pMesh->m_pVB)
             return 0;
 
         D3DVERTEXBUFFER_DESC vDesc;
@@ -170,7 +171,7 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
         pMesh->m_pVB->Unlock();
 
         pMesh = g_pMeshManager->GetCommonMesh(705, 1, 180000);
-        if (!pMesh)
+        if (!pMesh || !pMesh->m_pVB)
             return 0;
 
         pMesh->m_pVB->GetDesc(&vDesc);
