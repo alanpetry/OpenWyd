@@ -245,10 +245,47 @@ inline bool ApplyD3D9BlendRuntimeStateValue(
 
 inline bool ApplyD3D9BlendRuntimeStateValue(
     IDirect3DDevice9* device,
+    D3D9BlendRuntimeState* current_state,
+    D3DRENDERSTATETYPE state,
+    DWORD value,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  if (!ApplyD3D9BlendRuntimeStateValue(device, current_state, state, value)) {
+    return false;
+  }
+  SyncD3D9LegacyBlendFields(
+      *current_state,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
+  return true;
+}
+
+inline bool ApplyD3D9BlendRuntimeStateValue(
+    IDirect3DDevice9* device,
     D3D9BlendRuntimeState& current_state,
     D3DRENDERSTATETYPE state,
     DWORD value) {
   return ApplyD3D9BlendRuntimeStateValue(device, &current_state, state, value);
+}
+
+inline bool ApplyD3D9BlendRuntimeStateValue(
+    IDirect3DDevice9* device,
+    D3D9BlendRuntimeState& current_state,
+    D3DRENDERSTATETYPE state,
+    DWORD value,
+    bool* alpha_blend_enable,
+    DWORD* src_blend,
+    DWORD* dst_blend) {
+  return ApplyD3D9BlendRuntimeStateValue(
+      device,
+      &current_state,
+      state,
+      value,
+      alpha_blend_enable,
+      src_blend,
+      dst_blend);
 }
 
 inline void ApplyD3D9SpriteBlendRuntimeState(
