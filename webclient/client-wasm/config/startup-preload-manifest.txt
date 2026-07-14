@@ -9,22 +9,29 @@ v769ClientRelease/itemicon.bin@/itemicon.bin
 v769ClientRelease/Itemname.bin@/Itemname.bin
 v769ClientRelease/itemhelp.dat@/itemhelp.dat
 v769ClientRelease/Mixhelp.dat@/Mixhelp.dat
+v769ClientRelease/Mixlist.bin@/Mixlist.bin
 v769ClientRelease/sn.bin@/sn.bin
 v769ClientRelease/Config.bin@/Config.bin
+v769ClientRelease/cdata.bin@/cdata.bin
 v769ClientRelease/AniSound4.txt@/AniSound4.txt
 v769ClientRelease/Music.txt@/Music.txt
 v769ClientRelease/sound.txt@/sound.txt
 v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
+v769ClientRelease/notice.txt@/notice.txt
 
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
 v769ClientRelease/UI/*.txt@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
+v769ClientRelease/UI/*.csv@/UI/
+v769ClientRelease/UI/*.cur@/UI/
+v769ClientRelease/UI/*.dat@/UI/
+v769ClientRelease/UI/*.guimat@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
-v769ClientRelease/UI/Panel/*@/UI/Panel/
+v769ClientRelease/UI/Panel/**/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
@@ -35,8 +42,10 @@ v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
+v769ClientRelease/Env/*.wyt@/Env/
 v769ClientRelease/Env/*.tga@/Env/
 v769ClientRelease/Env/*.dds@/Env/
+v769ClientRelease/Env/*.bmp@/Env/
 
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
