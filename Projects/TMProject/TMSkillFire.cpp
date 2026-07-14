@@ -145,50 +145,50 @@ int TMSkillFire::FrameMove(unsigned int dwServerTime)
 				else
 					pEffect = new TMEffectBillBoard(33, 500u, 0.69999999f, 0.69999999f, 0.69999999f, 0.001f, 9, 11);
 
-				if (!pEffect)
-					return 0;
-
-				pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-				pEffect->m_vecStartPos = { static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.x, m_vecPosition.y, static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.z };
-				pEffect->m_vecPosition = pEffect->m_vecStartPos;
-				pEffect->m_nParticleType = 1;
-
-				if (m_nType)
+				if (pEffect)
 				{
-					switch (m_nType)
-					{
-					case 1:
-						pEffect->m_fParticleV = 4.0f;
-						break;
-					case 2:
-						pEffect->m_fParticleV = 4.0f;
-						break;
-					case 3:
-						pEffect->m_fParticleV = 1.7f;
-						break;
-					case 4:
-						pEffect->m_fParticleV = 1.7f;
-						pEffect->SetColor(0x3366u);
-						break;
-					case 5:
-						pEffect->m_fParticleV = 4.0f;
-						pEffect->SetColor(0x6688u);
-						break;
-					case 6:
-						pEffect->m_fParticleV = 1.7f;
-						pEffect->SetColor(0x3366u);
-						break;
-					case 7:
-						pEffect->m_fParticleV = 1.7f;
-						pEffect->SetColor(0xFFFFFFFF);
-						break;
-					}
-				}
-				else
-					pEffect->m_fParticleV = 3.0f;
+					pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+					pEffect->m_vecStartPos = { static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.x, m_vecPosition.y, static_cast<float>(nRand % 5) * 0.0099999998f + m_vecPosition.z };
+					pEffect->m_vecPosition = pEffect->m_vecStartPos;
+					pEffect->m_nParticleType = 1;
 
-				pEffect->SetColor(m_dwColor);
-				g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+					if (m_nType)
+					{
+						switch (m_nType)
+						{
+						case 1:
+							pEffect->m_fParticleV = 4.0f;
+							break;
+						case 2:
+							pEffect->m_fParticleV = 4.0f;
+							break;
+						case 3:
+							pEffect->m_fParticleV = 1.7f;
+							break;
+						case 4:
+							pEffect->m_fParticleV = 1.7f;
+							pEffect->SetColor(0x3366u);
+							break;
+						case 5:
+							pEffect->m_fParticleV = 4.0f;
+							pEffect->SetColor(0x6688u);
+							break;
+						case 6:
+							pEffect->m_fParticleV = 1.7f;
+							pEffect->SetColor(0x3366u);
+							break;
+						case 7:
+							pEffect->m_fParticleV = 1.7f;
+							pEffect->SetColor(0xFFFFFFFF);
+							break;
+						}
+					}
+					else
+						pEffect->m_fParticleV = 3.0f;
+
+					pEffect->SetColor(m_dwColor);
+					g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+				}
 			}
 
 			m_dwLastTime = dwServerTime;
