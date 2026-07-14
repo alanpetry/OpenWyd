@@ -1,6 +1,10 @@
 #pragma once
 #include "unknwn.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <GLES2/gl2.h>
+#endif
+
 using D3DCOLOR = DWORD;
 
 enum D3DFORMAT : DWORD {
@@ -561,6 +565,36 @@ HRESULT WydD3D9Device_CreateRenderTarget(
     void* shared_handle);
 HRESULT WydD3D9Device_ColorFill(IDirect3DDevice9* device, IDirect3DSurface9* surface, const RECT* rect, D3DCOLOR color);
 
+#if defined(__EMSCRIPTEN__)
+inline GLenum WydD3D9BlendEquationFromD3D(DWORD op) {
+  switch (op) {
+    case D3DBLENDOP_ADD: return GL_FUNC_ADD;
+    case D3DBLENDOP_SUBTRACT: return GL_FUNC_SUBTRACT;
+    case D3DBLENDOP_REVSUBTRACT: return GL_FUNC_REVERSE_SUBTRACT;
+    case D3DBLENDOP_MIN: return GL_MIN;
+    case D3DBLENDOP_MAX: return GL_MAX;
+    default: return GL_FUNC_ADD;
+  }
+}
+
+inline void WydD3D9Device_ApplyBlendOpRenderState(D3DRENDERSTATETYPE state, DWORD value) {
+  static DWORD color_blend_op = D3DBLENDOP_ADD;
+  static DWORD alpha_blend_op = D3DBLENDOP_ADD;
+  if (state == D3DRS_BLENDOP) {
+    color_blend_op = value;
+  } else if (state == D3DRS_BLENDOPALPHA) {
+    alpha_blend_op = value;
+  } else {
+    return;
+  }
+  glBlendEquationSeparate(
+      WydD3D9BlendEquationFromD3D(color_blend_op),
+      WydD3D9BlendEquationFromD3D(alpha_blend_op));
+}
+#else
+inline void WydD3D9Device_ApplyBlendOpRenderState(D3DRENDERSTATETYPE, DWORD) {}
+#endif
+
 HRESULT WydD3D9Surface_GetDesc(IDirect3DSurface9* surface, D3DSURFACE_DESC* desc);
 HRESULT WydD3D9Surface_LockRect(IDirect3DSurface9* surface, D3DLOCKED_RECT* locked_rect, const RECT* rect, DWORD flags);
 HRESULT WydD3D9Surface_UnlockRect(IDirect3DSurface9* surface);
@@ -673,7 +707,12 @@ struct IDirect3DDevice9 : public IUnknown {
   HRESULT GetLight(DWORD Index, D3DLIGHT9* pLight) { return WydD3D9Device_GetLight(this, Index, pLight); }
   HRESULT LightEnable(DWORD Index, BOOL Enable) { return WydD3D9Device_LightEnable(this, Index, Enable); }
   HRESULT GetLightEnable(DWORD Index, BOOL* pEnable) { return WydD3D9Device_GetLightEnable(this, Index, pEnable); }
-  HRESULT SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) { return WydD3D9Device_SetRenderState(this, State, Value); }
+  HRESULT SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) {
+    HRESULT result = WydD3D9Device_SetRenderState(this, State, Value);
+    if (FAILED(result)) return result;
+    WydD3D9Device_ApplyBlendOpRenderState(State, Value);
+    return result;
+  }
   HRESULT SetTexture(DWORD Stage, IDirect3DBaseTexture9* pTexture) {
     return WydD3D9Device_SetTexture(this, Stage, pTexture);
   }
