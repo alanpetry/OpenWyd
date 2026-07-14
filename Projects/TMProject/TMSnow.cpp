@@ -114,6 +114,7 @@ int TMSnow::Render()
     else if (pObj)
         fCamHeight = pObj->m_fHeight;
 
+    bool bDrawFailed = false;
     for (int i = 0; i < 200; ++i)
     {
         int nX4 = (int)m_vecSnowPosition[i].x / 4;
@@ -142,7 +143,9 @@ int TMSnow::Render()
             D3DXMatrixTranslation(&matTrans, m_vecSnowPosition[i].x, m_vecSnowPosition[i].y, m_vecSnowPosition[i].z);
             g_pDevice->m_pd3dDevice->SetTransform(D3DTS_WORLD, &matTrans);
             g_pDevice->m_pd3dDevice->SetFVF(322);
-            g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, m_vertex, 24);
+            HRESULT hr = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, m_vertex, 24);
+            if (FAILED(hr))
+                bDrawFailed = true;
         }
     }
 
@@ -152,7 +155,8 @@ int TMSnow::Render()
     g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
-    return 1;
+    g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+    return bDrawFailed ? 0 : 1;
 }
 
 int TMSnow::FrameMove(unsigned int dwServerTime)
