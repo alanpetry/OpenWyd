@@ -66,6 +66,12 @@ struct WebGLBlendApplyFns {
   bool supports_min_max_equations = true;
 };
 
+struct WebGLBlendRuntimeFns {
+  void (*enable_blend)() = nullptr;
+  void (*disable_blend)() = nullptr;
+  WebGLBlendApplyFns apply;
+};
+
 inline bool SetD3D9BlendRenderState(D3D9BlendRenderState* blend_state,
                                     D3DRENDERSTATETYPE render_state,
                                     DWORD value) {
@@ -302,6 +308,17 @@ inline void ApplyWebGLBlendState(const WebGLBlendState& state,
         static_cast<DWORD>(rgb_op),
         static_cast<DWORD>(alpha_op));
   }
+}
+
+inline void ApplyD3D9BlendRenderState(const D3D9BlendRenderState& blend_state,
+                                      const WebGLBlendRuntimeFns& runtime) {
+  if (blend_state.alpha_blend_enable) {
+    if (runtime.enable_blend) runtime.enable_blend();
+  } else if (runtime.disable_blend) {
+    runtime.disable_blend();
+  }
+
+  ApplyWebGLBlendState(BuildWebGLBlendState(blend_state), runtime.apply);
 }
 
 }  // namespace wyd::d3d9_compat
