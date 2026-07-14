@@ -76,19 +76,27 @@ TMEffectSkinMesh::~TMEffectSkinMesh()
 		{
 			pEffect->m_stLookInfo = m_stLookInfo;
 			pEffect->InitObject(0);
-			pEffect->m_dwLifeTime = 3000;
-			pEffect->m_pSkinMesh->m_vScale.x = 0.2f;
-			pEffect->m_pSkinMesh->m_vScale.y = 0.2f;
-			pEffect->m_pSkinMesh->m_vScale.z = 0.2f;
-			pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
-			pEffect->m_StartColor.r = 1.0f;
-			pEffect->m_StartColor.g = 1.0f;
-			pEffect->m_StartColor.b = 1.0f;
-			pEffect->m_nFade = 0;
-			pEffect->m_fStartAngle = m_fAngle;
-			pEffect->m_nMotionType = 3;
 
-			g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+			if (pEffect->m_pSkinMesh)
+			{
+				pEffect->m_dwLifeTime = 3000;
+				pEffect->m_pSkinMesh->m_vScale.x = 0.2f;
+				pEffect->m_pSkinMesh->m_vScale.y = 0.2f;
+				pEffect->m_pSkinMesh->m_vScale.z = 0.2f;
+				pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
+				pEffect->m_StartColor.r = 1.0f;
+				pEffect->m_StartColor.g = 1.0f;
+				pEffect->m_StartColor.b = 1.0f;
+				pEffect->m_nFade = 0;
+				pEffect->m_fStartAngle = m_fAngle;
+				pEffect->m_nMotionType = 3;
+
+				g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+			}
+			else
+			{
+				delete pEffect;
+			}
 		}
 	}
 }
