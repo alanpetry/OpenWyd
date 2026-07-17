@@ -256,8 +256,8 @@ int TMEffectDust::Render()
             materials.Specular.g = 1.0f;
             materials.Specular.b = 1.0f;
             materials.Emissive.r = (g_pDevice->m_colorBackLight.r * 0.30000001f) + (color.r * 0.40000001f);
-            materials.Emissive.g = (g_pDevice->m_colorBackLight.g * 0.30000001f) + (color.r * 0.40000001f);
-            materials.Emissive.b = (g_pDevice->m_colorBackLight.b * 0.30000001f) + (color.r * 0.40000001f);
+            materials.Emissive.g = (g_pDevice->m_colorBackLight.g * 0.30000001f) + (color.g * 0.40000001f);
+            materials.Emissive.b = (g_pDevice->m_colorBackLight.b * 0.30000001f) + (color.b * 0.40000001f);
         }
         else
         {
