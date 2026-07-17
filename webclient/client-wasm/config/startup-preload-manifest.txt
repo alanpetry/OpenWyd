@@ -38,9 +38,6 @@ v769ClientRelease/NUI/*.txt@/NUI/
 v769ClientRelease/NUI/*.csv@/NUI/
 v769ClientRelease/NUI/*.dat@/NUI/
 v769ClientRelease/NUI/*.guimat@/NUI/
-v769ClientRelease/NUI/*.bmp@/NUI/
-v769ClientRelease/NUI/*.tga@/NUI/
-v769ClientRelease/NUI/*.dds@/NUI/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
