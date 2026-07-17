@@ -33,6 +33,9 @@ v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/**/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
+v769ClientRelease/NUI/*.bmp@/NUI/
+v769ClientRelease/NUI/*.tga@/NUI/
+v769ClientRelease/NUI/*.dds@/NUI/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
