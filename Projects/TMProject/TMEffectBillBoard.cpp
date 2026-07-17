@@ -154,8 +154,7 @@ int TMEffectBillBoard::Render()
 
 		g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nCycleIndex + m_nTextureIndex, 5000u));
 
-		if (g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u) < 0) 
-			return 0;
+		HRESULT hr = g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u);
 
 		g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
 		g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
@@ -163,11 +162,15 @@ int TMEffectBillBoard::Render()
 		g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
 		g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 		g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+		g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 
 		if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 			g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 		else
 			g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
+		if (hr < 0)
+			return 0;
 	}
 	return 1;
 }
