@@ -12,7 +12,8 @@ TMSkillPoison::TMSkillPoison(TMVector3 vecPosition, unsigned int dwColor, int nC
 	m_dwStartTime = g_pTimerManager->GetServerTime();
 	m_dwLifeTime = 3000;
 
-	if (!g_bHideEffect)
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+	if (!g_bHideEffect && pEffectContainer)
 	{
 		for (int i = 0; i < nCount; ++i)
 		{
@@ -31,15 +32,18 @@ TMSkillPoison::TMSkillPoison(TMVector3 vecPosition, unsigned int dwColor, int nC
 					0.001f,	1, 80);
 			}
 
-			float iZ = ((float)(rand() % 10 - 5) * 0.1f) + m_vecPosition.z;
-			float iY = m_vecPosition.y;
+			if (mpBill)
+			{
+				float iZ = ((float)(rand() % 10 - 5) * 0.1f) + m_vecPosition.z;
+				float iY = m_vecPosition.y;
 
-			int nRand = rand();
-			mpBill->m_vecPosition = TMVector3(((float)(nRand % 10 - 5) * 0.1f) + m_vecPosition.x, iY, iZ);
-			mpBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-			mpBill->m_bStickGround = 1;
-			mpBill->SetColor(dwColor);
-			g_pCurrentScene->m_pEffectContainer->AddChild(mpBill);
+				int nRand = rand();
+				mpBill->m_vecPosition = TMVector3(((float)(nRand % 10 - 5) * 0.1f) + m_vecPosition.x, iY, iZ);
+				mpBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+				mpBill->m_bStickGround = 1;
+				mpBill->SetColor(dwColor);
+				pEffectContainer->AddChild(mpBill);
+			}
 		}
 	}
 
