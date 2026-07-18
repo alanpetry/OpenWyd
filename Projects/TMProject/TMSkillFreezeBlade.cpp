@@ -41,14 +41,21 @@ TMSkillFreezeBlade::TMSkillFreezeBlade(TMVector3 vecPosition, int nType, int nTy
     }
     else
     {
-        auto pEffect20 = new TMEffectBillBoard2(2, 2000, 2.0f, 2.0f, 2.0f, 0.002f, 0);
+        auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+        if (pEffectContainer)
+        {
+            auto pEffect20 = new TMEffectBillBoard2(2, 2000, 2.0f, 2.0f, 2.0f, 0.002f, 0);
 
-        pEffect20->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-        pEffect20->m_vecPosition = m_vecPosition;
-        pEffect20->m_bSlope = 1;
-        pEffect20->m_vecPosition.y += 0.3f;
-        pEffect20->SetColor(0xFF2255AA);
-        g_pCurrentScene->m_pEffectContainer->AddChild(pEffect20);
+            if (pEffect20)
+            {
+                pEffect20->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+                pEffect20->m_vecPosition = m_vecPosition;
+                pEffect20->m_bSlope = 1;
+                pEffect20->m_vecPosition.y += 0.3f;
+                pEffect20->SetColor(0xFF2255AA);
+                pEffectContainer->AddChild(pEffect20);
+            }
+        }
     }
 
     if (m_nType2 != 1 && g_pSoundManager)
@@ -138,7 +145,9 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
         return 1;
     }
 
-    auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+    auto pScene = g_pCurrentScene ? static_cast<TMFieldScene*>(g_pCurrentScene) : nullptr;
+    if (!pScene)
+        return 0;
 
     TMVector2 vecPos{ m_vecPosition.x, m_vecPosition.z };
     int nMask = pScene->GroundGetMask(vecPos);
@@ -148,6 +157,9 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
     {
         if (m_nType < 2)
         {
+            if (!pMesh->m_pVB)
+                return 0;
+
             unsigned int dwColor = 0x55113366;
             if (m_fProgress >= 0.6f)
             {
@@ -162,8 +174,10 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
             D3DVERTEXBUFFER_DESC vDesc;
             pMesh->m_pVB->GetDesc(&vDesc);
 
-            RDLVERTEX* pVertex;
+            RDLVERTEX* pVertex{};
             pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+            if (!pVertex)
+                return 0;
 
             size_t nCount = vDesc.Size / sizeof(RDLVERTEX);
             for (size_t i = 0; i < nCount; ++i)
@@ -196,25 +210,30 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
         pMesh->m_fScaleH = m_fProgress * 2.0f;
     }
 
+    auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+
     static unsigned int dwOldTime = 0;
-    if (dwServerTime - dwOldTime > 100)
+    if (dwServerTime - dwOldTime > 100 && pEffectContainer)
     {
         int nRand = rand() % 5;
 
         auto pBill = new TMEffectBillBoard(0, 1500, ((float)nRand * 0.3f) + 0.5f, ((float)nRand * 0.3f) + 0.5f, ((float)nRand * 0.3f) + 0.5f, 0.001f, 1, 80);
-        pBill->m_vecPosition = { ((float)(rand() % 10 - 5) * 0.2f) + m_vecPosition.x, m_vecPosition.y, ((float)(rand() % 10 - 5) * 0.2f) + m_vecPosition.z };        
-        if (m_nType > 1 && m_nType < 9)
+        if (pBill)
         {
-            pBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
-            pBill->SetColor(0xFFAAAAAA);
+            pBill->m_vecPosition = { ((float)(rand() % 10 - 5) * 0.2f) + m_vecPosition.x, m_vecPosition.y, ((float)(rand() % 10 - 5) * 0.2f) + m_vecPosition.z };        
+            if (m_nType > 1 && m_nType < 9)
+            {
+                pBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
+                pBill->SetColor(0xFFAAAAAA);
+            }
+            else
+            {
+                pBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+                pBill->SetColor(0xFFAAEEFF);
+            }
+            pBill->m_bStickGround = 1;
+            pEffectContainer->AddChild(pBill);
         }
-        else
-        {
-            pBill->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-            pBill->SetColor(0xFFAAEEFF);
-        }
-        pBill->m_bStickGround = 1;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pBill);
         dwOldTime = dwServerTime;
     }
 
@@ -226,9 +245,15 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
         vecNext.x = vecNext.x + m_vecNextD.x;
         vecNext.z = vecNext.z + m_vecNextD.y;
 
-        auto pFreeze = new TMSkillFreezeBlade(vecNext, m_nType + 1, m_nType2, 0);
-        pFreeze->m_vecNextD = m_vecNextD;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pFreeze);
+        if (pEffectContainer)
+        {
+            auto pFreeze = new TMSkillFreezeBlade(vecNext, m_nType + 1, m_nType2, 0);
+            if (pFreeze)
+            {
+                pFreeze->m_vecNextD = m_vecNextD;
+                pEffectContainer->AddChild(pFreeze);
+            }
+        }
 
         m_bNext = 1;
     }
