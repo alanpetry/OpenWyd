@@ -24,15 +24,18 @@ TMSkillExplosion2::TMSkillExplosion2(TMVector3 vecPosition, int nType, float fRa
     m_dwColor = dwColor;
 
     auto pLightMap = new TMShade(4, 7, 1.0f);
-    if (m_nType)
-        pLightMap->SetColor(0x00001122);
-    else
-        pLightMap->SetColor(0x77775511);
+    if (pLightMap)
+    {
+        if (m_nType)
+            pLightMap->SetColor(0x00001122);
+        else
+            pLightMap->SetColor(0x77775511);
 
-    pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-    pLightMap->SetPosition({ m_vecPosition.x, m_vecPosition.z });
-    pLightMap->m_dwLifeTime = m_dwLifeTime + 1000;
-    g_pCurrentScene->m_pEffectContainer->AddChild(pLightMap);
+        pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+        pLightMap->SetPosition({ m_vecPosition.x, m_vecPosition.z });
+        pLightMap->m_dwLifeTime = m_dwLifeTime + 1000;
+        g_pCurrentScene->m_pEffectContainer->AddChild(pLightMap);
+    }
 
     GetSoundAndPlay(155, 0, 0);    
 }
@@ -48,10 +51,11 @@ int TMSkillExplosion2::FrameMove(unsigned int dwServerTime)
         return 0;
 
     float fProgress = (float)(dwServerTime - m_dwStartTime) / (float)m_dwLifeTime;
-    auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
 
     if (!g_pCurrentScene)
         return 0;
+
+    auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
 
     if (fProgress > 1.0f)
     {
@@ -89,7 +93,8 @@ int TMSkillExplosion2::FrameMove(unsigned int dwServerTime)
                 else if (m_nType == 2)
                     pFire = new TMSkillFire(vec, 5, 0, 17544, 17544);
  
-                g_pCurrentScene->m_pEffectContainer->AddChild(pFire);
+                if (pFire)
+                    g_pCurrentScene->m_pEffectContainer->AddChild(pFire);
             }
         }
         m_dwLastTime = dwServerTime;
