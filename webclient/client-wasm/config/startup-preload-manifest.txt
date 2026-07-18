@@ -42,11 +42,15 @@ v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
+v769ClientRelease/Env/*.dds@/Env/
+v769ClientRelease/Env/*.tga@/Env/
 
 # Effect texture/animation bundles.
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
+v769ClientRelease/Effect/*.dds@/Effect/
+v769ClientRelease/Effect/*.tga@/Effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
 v769ClientRelease/Mesh/*.bin@/Mesh/
