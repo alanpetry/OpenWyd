@@ -42,6 +42,8 @@ v769ClientRelease/Env/*.trn@/Env/
 v769ClientRelease/Env/*.dat@/Env/
 v769ClientRelease/Env/*.map@/Env/
 v769ClientRelease/Env/*.wys@/Env/
+v769ClientRelease/Env/*.wyt@/Env/
+v769ClientRelease/Env/*.bmp@/Env/
 v769ClientRelease/Env/*.dds@/Env/
 v769ClientRelease/Env/*.tga@/Env/
 
@@ -49,6 +51,8 @@ v769ClientRelease/Env/*.tga@/Env/
 v769ClientRelease/Effect/*.bin@/Effect/
 v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
+v769ClientRelease/Effect/*.wyt@/Effect/
+v769ClientRelease/Effect/*.bmp@/Effect/
 v769ClientRelease/Effect/*.dds@/Effect/
 v769ClientRelease/Effect/*.tga@/Effect/
 
@@ -61,6 +65,10 @@ v769ClientRelease/Mesh/*.msh@/Mesh/
 v769ClientRelease/Mesh/*.mshb@/Mesh/
 v769ClientRelease/Mesh/*.msa@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
+v769ClientRelease/Mesh/*.wyt@/Mesh/
+v769ClientRelease/Mesh/*.bmp@/Mesh/
+v769ClientRelease/Mesh/*.dds@/Mesh/
+v769ClientRelease/Mesh/*.tga@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
 # Audio assets used by startup scenes.
