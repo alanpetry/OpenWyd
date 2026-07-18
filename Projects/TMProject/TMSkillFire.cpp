@@ -16,28 +16,33 @@ TMSkillFire::TMSkillFire(TMVector3 vecPosition, int nType, TMObject* pOwner, uns
 	m_pOwner = pOwner;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
+	m_pLightMap = nullptr;
 	
 	m_fAngle = 0.0f;
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
 
 	if (m_nType == 2 || m_nType == 3 || m_nType == 5 || m_nType == 6)
 	{
 		m_dwLifeTime = 800;
-		m_pLightMap = new TMShade(2, 7, 1.0f);
-
-		if (m_pLightMap)
+		if (pEffectContainer)
 		{
-			m_pLightMap->SetColor(m_dwColor2);
-			m_pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-			m_pLightMap->SetPosition({ m_vecPosition.x, m_vecPosition.z });
-			m_pLightMap->m_dwLifeTime = m_dwLifeTime + 1000;
-			g_pCurrentScene->m_pEffectContainer->AddChild(m_pLightMap);
+			m_pLightMap = new TMShade(2, 7, 1.0f);
+
+			if (m_pLightMap)
+			{
+				m_pLightMap->SetColor(m_dwColor2);
+				m_pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+				m_pLightMap->SetPosition({ m_vecPosition.x, m_vecPosition.z });
+				m_pLightMap->m_dwLifeTime = m_dwLifeTime + 1000;
+				pEffectContainer->AddChild(m_pLightMap);
+			}
 		}
 	}
 	else if (m_nType == 7)
 		m_dwLifeTime = 1000;
 	else if (m_nType == 8)
 		m_dwLifeTime = 100;
-	else
+	else if (pEffectContainer)
 	{
 		m_pLightMap = new TMShade(4, 7, 1.0f);
 		if (m_pLightMap)
@@ -47,7 +52,7 @@ TMSkillFire::TMSkillFire(TMVector3 vecPosition, int nType, TMObject* pOwner, uns
 			m_pLightMap->SetPosition({ m_vecPosition.x, m_vecPosition.z });
 			m_pLightMap->m_dwLifeTime = m_dwLifeTime + 1000;
 
-			g_pCurrentScene->m_pEffectContainer->AddChild(m_pLightMap);
+			pEffectContainer->AddChild(m_pLightMap);
 		}
 	}
 
@@ -108,6 +113,13 @@ int TMSkillFire::FrameMove(unsigned int dwServerTime)
 
 			if (!g_bHideEffect)
 			{
+				auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+				if (!pEffectContainer)
+				{
+					m_dwLastTime = dwServerTime;
+					return 1;
+				}
+
 				int nRand = rand();
 				float fRand = static_cast<float>(nRand);
 				TMEffectBillBoard* pEffect = nullptr;
@@ -188,7 +200,7 @@ int TMSkillFire::FrameMove(unsigned int dwServerTime)
 					pEffect->m_fParticleV = 3.0f;
 
 				pEffect->SetColor(m_dwColor);
-				g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+				pEffectContainer->AddChild(pEffect);
 			}
 
 			m_dwLastTime = dwServerTime;
