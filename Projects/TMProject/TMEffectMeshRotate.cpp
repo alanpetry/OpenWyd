@@ -84,12 +84,28 @@ int TMEffectMeshRotate::Render()
 	g_pDevice->SetRenderState(D3DRS_LIGHTING, 0);
 	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 8u);
 
+	auto RestoreEffectMeshRotateRenderState = []()
+	{
+		g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+		g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+		g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+		g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+		g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+		g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+		g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+	};
+
 	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 	{
 		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
 
 		if (pMesh == nullptr)
+		{
+			RestoreEffectMeshRotateRenderState();
 			return 0;
+		}
 
 		g_pDevice->SetRenderState(D3DRS_FOGENABLE, 0);
 		g_pDevice->SetRenderState(D3DRS_CULLMODE, 1u);
@@ -127,7 +143,10 @@ int TMEffectMeshRotate::Render()
 		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 0, 180000);
 
 		if (pMesh == nullptr)
+		{
+			RestoreEffectMeshRotateRenderState();
 			return 0;
+		}
 
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 5u);
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
@@ -161,7 +180,10 @@ int TMEffectMeshRotate::Render()
 	}
 
 	if (pMesh == nullptr)
+	{
+		RestoreEffectMeshRotateRenderState();
 		return 0;
+	}
 
 	pMesh->m_fScaleV = m_fScale;
 	pMesh->m_fScaleH = m_fScale;
@@ -171,6 +193,7 @@ int TMEffectMeshRotate::Render()
 	else
 		pMesh->Render(m_vecPosition.x, m_vecPosition.y, m_vecPosition.z, m_fAngle, 0, 1.5707964f, 0, 0);
 
+	RestoreEffectMeshRotateRenderState();
 	return 1;
 }
 
