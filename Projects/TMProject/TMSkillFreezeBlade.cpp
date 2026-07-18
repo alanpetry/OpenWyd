@@ -145,7 +145,9 @@ int TMSkillFreezeBlade::FrameMove(unsigned int dwServerTime)
         return 1;
     }
 
-    auto pScene = static_cast<TMFieldScene*>(g_pCurrentScene);
+    auto pScene = g_pCurrentScene ? static_cast<TMFieldScene*>(g_pCurrentScene) : nullptr;
+    if (!pScene)
+        return 0;
 
     TMVector2 vecPos{ m_vecPosition.x, m_vecPosition.z };
     int nMask = pScene->GroundGetMask(vecPos);
