@@ -98,8 +98,8 @@ int TMShade::SetPosition(TMVector2 vecPosition)
     if (vecPosition.y > 0.0f && (vecPosition.y - ((float)(nY + 1) * 2.0f)) > (((float)(nY + 2) * 2.0f) - vecPosition.y))
         ++nY;
 
-    auto pGround = g_pCurrentScene->m_pGround;
-    if (g_pCurrentScene && pGround)
+    auto pGround = g_pCurrentScene ? g_pCurrentScene->m_pGround : nullptr;
+    if (pGround)
     {
         auto pTileMapData = pGround->m_TileMapData;
 
@@ -165,7 +165,7 @@ int TMShade::SetPosition(TMVector2 vecPosition)
                             m_pVertex[x + y * (m_nGridNum + 1)].position.y = ((float)pNeighbor->m_TileMapData[nResX + (nResY << 6)].cHeight * 0.1f) + 0.05f;
                     }
                 }
-                if (g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELCHAR && m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
+                if (g_pCurrentScene && g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELCHAR && m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
                 {
                     if (m_pVertex[x + y * (m_nGridNum + 1)].position.y <= 5.0f)
                         m_pVertex[x + y * (m_nGridNum + 1)].position.y = m_pVertex[x + y * (m_nGridNum + 1)].position.y + 0.1f;
@@ -276,6 +276,8 @@ void TMShade::RenderUnder()
         g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
         g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
         g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+        g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+        g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
