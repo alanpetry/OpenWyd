@@ -590,6 +590,10 @@ void TMEffectBillBoard::SetLightMap(unsigned int dwColor, int nSize)
 		m_pLightMap = nullptr;
 	}
 
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+	if (!pEffectContainer)
+		return;
+
 	m_pLightMap = new TMShade(nSize, 7, 1.0f);
 
 	if (m_pLightMap)
@@ -597,6 +601,6 @@ void TMEffectBillBoard::SetLightMap(unsigned int dwColor, int nSize)
 		m_pLightMap->SetColor(dwColor);
 		m_pLightMap->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
 
-		g_pCurrentScene->m_pEffectContainer->AddChild(static_cast<TreeNode*>(m_pLightMap));
+		pEffectContainer->AddChild(static_cast<TreeNode*>(m_pLightMap));
 	}
 }
