@@ -152,6 +152,7 @@ int TMSnow::Render()
     g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
     g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+    g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
     return 1;
 }
 
