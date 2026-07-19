@@ -59,12 +59,16 @@ TMEffectSkinMesh::~TMEffectSkinMesh()
 {
 	SAFE_DELETE(m_pSkinMesh2);
 
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+	if (!pEffectContainer)
+		return;
+
 	if (!m_nLevel && m_nMotionType == 2)
 	{
 		TMSkillFire* pFire = new TMSkillFire(m_vecTargetPos, 0, nullptr, 0xFFFFFFFF, 0x22331100);
 
 		if (pFire)
-			g_pCurrentScene->m_pEffectContainer->AddChild(pFire);
+			pEffectContainer->AddChild(pFire);
 	}
 	else
 	{
@@ -88,7 +92,7 @@ TMEffectSkinMesh::~TMEffectSkinMesh()
 			pEffect->m_fStartAngle = m_fAngle;
 			pEffect->m_nMotionType = 3;
 
-			g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+			pEffectContainer->AddChild(pEffect);
 		}
 	}
 }
