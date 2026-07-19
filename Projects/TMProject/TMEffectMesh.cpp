@@ -48,7 +48,7 @@ int TMEffectMesh::Render()
 		if (m_nMeshIndex != 506)
 			return 0;
 
-		if (g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
+		if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
 			return 0;
 	}
 
@@ -256,7 +256,7 @@ int TMEffectMesh::FrameMove(unsigned int dwServerTime)
 		if (m_nMeshIndex != 506)
 			return 0;
 
-		if (g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
+		if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
 			return 0;
 	}
 
@@ -294,6 +294,12 @@ void TMEffectMesh::SetColor(unsigned int dwColor)
 
 int TMEffectMesh::IsVisible()
 {
+	if (!g_pCurrentScene)
+	{
+		m_bVisible = 0;
+		return 0;
+	}
+
 	if (g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
 	{
 		m_bVisible = 1;
