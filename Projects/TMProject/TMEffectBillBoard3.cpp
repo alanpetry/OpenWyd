@@ -29,7 +29,7 @@ TMEffectBillBoard3::TMEffectBillBoard3(TMVector3 vecStart, TMVector3 vecEnd, int
 	m_vertex2[0].position = TMVector3{ vecStart.x - m_fScaleV, vecStart.y, vecStart.z };
 	m_vertex2[1].position = TMVector3{ vecEnd.x - m_fScaleV, vecEnd.y, vecEnd.z };
 	m_vertex2[2].position = TMVector3{ vecEnd.x + m_fScaleV, vecEnd.y, vecEnd.z };
-	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecEnd.z };
+	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecStart.z };
 
 	m_vertex2[0].tu = 0.02f;
 	m_vertex2[0].tv = 0.98000002f;
