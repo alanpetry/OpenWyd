@@ -59,6 +59,13 @@ v769ClientRelease/Mesh/*.msa@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
+# Character texture payloads used by skin, equipment, mount, and weapon meshes.
+v769ClientRelease/Char/*.wyt@/Char/
+v769ClientRelease/Char/*.wys@/Char/
+v769ClientRelease/Char/*.bmp@/Char/
+v769ClientRelease/Char/*.tga@/Char/
+v769ClientRelease/Char/*.dds@/Char/
+
 # Audio assets used by startup scenes.
 v769ClientRelease/Sound/*@/Sound/
 v769ClientRelease/music/*@/music/
