@@ -157,6 +157,8 @@ int TMRain::FrameMove(unsigned int dwServerTime)
     if (pObj)
         fCamHeight = pObj->m_fHeight;
 
+    auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+
     for (int i = 0; i < 50; ++i)
     {
         if (m_vecRainPosition[i].y > fCamHeight)
@@ -170,24 +172,27 @@ int TMRain::FrameMove(unsigned int dwServerTime)
             int nX4 = (int)(m_vecRainPosition[i].x + vecCam.x) / 4;
             int nY4 = (int)(m_vecRainPosition[i].z + vecCam.y) / 4;
             int bValue = g_pAttribute[nY4][nX4];
-            if (!(bValue & 8))
+            if (!(bValue & 8) && g_pCurrentScene && pEffectContainer)
             {
                 auto pEffect = new TMEffectBillBoard2(10, 700, 0.0099999998f, 0.0099999998f, 0.0099999998f, 0.00039999999f, 0);
-                pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-                pEffect->m_vecPosition.x = m_vecRainPosition[i].x + vecCam.x;
-                pEffect->m_vecPosition.z = m_vecRainPosition[i].z + vecCam.y;
-                
-                TMVector2 vec{ pEffect->m_vecPosition.x, pEffect->m_vecPosition.z };
-                float fHeight = (float)g_pCurrentScene->GroundGetMask(vec);
-                if (fHeight == 127.0f)
-                    fHeight = 0.0f;
+                if (pEffect)
+                {
+                    pEffect->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+                    pEffect->m_vecPosition.x = m_vecRainPosition[i].x + vecCam.x;
+                    pEffect->m_vecPosition.z = m_vecRainPosition[i].z + vecCam.y;
+                    
+                    TMVector2 vec{ pEffect->m_vecPosition.x, pEffect->m_vecPosition.z };
+                    float fHeight = (float)g_pCurrentScene->GroundGetMask(vec);
+                    if (fHeight == 127.0f)
+                        fHeight = 0.0f;
 
-                TMVector2 vecWater{ pEffect->m_vecPosition.x, pEffect->m_vecPosition.z };
-                if (g_pCurrentScene->GroundIsInWater(vecWater, -100.0f, &fHeight) == 1)
-                    fHeight = fHeight + 0.25f;
+                    TMVector2 vecWater{ pEffect->m_vecPosition.x, pEffect->m_vecPosition.z };
+                    if (g_pCurrentScene->GroundIsInWater(vecWater, -100.0f, &fHeight) == 1)
+                        fHeight = fHeight + 0.25f;
 
-                pEffect->m_vecPosition.y = (fHeight * 0.1f) + 0.25f;
-                g_pCurrentScene->m_pEffectContainer->AddChild(pEffect);
+                    pEffect->m_vecPosition.y = (fHeight * 0.1f) + 0.25f;
+                    pEffectContainer->AddChild(pEffect);
+                }
             }
         }
         if (pObj)
