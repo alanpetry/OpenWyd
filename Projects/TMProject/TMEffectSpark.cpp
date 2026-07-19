@@ -8,7 +8,9 @@
 TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 vecEnd, unsigned int dwColor, unsigned int dwColor2, unsigned int dwLifeTime, float fWidth, int nSparkCount, float fProgress) :
 	TMEffect(),
 	m_vecStartPos{ vecStart },
-	m_vecEndPos{ vecEnd }
+	m_vecEndPos{ vecEnd },
+	m_pSpark{},
+	m_pShade{}
 {
 	m_dwCreateTime = g_pTimerManager->GetServerTime();
 	m_pOwner = pTarget;
@@ -16,7 +18,7 @@ TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 ve
 	m_fWidth = fWidth;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
-	if (m_nSparkCount <= 5)
+	if (nSparkCount <= 5)
 		m_nSparkCount = nSparkCount;
 	else
 		m_nSparkCount = 5;
@@ -37,39 +39,43 @@ TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 ve
 		((1.0f - fProgress) * m_vecStartPos.z) + (m_vecEndPos.z * fProgress)
 	};
 
-	for (int i = 0; i < m_nSparkCount; ++i)
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+	if (pEffectContainer)
 	{
-		m_pSpark[i] = new TMEffectBillBoard3(vecTemp1, vecTemp2, 128, m_dwColor, dwLifeTime, 0.80000001f * m_fWidth, 0.80000001f * m_fWidth);
-
-		if (m_pSpark[i])
+		for (int i = 0; i < m_nSparkCount; ++i)
 		{
-			m_pSpark[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-			m_pSpark[i]->m_vertex2[0].tv = 1;
+			m_pSpark[i] = new TMEffectBillBoard3(vecTemp1, vecTemp2, 128, m_dwColor, dwLifeTime, 0.80000001f * m_fWidth, 0.80000001f * m_fWidth);
 
-			vecTemp1 = vecTemp2;
-
-			float fProgress = (float)(i + 1) / (float)m_nSparkCount;
-
-			vecTemp2 = TMVector3{ 
-				((1.0f - fProgress) * m_vecStartPos.x) + (m_vecEndPos.x * fProgress),
-				((1.0f - fProgress) * m_vecStartPos.y) + (m_vecEndPos.y * fProgress),
-				((1.0f - fProgress) * m_vecStartPos.z) + (m_vecEndPos.z * fProgress)};
-
-			g_pCurrentScene->m_pEffectContainer->AddChild(m_pSpark[i]);
-
-			if (pTarget)
+			if (m_pSpark[i])
 			{
-				m_pShade[i] = new TMShade(3, 7, 1.0f);
+				m_pSpark[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+				m_pSpark[i]->m_vertex2[0].tv = 1;
 
-				if (m_pShade[i])
+				vecTemp1 = vecTemp2;
+
+				float fProgress = (float)(i + 1) / (float)m_nSparkCount;
+
+				vecTemp2 = TMVector3{ 
+					((1.0f - fProgress) * m_vecStartPos.x) + (m_vecEndPos.x * fProgress),
+					((1.0f - fProgress) * m_vecStartPos.y) + (m_vecEndPos.y * fProgress),
+					((1.0f - fProgress) * m_vecStartPos.z) + (m_vecEndPos.z * fProgress)};
+
+				pEffectContainer->AddChild(m_pSpark[i]);
+
+				if (pTarget)
 				{
-					m_pShade[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-					m_pShade[i]->SetColor(m_dwColor2);
-					
-					m_pShade[i]->SetPosition(TMVector2{ vecTemp1.x, vecTemp1.z });
-					m_pShade[i]->m_dwLifeTime = dwLifeTime;
+					m_pShade[i] = new TMShade(3, 7, 1.0f);
 
-					g_pCurrentScene->m_pEffectContainer->AddChild(m_pShade[i]);
+					if (m_pShade[i])
+					{
+						m_pShade[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+						m_pShade[i]->SetColor(m_dwColor2);
+						
+						m_pShade[i]->SetPosition(TMVector2{ vecTemp1.x, vecTemp1.z });
+						m_pShade[i]->m_dwLifeTime = dwLifeTime;
+
+						pEffectContainer->AddChild(m_pShade[i]);
+					}
 				}
 			}
 		}
