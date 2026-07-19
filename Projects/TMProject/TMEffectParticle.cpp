@@ -11,6 +11,10 @@ TMEffectParticle::TMEffectParticle(TMVector3 vecPosition, int nType, int nCount,
 	m_nType = nType;
 	m_dwStartTime = g_pTimerManager->GetServerTime();
 
+	auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+	if (!pEffectContainer)
+		return;
+
 	for (int i = 0; i < nCount; ++i)
 	{
 		unsigned int dwTime = 300 * i + 2000;
@@ -99,7 +103,7 @@ TMEffectParticle::TMEffectParticle(TMVector3 vecPosition, int nType, int nCount,
 				pParticle->SetColor(dwColor);
 			}
 
-			g_pCurrentScene->m_pEffectContainer->AddChild(pParticle);
+			pEffectContainer->AddChild(pParticle);
 		}
 	}
 }
