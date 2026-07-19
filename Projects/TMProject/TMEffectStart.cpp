@@ -23,11 +23,18 @@ TMEffectStart::TMEffectStart(TMVector3 vecPosition, int nType, TMHuman* pOwner) 
 
     if (!m_nType)
     {
-        auto pBill2 = new TMEffectBillBoard2(1, 2000, 0.5f, 0.5f, 0.5f, 0.0020000001f, 0);
-        pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
-        pBill2->m_vecPosition = vecPosition;
-        pBill2->m_vecPosition.y += 0.05f;
-        g_pCurrentScene->m_pEffectContainer->AddChild(pBill2);
+        auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+        if (pEffectContainer)
+        {
+            auto pBill2 = new TMEffectBillBoard2(1, 2000, 0.5f, 0.5f, 0.5f, 0.0020000001f, 0);
+            if (pBill2)
+            {
+                pBill2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
+                pBill2->m_vecPosition = vecPosition;
+                pBill2->m_vecPosition.y += 0.05f;
+                pEffectContainer->AddChild(pBill2);
+            }
+        }
     }
 }
 
@@ -106,6 +113,7 @@ int TMEffectStart::Render()
             g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
             g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
             g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+            g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
         }
     }
     return 1;
