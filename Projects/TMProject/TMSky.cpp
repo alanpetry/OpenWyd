@@ -403,6 +403,8 @@ int TMSky::Render()
        if (pMesh == nullptr)
        {
            ++g_wydSkyMeshNull;
+           g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+           g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
            return 0;
        }
 
