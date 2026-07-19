@@ -7,6 +7,8 @@
 #include "CFrame.h"
 
 TMEffectSpark2::TMEffectSpark2(TMObject* pTarget, unsigned int dwID, float fEffectStart, float fEffectLength, unsigned int dwColor, unsigned int dwColor2, float fWidth)
+    : TMEffect(),
+    m_pSpark{}
 {
 	m_dwCreateTime = g_pTimerManager->GetServerTime();
 	m_pOwner = pTarget;
@@ -20,6 +22,10 @@ TMEffectSpark2::TMEffectSpark2(TMObject* pTarget, unsigned int dwID, float fEffe
 
 	m_vecStartPos = TMVector3{ 0.0f, 0.0f, -fEffectStart };
 	m_vecEndPos = TMVector3{ 0.0f, 0.0f, fEffectLength };
+
+    auto pEffectContainer = g_pCurrentScene ? g_pCurrentScene->m_pEffectContainer : nullptr;
+    if (!pEffectContainer)
+        return;
 
     for (int i = 0; i < 5; ++i)
     {
@@ -37,7 +43,7 @@ TMEffectSpark2::TMEffectSpark2(TMObject* pTarget, unsigned int dwID, float fEffe
             m_pSpark[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
             m_pSpark[i]->m_nFade = 1;
             
-            g_pCurrentScene->m_pEffectContainer->AddChild(m_pSpark[i]);
+            pEffectContainer->AddChild(m_pSpark[i]);
         }
     }
 }
