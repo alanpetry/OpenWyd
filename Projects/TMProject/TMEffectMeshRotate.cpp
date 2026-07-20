@@ -77,6 +77,13 @@ int TMEffectMeshRotate::Render()
 		return 0;
 
 	TMMesh* pMesh{};
+	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
+		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
+	else
+		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 0, 180000);
+
+	if (!pMesh || (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT && !pMesh->m_pVB))
+		return 0;
 
 	g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 0);
@@ -86,11 +93,6 @@ int TMEffectMeshRotate::Render()
 
 	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 	{
-		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 1, 180000);
-
-		if (pMesh == nullptr)
-			return 0;
-
 		g_pDevice->SetRenderState(D3DRS_FOGENABLE, 0);
 		g_pDevice->SetRenderState(D3DRS_CULLMODE, 1u);
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 5u);
@@ -124,11 +126,6 @@ int TMEffectMeshRotate::Render()
 	}
 	else
 	{
-		pMesh = g_pMeshManager->GetCommonMesh(m_nMeshIndex, 0, 180000);
-
-		if (pMesh == nullptr)
-			return 0;
-
 		g_pDevice->SetRenderState(D3DRS_SRCBLEND, 5u);
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
 		g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 4u);
@@ -159,9 +156,6 @@ int TMEffectMeshRotate::Render()
 		materials.Specular.b = 1.0f;
 		g_pDevice->m_pd3dDevice->SetMaterial(&materials);
 	}
-
-	if (pMesh == nullptr)
-		return 0;
 
 	pMesh->m_fScaleV = m_fScale;
 	pMesh->m_fScaleH = m_fScale;

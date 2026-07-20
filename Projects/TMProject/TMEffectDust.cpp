@@ -256,8 +256,8 @@ int TMEffectDust::Render()
             materials.Specular.g = 1.0f;
             materials.Specular.b = 1.0f;
             materials.Emissive.r = (g_pDevice->m_colorBackLight.r * 0.30000001f) + (color.r * 0.40000001f);
-            materials.Emissive.g = (g_pDevice->m_colorBackLight.g * 0.30000001f) + (color.r * 0.40000001f);
-            materials.Emissive.b = (g_pDevice->m_colorBackLight.b * 0.30000001f) + (color.r * 0.40000001f);
+            materials.Emissive.g = (g_pDevice->m_colorBackLight.g * 0.30000001f) + (color.g * 0.40000001f);
+            materials.Emissive.b = (g_pDevice->m_colorBackLight.b * 0.30000001f) + (color.b * 0.40000001f);
         }
         else
         {
@@ -292,7 +292,7 @@ int TMEffectDust::Render()
                 m_pMeshDropStone[i]->Render(m_vecStonePos[i].x, m_vecStonePos[i].y, m_vecStonePos[i].z, 0, 0, 0, 0, 0);
         }
 
-        g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 0);
+        g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
         g_pDevice->SetTextureStageState(1u, D3DTSS_COLOROP, 1u);
         g_pDevice->SetTextureStageState(1u, D3DTSS_TEXCOORDINDEX, 1u);
     }

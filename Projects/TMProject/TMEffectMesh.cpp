@@ -48,7 +48,7 @@ int TMEffectMesh::Render()
 		if (m_nMeshIndex != 506)
 			return 0;
 
-		if (g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
+		if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
 			return 0;
 	}
 
@@ -61,6 +61,9 @@ int TMEffectMesh::Render()
 
 		if (pMesh)
 		{
+			if (m_efAlphaType != EEFFECT_ALPHATYPE::EF_ALPHA && !pMesh->m_pVB)
+				return 0;
+
 			if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 			{
 				g_pDevice->SetRenderState(D3DRS_DESTBLEND, 2u);
@@ -135,9 +138,6 @@ int TMEffectMesh::Render()
 			}
 			else
 			{
-				if (!pMesh->m_pVB)
-					return 0;
-
 				RDLVERTEX* pVertex{};
 				D3DVERTEXBUFFER_DESC vDesc{};
 
@@ -256,7 +256,7 @@ int TMEffectMesh::FrameMove(unsigned int dwServerTime)
 		if (m_nMeshIndex != 506)
 			return 0;
 
-		if (g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
+		if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR)
 			return 0;
 	}
 
@@ -294,6 +294,12 @@ void TMEffectMesh::SetColor(unsigned int dwColor)
 
 int TMEffectMesh::IsVisible()
 {
+	if (!g_pCurrentScene)
+	{
+		m_bVisible = 0;
+		return 0;
+	}
+
 	if (g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
 	{
 		m_bVisible = 1;
