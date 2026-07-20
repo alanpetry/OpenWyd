@@ -150,14 +150,15 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
         }
 
         auto pMesh = g_pMeshManager->GetCommonMesh(704, 1, 180000);
-        if (!pMesh)
+        if (!pMesh || !pMesh->m_pVB)
             return 0;
 
-        D3DVERTEXBUFFER_DESC vDesc;
+        D3DVERTEXBUFFER_DESC vDesc{};
         pMesh->m_pVB->GetDesc(&vDesc);
 
-        RDLVERTEX* pVertex;
-        pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+        RDLVERTEX* pVertex{};
+        if (FAILED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || !pVertex)
+            return 0;
         int nCount = vDesc.Size / sizeof(RDLVERTEX);
         for (int i = 0; i < nCount; ++i)
         {
@@ -170,11 +171,13 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
         pMesh->m_pVB->Unlock();
 
         pMesh = g_pMeshManager->GetCommonMesh(705, 1, 180000);
-        if (!pMesh)
+        if (!pMesh || !pMesh->m_pVB)
             return 0;
 
         pMesh->m_pVB->GetDesc(&vDesc);
-        pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+        pVertex = nullptr;
+        if (FAILED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || !pVertex)
+            return 0;
         nCount = vDesc.Size / sizeof(RDLVERTEX);
         for (int i = 0; i < nCount; ++i)
         {

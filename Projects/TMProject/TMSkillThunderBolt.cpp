@@ -29,7 +29,7 @@ TMSkillThunderBolt::TMSkillThunderBolt(TMVector3 vecPosition, int nType)
 	pThunder->SetColor(dwCol[m_nType][0]);
 
 	auto pThunder2 = new TMEffectBillBoard(45, m_dwLifeTime, 0.55f, 10.0f, 0.55f, 0.0f, 6, 80);
-	pThunder2->m_vecStartPos = pThunder->m_vecPosition = TMVector3(m_vecPosition.x, m_vecPosition.y - 1.0f, m_vecPosition.z);
+	pThunder2->m_vecStartPos = pThunder2->m_vecPosition = TMVector3(m_vecPosition.x, m_vecPosition.y - 1.0f, m_vecPosition.z);
 	pThunder2->m_nFade = 0;
 	pThunder2->m_bStickGround = 1;
 	pThunder2->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;

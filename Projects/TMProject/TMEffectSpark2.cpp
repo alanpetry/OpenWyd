@@ -7,6 +7,8 @@
 #include "CFrame.h"
 
 TMEffectSpark2::TMEffectSpark2(TMObject* pTarget, unsigned int dwID, float fEffectStart, float fEffectLength, unsigned int dwColor, unsigned int dwColor2, float fWidth)
+	: TMEffect(),
+	m_pSpark{}
 {
 	m_dwCreateTime = g_pTimerManager->GetServerTime();
 	m_pOwner = pTarget;

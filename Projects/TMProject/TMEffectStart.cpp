@@ -136,24 +136,27 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
         auto pMesh = g_pMeshManager->GetCommonMesh(703, 1, 18000);
         if (pMesh)
         {
-            D3DVERTEXBUFFER_DESC vDesc;
-            pMesh->m_pVB->GetDesc(&vDesc);
-            RDLVERTEX* pVertex;
-            pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
-
-            int nCount = vDesc.Size / sizeof(RDLVERTEX);           
             float fDif = fabsf(sinf(m_fProgress * D3DXToRadian(180)));
-            for (int i = 0; i < nCount; ++i)
+            if (pMesh->m_pVB)
             {
-                unsigned char ucColor = (unsigned char)(255.0f * fDif);
-                unsigned int dwR = (unsigned char)ucColor << 16;
-                unsigned int dwG = (unsigned char)ucColor << 8;
-                unsigned int dwB = (unsigned char)ucColor;
+                D3DVERTEXBUFFER_DESC vDesc{};
+                RDLVERTEX* pVertex{};
+                pMesh->m_pVB->GetDesc(&vDesc);
 
-                pVertex[i].diffuse = ucColor | dwG | (ucColor << 16);
+                if (SUCCEEDED(pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) && pVertex)
+                {
+                    int nCount = vDesc.Size / sizeof(RDLVERTEX);
+                    for (int i = 0; i < nCount; ++i)
+                    {
+                        unsigned char ucColor = (unsigned char)(255.0f * fDif);
+                        unsigned int dwG = (unsigned char)ucColor << 8;
+
+                        pVertex[i].diffuse = ucColor | dwG | (ucColor << 16);
+                    }
+
+                    pMesh->m_pVB->Unlock();
+                }
             }
-
-            pMesh->m_pVB->Unlock();
             switch (m_nType)
             {
             case 1:

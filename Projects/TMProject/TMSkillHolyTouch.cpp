@@ -26,7 +26,7 @@ TMSkillHolyTouch::TMSkillHolyTouch(TMVector3 vecPosition, int nType)
 
 			if (mpBill[i])
 			{
-				mpBill[i]->m_vecPosition = { static_cast<float>(nX[i]) * 0.5f + m_vecPosition.x, m_vecPosition.y - 1.0f, static_cast<float>(nX[i]) * 0.5f + m_vecPosition.z };
+				mpBill[i]->m_vecPosition = { static_cast<float>(nX[i]) * 0.5f + m_vecPosition.x, m_vecPosition.y - 1.0f, static_cast<float>(nY[i]) * 0.5f + m_vecPosition.z };
 				mpBill[i]->m_fScaleVelY = static_cast<float>(i) * 0.001f + 0.002f;
 				mpBill[i]->m_efAlphaType = EEFFECT_ALPHATYPE::EF_BRIGHT;
 				mpBill[i]->m_bStickGround = 1;

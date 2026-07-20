@@ -225,7 +225,14 @@ int TMSea::InitObject()
         0) >= 0)
     {
         RDLVERTEX2* pVertex{};
-        m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+        if (FAILED(m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || !pVertex)
+        {
+            m_pMesh->m_pVB->Release();
+            m_pMesh->m_pVB = nullptr;
+            SAFE_DELETE(m_pMesh);
+            LOG_WRITELOG("Can't Lock Vertex Buffer in SeaMesh\r\n");
+            return 0;
+        }
 
         for (int nY = 0; nY < m_nGridNumY + 1; ++nY)
         {
@@ -246,8 +253,17 @@ int TMSea::InitObject()
 
         if (g_pDevice->m_pd3dDevice->CreateIndexBuffer(6 * m_pMesh->m_AttRange[0].FaceCount, 0, D3DFMT_INDEX16, D3DPOOL_MANAGED, &m_pMesh->m_pIB, 0) >= 0)
         {
-            unsigned short* pIndex;
-            m_pMesh->m_pIB->Lock(0, 0, (void**)&pIndex, 0);
+            unsigned short* pIndex{};
+            if (FAILED(m_pMesh->m_pIB->Lock(0, 0, (void**)&pIndex, 0)) || !pIndex)
+            {
+                m_pMesh->m_pIB->Release();
+                m_pMesh->m_pIB = nullptr;
+                m_pMesh->m_pVB->Release();
+                m_pMesh->m_pVB = nullptr;
+                SAFE_DELETE(m_pMesh);
+                LOG_WRITELOG("Can't Lock Index Buffer in SeaMesh\r\n");
+                return 0;
+            }
 
             int nIndex = 0;
             for (int nY = 0; nY < m_nGridNumY; ++nY)
@@ -324,8 +340,12 @@ int TMSea::FrameMove(unsigned int dwServerTime)
 
     if (m_pMesh)
     {
+        if (!m_pMesh->m_pVB)
+            return 0;
+
         RDLVERTEX2* pVertex{};
-        m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
+        if (FAILED(m_pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0)) || !pVertex)
+            return 0;
 
         int nIndex0 = dwServerTime % 12000;
         int nIndex1 = dwServerTime % 18000;

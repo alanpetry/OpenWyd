@@ -16,9 +16,9 @@ TMShade::TMShade(int nGridNum, int nTextureIndex, float fScale)
     m_nVertexNum = (m_nGridNum + 1) * (m_nGridNum + 1);
     m_nIndexNum = 6 * m_nGridNum * m_nGridNum;
     m_wpIndex = 0;
-    m_wpIndex = new unsigned short[sizeof(unsigned short) * m_nIndexNum];
+    m_wpIndex = new unsigned short[m_nIndexNum];
     m_pVertex = 0;
-    m_pVertex = new RDLVERTEX[sizeof(RDLVERTEX) * m_nVertexNum];
+    m_pVertex = new RDLVERTEX[m_nVertexNum];
     m_efAlphaType = EEFFECT_ALPHATYPE::EF_DEFAULT;
     m_bFI = 1;
     m_bShow = 1;
@@ -31,6 +31,10 @@ TMShade::TMShade(int nGridNum, int nTextureIndex, float fScale)
             delete[] m_wpIndex;
         if (m_pVertex)
             delete[] m_pVertex;
+        m_wpIndex = nullptr;
+        m_pVertex = nullptr;
+        m_nIndexNum = 0;
+        m_nVertexNum = 0;
     }
 
     if (m_wpIndex)
@@ -98,8 +102,8 @@ int TMShade::SetPosition(TMVector2 vecPosition)
     if (vecPosition.y > 0.0f && (vecPosition.y - ((float)(nY + 1) * 2.0f)) > (((float)(nY + 2) * 2.0f) - vecPosition.y))
         ++nY;
 
-    auto pGround = g_pCurrentScene->m_pGround;
-    if (g_pCurrentScene && pGround)
+    auto pGround = g_pCurrentScene ? g_pCurrentScene->m_pGround : nullptr;
+    if (pGround)
     {
         auto pTileMapData = pGround->m_TileMapData;
 
@@ -165,7 +169,7 @@ int TMShade::SetPosition(TMVector2 vecPosition)
                             m_pVertex[x + y * (m_nGridNum + 1)].position.y = ((float)pNeighbor->m_TileMapData[nResX + (nResY << 6)].cHeight * 0.1f) + 0.05f;
                     }
                 }
-                if (g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELCHAR && m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
+                if (g_pCurrentScene && g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELCHAR && m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
                 {
                     if (m_pVertex[x + y * (m_nGridNum + 1)].position.y <= 5.0f)
                         m_pVertex[x + y * (m_nGridNum + 1)].position.y = m_pVertex[x + y * (m_nGridNum + 1)].position.y + 0.1f;

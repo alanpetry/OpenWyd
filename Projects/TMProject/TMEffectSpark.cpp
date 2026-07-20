@@ -7,6 +7,8 @@
 
 TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 vecEnd, unsigned int dwColor, unsigned int dwColor2, unsigned int dwLifeTime, float fWidth, int nSparkCount, float fProgress) :
 	TMEffect(),
+	m_pSpark{},
+	m_pShade{},
 	m_vecStartPos{ vecStart },
 	m_vecEndPos{ vecEnd }
 {
@@ -16,7 +18,9 @@ TMEffectSpark::TMEffectSpark(TMVector3 vecStart, TMObject* pTarget, TMVector3 ve
 	m_fWidth = fWidth;
 	m_dwColor = dwColor;
 	m_dwColor2 = dwColor2;
-	if (m_nSparkCount <= 5)
+	if (nSparkCount < 0)
+		m_nSparkCount = 0;
+	else if (nSparkCount <= 5)
 		m_nSparkCount = nSparkCount;
 	else
 		m_nSparkCount = 5;
@@ -153,7 +157,10 @@ int TMEffectSpark::SetLifeTime(unsigned int dwLifeTime)
 	for (int i = 0; i < m_nSparkCount; ++i)
 	{
 		if (m_pSpark[i])
-			m_pSpark[i]->m_dwCreateTime = dwLifeTime;
+			m_pSpark[i]->m_dwLifeTime = dwLifeTime;
+
+		if (m_pShade[i])
+			m_pShade[i]->m_dwLifeTime = dwLifeTime;
 	}
 	return 1;
 }
