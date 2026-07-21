@@ -165,7 +165,7 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
             unsigned int dwR = (unsigned int)((float)m_dwR * fDif) << 16;
             unsigned int dwG = (unsigned int)((float)m_dwG * fDif) << 8;
             unsigned int dwB = (unsigned int)((float)m_dwB * fDif);
-            pVertex[i].diffuse = dwB | dwG | dwR;
+            pVertex[i].diffuse = dwB | dwG | dwR | dwA;
         }
         pMesh->m_pVB->Unlock();
 
@@ -182,7 +182,7 @@ int TMEffectCharge::FrameMove(unsigned int dwServerTime)
             unsigned int dwR = (unsigned int)((float)m_dwR * fDif) << 16;
             unsigned int dwG = (unsigned int)((float)m_dwG * fDif) << 8;
             unsigned int dwB = (unsigned int)((float)m_dwB * fDif);
-            pVertex[i].diffuse = dwB | dwG | dwR;
+            pVertex[i].diffuse = dwB | dwG | dwR | dwA;
         }
         pMesh->m_pVB->Unlock();
 
