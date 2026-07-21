@@ -53,12 +53,30 @@ inline D3D9BlendRuntimeSnapshot CaptureD3D9BlendRuntimeState(
 }
 
 #ifdef __EMSCRIPTEN__
+inline void ApplyD3D9BlendRuntimeState(const D3D9BlendRenderState* current_state) {
+  if (!current_state) return;
+  ApplyWebGLBlendState(*current_state);
+}
+
+inline void ApplyD3D9BlendRuntimeState(const D3D9BlendRenderState& current_state) {
+  ApplyD3D9BlendRuntimeState(&current_state);
+}
+
+inline void ApplyD3D9BlendRuntimeState(const D3D9BlendRuntimeState* current_state) {
+  if (!current_state) return;
+  ApplyD3D9BlendRuntimeState(current_state->RenderState());
+}
+
+inline void ApplyD3D9BlendRuntimeState(const D3D9BlendRuntimeState& current_state) {
+  ApplyD3D9BlendRuntimeState(&current_state);
+}
+
 inline void RestoreD3D9BlendRuntimeState(
     D3D9BlendRenderState* current_state,
     const D3D9BlendRuntimeSnapshot& snapshot) {
   if (!current_state) return;
   *current_state = snapshot.render_state;
-  ApplyWebGLBlendState(*current_state);
+  ApplyD3D9BlendRuntimeState(*current_state);
 }
 
 inline void RestoreD3D9BlendRuntimeState(
