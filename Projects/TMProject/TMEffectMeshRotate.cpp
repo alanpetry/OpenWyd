@@ -137,8 +137,8 @@ int TMEffectMeshRotate::Render()
 
 		D3DCOLORVALUE color = g_pCurrentScene->GroundGetColor(TMVector2{ m_vecPosition.x, m_vecPosition.z });
 		color.r = (0.2f * color.r) + (g_pDevice->m_colorLight.r * 0.30000001f);
-		color.g = (0.2f * color.r) + (g_pDevice->m_colorLight.g * 0.30000001f);
-		color.b = (0.2f * color.r) + (g_pDevice->m_colorLight.b * 0.30000001f);
+		color.g = (0.2f * color.g) + (g_pDevice->m_colorLight.g * 0.30000001f);
+		color.b = (0.2f * color.b) + (g_pDevice->m_colorLight.b * 0.30000001f);
 		color.a = 1.0f;
 
 		_D3DMATERIAL9 materials{};
