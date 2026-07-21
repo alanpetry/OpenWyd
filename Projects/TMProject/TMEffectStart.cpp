@@ -146,11 +146,12 @@ int TMEffectStart::FrameMove(unsigned int dwServerTime)
             for (int i = 0; i < nCount; ++i)
             {
                 unsigned char ucColor = (unsigned char)(255.0f * fDif);
+                unsigned int dwA = (unsigned char)ucColor << 24;
                 unsigned int dwR = (unsigned char)ucColor << 16;
                 unsigned int dwG = (unsigned char)ucColor << 8;
                 unsigned int dwB = (unsigned char)ucColor;
 
-                pVertex[i].diffuse = ucColor | dwG | (ucColor << 16);
+                pVertex[i].diffuse = dwA | dwR | dwG | dwB;
             }
 
             pMesh->m_pVB->Unlock();
