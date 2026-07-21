@@ -163,6 +163,7 @@ struct D3D9FVFDecodedFixedFunctionFields {
   bool has_rhw = false;
   bool has_normal = false;
   bool has_diffuse = false;
+  bool has_specular = false;
   float x = 0.0f;
   float y = 0.0f;
   float z = 0.0f;
@@ -171,6 +172,7 @@ struct D3D9FVFDecodedFixedFunctionFields {
   float ny = 0.0f;
   float nz = 1.0f;
   DWORD diffuse = 0xFFFFFFFFu;
+  DWORD specular = 0xFF000000u;
   float u0 = 0.0f;
   float v0 = 0.0f;
   float u1 = 0.0f;
@@ -244,6 +246,7 @@ inline D3D9FVFDecodedFixedFunctionFields D3D9FVFDecodeFixedFunctionFields(
   out.has_rhw = layout.has_rhw;
   out.has_normal = layout.has_normal;
   out.has_diffuse = layout.has_diffuse;
+  out.has_specular = layout.has_specular;
   out.x = D3D9FVFReadUnalignedField<float>(src + 0u);
   out.y = D3D9FVFReadUnalignedField<float>(src + 4u);
   out.z = D3D9FVFReadUnalignedField<float>(src + 8u);
@@ -258,6 +261,11 @@ inline D3D9FVFDecodedFixedFunctionFields D3D9FVFDecodeFixedFunctionFields(
     out.nx = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 0u);
     out.ny = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 4u);
     out.nz = D3D9FVFReadUnalignedField<float>(src + layout.normal_offset + 8u);
+  }
+
+  if (layout.has_specular) {
+    if (!D3D9FVFCanReadField(layout.specular_offset, 4u, stride)) return out;
+    out.specular = D3D9FVFReadUnalignedField<DWORD>(src + layout.specular_offset);
   }
 
   const D3D9FVFDecodedColorTexcoords color_tex =
