@@ -42,8 +42,10 @@ TMEffectSWSwing::TMEffectSWSwing()
         m_vertex[i + 1].tu = 1.0f - t;
         m_vertex[i + 1].tv = 0.0f;
         float dif = t * 255.0f;
-        m_vertex[i].diffuse = (unsigned int)dif & 0xFF | (((unsigned int)dif & 0xFF) << 8) | ((unsigned char)(unsigned int)dif << 16);
-        m_vertex[i + 1].diffuse = (unsigned int)dif & 0xFF | (((unsigned int)dif & 0xFF) << 8) | ((unsigned char)(unsigned int)dif << 16);
+        unsigned int dwDif = (unsigned char)(unsigned int)dif;
+        unsigned int dwDiffuse = dwDif | (dwDif << 8) | (dwDif << 16) | (dwDif << 24);
+        m_vertex[i].diffuse = dwDiffuse;
+        m_vertex[i + 1].diffuse = dwDiffuse;
     }
     for (int i = 0; i < 48; ++i)
     {
@@ -218,6 +220,7 @@ int TMEffectSWSwing::Render()
 
                     if (pMesh)
                     {
+                        unsigned int dwA = (unsigned int)(255.0f * fTerm);
                         unsigned int dwR = (unsigned int)(float)((float)dwColorR[i] * fTerm);                      
                         unsigned int dwG = (unsigned int)(float)((float)dwColorG[i] * fTerm);
                         unsigned int dwB = (unsigned int)(float)((float)dwColorB[i] * fTerm);
@@ -232,7 +235,7 @@ int TMEffectSWSwing::Render()
                         pMesh->m_pVB->Lock(0, 0, (void**)&pVertex, 0);
                         int nCount = vDesc.Size / 24;
                         for (int j = 0; j < nCount; ++j)
-                            pVertex[j].diffuse = dwB | (dwG << 8) | (dwR << 16);
+                            pVertex[j].diffuse = dwB | (dwG << 8) | (dwR << 16) | (dwA << 24);
 
                         pMesh->m_pVB->Unlock();
                         pMesh->Render(0, 0);
@@ -740,7 +743,8 @@ int TMEffectSWSwing::FrameMove(unsigned int dwServerTime)
                     m_vertex[i + 1].tv = 0.20f;
                     t = t * 180.0f;
 
-                    m_vertex[i + 1].diffuse = (unsigned int)t & 0xFF | (((unsigned int)t & 0xFF) << 8) | ((unsigned char)(unsigned int)t << 16);
+                    unsigned int dwTrail = (unsigned char)(unsigned int)t;
+                    m_vertex[i + 1].diffuse = dwTrail | (dwTrail << 8) | (dwTrail << 16) | (dwTrail << 24);
                     m_vertex[i].diffuse = m_vertex[i + 1].diffuse;
                     dwStart += dwUnitTerm;
                 }
