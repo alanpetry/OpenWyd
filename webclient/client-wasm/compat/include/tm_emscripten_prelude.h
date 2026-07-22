@@ -207,6 +207,36 @@ using CHAR = char;
 #define D3DFVF_TEXCOORDSIZE4(coord_index) (2u << ((coord_index) * 2u + 16u))
 #endif
 
+inline UINT D3DFVFTexcoordCount(DWORD fvf) {
+  return (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+}
+
+inline UINT D3DFVFTexcoordComponentCount(DWORD fvf, UINT coord_index) {
+  const DWORD encoded = (fvf >> (coord_index * 2u + 16u)) & 0x3u;
+  switch (encoded) {
+    case 1u: return 3u;
+    case 2u: return 4u;
+    case 3u: return 1u;
+    default: return 2u;
+  }
+}
+
+inline UINT D3DFVFTexcoordBytes(DWORD fvf, UINT coord_index) {
+  return D3DFVFTexcoordComponentCount(fvf, coord_index) * static_cast<UINT>(sizeof(float));
+}
+
+inline UINT D3DFVFTexcoordOffsetBytes(DWORD fvf, UINT coord_index) {
+  UINT offset = 0;
+  const UINT tex_count = D3DFVFTexcoordCount(fvf);
+  const UINT safe_index = std::min(coord_index, tex_count);
+  for (UINT i = 0; i < safe_index; ++i) offset += D3DFVFTexcoordBytes(fvf, i);
+  return offset;
+}
+
+inline UINT D3DFVFTexcoordPayloadBytes(DWORD fvf) {
+  return D3DFVFTexcoordOffsetBytes(fvf, D3DFVFTexcoordCount(fvf));
+}
+
 #ifndef TRUE
 #define TRUE 1
 #endif
