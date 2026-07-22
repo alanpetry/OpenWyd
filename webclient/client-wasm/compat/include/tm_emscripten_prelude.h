@@ -237,6 +237,35 @@ inline UINT D3DFVFTexcoordPayloadBytes(DWORD fvf) {
   return D3DFVFTexcoordOffsetBytes(fvf, D3DFVFTexcoordCount(fvf));
 }
 
+struct D3DFVFTexcoordPair {
+  float u = 0.0f;
+  float v = 0.0f;
+  bool valid = false;
+};
+
+inline D3DFVFTexcoordPair D3DFVFReadTexcoordPair(
+    const void* vertex,
+    UINT stride,
+    DWORD fvf,
+    UINT texcoord_base_offset,
+    UINT coord_index) {
+  D3DFVFTexcoordPair out{};
+  if (!vertex || coord_index >= D3DFVFTexcoordCount(fvf)) return out;
+
+  const UINT coord_offset = D3DFVFTexcoordOffsetBytes(fvf, coord_index);
+  const UINT coord_bytes = D3DFVFTexcoordBytes(fvf, coord_index);
+  const UINT byte_offset = texcoord_base_offset + coord_offset;
+  if (coord_bytes < sizeof(float) || byte_offset + coord_bytes > stride) return out;
+
+  const BYTE* field = static_cast<const BYTE*>(vertex) + byte_offset;
+  std::memcpy(&out.u, field, sizeof(float));
+  if (D3DFVFTexcoordComponentCount(fvf, coord_index) > 1u) {
+    std::memcpy(&out.v, field + sizeof(float), sizeof(float));
+  }
+  out.valid = true;
+  return out;
+}
+
 #ifndef TRUE
 #define TRUE 1
 #endif
