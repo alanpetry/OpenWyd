@@ -307,7 +307,7 @@ inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
   if (!buffer || sizeOfBuffer == 0) return EINVAL;
   va_list args;
   va_start(args, format);
-  int ret = std::vsnprintf(buffer, sizeOfBuffer, args);
+  int ret = std::vsnprintf(buffer, sizeOfBuffer, format, args);
   va_end(args);
   return ret;
 }
