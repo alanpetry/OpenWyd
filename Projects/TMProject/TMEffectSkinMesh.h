@@ -26,9 +26,9 @@ public:
     EEFFECT_ALPHATYPE m_efAlphaType;
     int m_nMotionType;
     float m_fStartAngle;
-    D3DCOLORVALUE m_StartColor;
-    D3DCOLORVALUE m_EndColor;
-    D3DCOLORVALUE m_color;
+    D3DCOLORVALUE m_StartColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+    D3DCOLORVALUE m_EndColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+    D3DCOLORVALUE m_color{ 1.0f, 1.0f, 1.0f, 1.0f };
     int m_nFade;
     TMVector3 m_vecStartPos;
     TMVector3 m_vecTargetPos;
