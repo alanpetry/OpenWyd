@@ -188,6 +188,25 @@ using INT = int;
 using WCHAR = wchar_t;
 using CHAR = char;
 
+#ifndef D3DFVF_TEXCOUNT_SHIFT
+#define D3DFVF_TEXCOUNT_SHIFT 8
+#endif
+#ifndef D3DFVF_TEXCOUNT_MASK
+#define D3DFVF_TEXCOUNT_MASK 0xF00
+#endif
+#ifndef D3DFVF_TEXCOORDSIZE1
+#define D3DFVF_TEXCOORDSIZE1(coord_index) (3u << ((coord_index) * 2u + 16u))
+#endif
+#ifndef D3DFVF_TEXCOORDSIZE2
+#define D3DFVF_TEXCOORDSIZE2(coord_index) (0u << ((coord_index) * 2u + 16u))
+#endif
+#ifndef D3DFVF_TEXCOORDSIZE3
+#define D3DFVF_TEXCOORDSIZE3(coord_index) (1u << ((coord_index) * 2u + 16u))
+#endif
+#ifndef D3DFVF_TEXCOORDSIZE4
+#define D3DFVF_TEXCOORDSIZE4(coord_index) (2u << ((coord_index) * 2u + 16u))
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -288,7 +307,7 @@ inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
   if (!buffer || sizeOfBuffer == 0) return EINVAL;
   va_list args;
   va_start(args, format);
-  int ret = std::vsnprintf(buffer, sizeOfBuffer, format, args);
+  int ret = std::vsnprintf(buffer, sizeOfBuffer, args);
   va_end(args);
   return ret;
 }
