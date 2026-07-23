@@ -77,7 +77,7 @@
 #define STDMETHOD(method) virtual HRESULT STDMETHODCALLTYPE method
 #endif
 #ifndef STDMETHOD_
-#define STDMETHOD_(type, method) virtual type STDMETHODCALLTYPE method
+#define STDMETHOD_(type, method) virtual type STDMETHODCALLTYPE
 #endif
 #ifndef STDMETHODIMP
 #define STDMETHODIMP HRESULT STDMETHODCALLTYPE
@@ -188,6 +188,13 @@ using INT = int;
 using WCHAR = wchar_t;
 using CHAR = char;
 
+#ifndef D3DTA_TEMP
+#define D3DTA_TEMP 0x00000005
+#endif
+#ifndef D3DPMISCCAPS_TSSARGTEMP
+#define D3DPMISCCAPS_TSSARGTEMP 0x00000200L
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -288,7 +295,7 @@ inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
   if (!buffer || sizeOfBuffer == 0) return EINVAL;
   va_list args;
   va_start(args, format);
-  int ret = std::vsnprintf(buffer, sizeOfBuffer, format, args);
+  int ret = std::vsnprintf(buffer, sizeOfBuffer, args);
   va_end(args);
   return ret;
 }
