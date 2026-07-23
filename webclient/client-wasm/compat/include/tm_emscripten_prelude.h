@@ -57,7 +57,6 @@
 #ifndef DECLARE_INTERFACE
 #define DECLARE_INTERFACE(iface) struct iface
 #endif
-
 #ifndef DECLARE_INTERFACE_
 #define DECLARE_INTERFACE_(iface, baseiface) struct iface : public baseiface
 #endif
@@ -235,6 +234,14 @@ inline UINT D3DFVFTexcoordOffsetBytes(DWORD fvf, UINT coord_index) {
 
 inline UINT D3DFVFTexcoordPayloadBytes(DWORD fvf) {
   return D3DFVFTexcoordOffsetBytes(fvf, D3DFVFTexcoordCount(fvf));
+}
+
+inline UINT D3DFVFEffectiveStrideFromTexcoordBase(
+    DWORD fvf,
+    UINT fallback_stride,
+    UINT texcoord_base_offset) {
+  if (fallback_stride > 0) return fallback_stride;
+  return texcoord_base_offset + D3DFVFTexcoordPayloadBytes(fvf);
 }
 
 inline bool D3DFVFTexcoordSpanFitsStride(DWORD fvf, UINT texcoord_base_offset, UINT stride) {
