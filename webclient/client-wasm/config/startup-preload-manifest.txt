@@ -63,22 +63,5 @@ v769ClientRelease/Mesh/*.dat@/Mesh/
 v769ClientRelease/Sound/*@/Sound/
 v769ClientRelease/music/*@/music/
 
-# Legacy D3D9 shader bytecode.
-v769ClientRelease/shader/skinmesh1.bin@/shader/skinmesh1.bin
-v769ClientRelease/shader/skinmesh2.bin@/shader/skinmesh2.bin
-v769ClientRelease/shader/skinmesh3.bin@/shader/skinmesh3.bin
-v769ClientRelease/shader/skinmesh4.bin@/shader/skinmesh4.bin
-v769ClientRelease/shader/skinmesh5.bin@/shader/skinmesh5.bin
-v769ClientRelease/shader/skinmesh6.bin@/shader/skinmesh6.bin
-v769ClientRelease/shader/skinmesh7.bin@/shader/skinmesh7.bin
-v769ClientRelease/shader/skinmesh8.bin@/shader/skinmesh8.bin
-v769ClientRelease/shader/vseffect1.bin@/shader/vseffect1.bin
-v769ClientRelease/shader/vseffect2.bin@/shader/vseffect2.bin
-v769ClientRelease/shader/vseffect3.bin@/shader/vseffect3.bin
-v769ClientRelease/shader/vseffect4.bin@/shader/vseffect4.bin
-v769ClientRelease/shader/pseffect1.bin@/shader/pseffect1.bin
-v769ClientRelease/shader/pseffect2.bin@/shader/pseffect2.bin
-v769ClientRelease/shader/pseffect3.bin@/shader/pseffect3.bin
-v769ClientRelease/shader/pseffect4.bin@/shader/pseffect4.bin
-v769ClientRelease/shader/pseffect5.bin@/shader/pseffect5.bin
-v769ClientRelease/shader/pseffect6.bin@/shader/pseffect6.bin
+# Legacy D3D9 shader bytecode used by skin meshes and effects.
+v769ClientRelease/shader/*.bin@/shader/
