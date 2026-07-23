@@ -36,6 +36,14 @@ v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
+# Select-server demo camera rails have no extension; CamAction() reads these
+# exact paths, so the extension globs above do not preload them.
+v769ClientRelease/UI/DemoCamAction@/UI/DemoCamAction
+v769ClientRelease/UI/DemoCamAction2@/UI/DemoCamAction2
+v769ClientRelease/UI/DemoCamAction3@/UI/DemoCamAction3
+v769ClientRelease/UI/DemoCamAction4@/UI/DemoCamAction4
+v769ClientRelease/UI/DemoCamAction5@/UI/DemoCamAction5
+
 # Environment maps/textures (select-server map uses Env/Character.*).
 v769ClientRelease/Env/*.bin@/Env/
 v769ClientRelease/Env/*.trn@/Env/
