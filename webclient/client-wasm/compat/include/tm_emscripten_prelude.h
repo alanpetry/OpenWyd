@@ -217,6 +217,33 @@ using CHAR = char;
 #ifndef D3DFVF_DIFFUSE
 #define D3DFVF_DIFFUSE 0x0040u
 #endif
+#ifndef D3DFVF_TEX0
+#define D3DFVF_TEX0 0x0000u
+#endif
+#ifndef D3DFVF_TEX1
+#define D3DFVF_TEX1 0x0100u
+#endif
+#ifndef D3DFVF_TEX2
+#define D3DFVF_TEX2 0x0200u
+#endif
+#ifndef D3DFVF_TEX3
+#define D3DFVF_TEX3 0x0300u
+#endif
+#ifndef D3DFVF_TEX4
+#define D3DFVF_TEX4 0x0400u
+#endif
+#ifndef D3DFVF_TEX5
+#define D3DFVF_TEX5 0x0500u
+#endif
+#ifndef D3DFVF_TEX6
+#define D3DFVF_TEX6 0x0600u
+#endif
+#ifndef D3DFVF_TEX7
+#define D3DFVF_TEX7 0x0700u
+#endif
+#ifndef D3DFVF_TEX8
+#define D3DFVF_TEX8 0x0800u
+#endif
 #ifndef D3DFVF_LASTBETA_UBYTE4
 #define D3DFVF_LASTBETA_UBYTE4 0x1000u
 #endif
