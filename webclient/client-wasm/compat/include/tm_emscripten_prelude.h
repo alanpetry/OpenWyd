@@ -280,6 +280,17 @@ inline D3DFVFTexcoordPair D3DFVFReadTexcoordPair(
   return out;
 }
 
+inline D3DFVFTexcoordPair D3DFVFReadTexcoordPairOrFallback(
+    const void* vertex,
+    UINT stride,
+    DWORD fvf,
+    UINT texcoord_base_offset,
+    UINT coord_index,
+    const D3DFVFTexcoordPair& fallback) {
+  D3DFVFTexcoordPair out = D3DFVFReadTexcoordPair(vertex, stride, fvf, texcoord_base_offset, coord_index);
+  return out.valid ? out : fallback;
+}
+
 #ifndef TRUE
 #define TRUE 1
 #endif
