@@ -9,28 +9,35 @@ v769ClientRelease/itemicon.bin@/itemicon.bin
 v769ClientRelease/Itemname.bin@/Itemname.bin
 v769ClientRelease/itemhelp.dat@/itemhelp.dat
 v769ClientRelease/Mixhelp.dat@/Mixhelp.dat
+v769ClientRelease/Mixlist.bin@/Mixlist.bin
 v769ClientRelease/sn.bin@/sn.bin
 v769ClientRelease/Config.bin@/Config.bin
+v769ClientRelease/cdata.bin@/cdata.bin
 v769ClientRelease/AniSound4.txt@/AniSound4.txt
 v769ClientRelease/Music.txt@/Music.txt
 v769ClientRelease/sound.txt@/sound.txt
 v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
+v769ClientRelease/notice.txt@/notice.txt
 
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
 v769ClientRelease/UI/*.txt@/UI/
 v769ClientRelease/UI/*.wyt@/UI/
 v769ClientRelease/UI/*.wys@/UI/
+v769ClientRelease/UI/*.csv@/UI/
+v769ClientRelease/UI/*.cur@/UI/
+v769ClientRelease/UI/*.dat@/UI/
+v769ClientRelease/UI/*.guimat@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
-v769ClientRelease/UI/Panel/*@/UI/Panel/
+v769ClientRelease/UI/Panel/**/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
 v769ClientRelease/NUI/*.wys@/NUI/
 
-# Select-server demo camera rails have no extension, so wildcard extension
-# preloads do not catch the CamAction() ReadCameraPos paths.
+# Select-server demo camera rails have no extension; CamAction() reads these
+# exact paths, so the extension globs above do not preload them.
 v769ClientRelease/UI/DemoCamAction@/UI/DemoCamAction
 v769ClientRelease/UI/DemoCamAction2@/UI/DemoCamAction2
 v769ClientRelease/UI/DemoCamAction3@/UI/DemoCamAction3
