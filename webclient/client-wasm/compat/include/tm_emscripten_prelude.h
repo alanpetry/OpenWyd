@@ -187,6 +187,42 @@ using INT = int;
 using WCHAR = wchar_t;
 using CHAR = char;
 
+#ifndef D3DFVF_POSITION_MASK
+#define D3DFVF_POSITION_MASK 0x400Eu
+#endif
+#ifndef D3DFVF_XYZ
+#define D3DFVF_XYZ 0x0002u
+#endif
+#ifndef D3DFVF_XYZRHW
+#define D3DFVF_XYZRHW 0x0004u
+#endif
+#ifndef D3DFVF_XYZB1
+#define D3DFVF_XYZB1 0x0006u
+#endif
+#ifndef D3DFVF_XYZB2
+#define D3DFVF_XYZB2 0x0008u
+#endif
+#ifndef D3DFVF_XYZB3
+#define D3DFVF_XYZB3 0x000Au
+#endif
+#ifndef D3DFVF_XYZB4
+#define D3DFVF_XYZB4 0x000Cu
+#endif
+#ifndef D3DFVF_XYZB5
+#define D3DFVF_XYZB5 0x000Eu
+#endif
+#ifndef D3DFVF_NORMAL
+#define D3DFVF_NORMAL 0x0010u
+#endif
+#ifndef D3DFVF_DIFFUSE
+#define D3DFVF_DIFFUSE 0x0040u
+#endif
+#ifndef D3DFVF_LASTBETA_UBYTE4
+#define D3DFVF_LASTBETA_UBYTE4 0x1000u
+#endif
+#ifndef D3DFVF_LASTBETA_D3DCOLOR
+#define D3DFVF_LASTBETA_D3DCOLOR 0x8000u
+#endif
 #ifndef D3DFVF_TEXCOUNT_SHIFT
 #define D3DFVF_TEXCOUNT_SHIFT 8
 #endif
@@ -208,6 +244,38 @@ using CHAR = char;
 
 inline UINT D3DFVFTexcoordCount(DWORD fvf) {
   return (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+}
+
+inline UINT D3DFVFPositionBlendCount(DWORD fvf) {
+  switch (fvf & D3DFVF_POSITION_MASK) {
+    case D3DFVF_XYZB1: return 1u;
+    case D3DFVF_XYZB2: return 2u;
+    case D3DFVF_XYZB3: return 3u;
+    case D3DFVF_XYZB4: return 4u;
+    case D3DFVF_XYZB5: return 5u;
+    default: return 0u;
+  }
+}
+
+inline UINT D3DFVFPositionBytes(DWORD fvf) {
+  if ((fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW) return 16u;
+  UINT bytes = 12u;
+  UINT blend_count = D3DFVFPositionBlendCount(fvf);
+  if (blend_count > 0u) {
+    if ((fvf & (D3DFVF_LASTBETA_UBYTE4 | D3DFVF_LASTBETA_D3DCOLOR)) != 0u) {
+      if (blend_count > 0u) --blend_count;
+      bytes += 4u;
+    }
+    bytes += blend_count * 4u;
+  }
+  return bytes;
+}
+
+inline UINT D3DFVFTexcoordBaseOffsetBytes(DWORD fvf) {
+  UINT offset = D3DFVFPositionBytes(fvf);
+  if ((fvf & D3DFVF_NORMAL) != 0u) offset += 12u;
+  if ((fvf & D3DFVF_DIFFUSE) != 0u) offset += 4u;
+  return offset;
 }
 
 inline UINT D3DFVFTexcoordComponentCount(DWORD fvf, UINT coord_index) {
@@ -242,6 +310,13 @@ inline UINT D3DFVFEffectiveStrideFromTexcoordBase(
     UINT texcoord_base_offset) {
   if (fallback_stride > 0) return fallback_stride;
   return texcoord_base_offset + D3DFVFTexcoordPayloadBytes(fvf);
+}
+
+inline UINT D3DFVFEffectiveStride(DWORD fvf, UINT fallback_stride) {
+  return D3DFVFEffectiveStrideFromTexcoordBase(
+      fvf,
+      fallback_stride,
+      D3DFVFTexcoordBaseOffsetBytes(fvf));
 }
 
 inline bool D3DFVFTexcoordSpanFitsStride(DWORD fvf, UINT texcoord_base_offset, UINT stride) {
@@ -391,7 +466,7 @@ inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
   if (!buffer || sizeOfBuffer == 0) return EINVAL;
   va_list args;
   va_start(args, format);
-  int ret = std::vsnprintf(buffer, sizeOfBuffer, format, args);
+  int ret = std::vsnprintf(buffer, sizeOfBuffer, args);
   va_end(args);
   return ret;
 }
