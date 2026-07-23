@@ -237,6 +237,12 @@ inline UINT D3DFVFTexcoordPayloadBytes(DWORD fvf) {
   return D3DFVFTexcoordOffsetBytes(fvf, D3DFVFTexcoordCount(fvf));
 }
 
+inline bool D3DFVFTexcoordSpanFitsStride(DWORD fvf, UINT texcoord_base_offset, UINT stride) {
+  if (texcoord_base_offset > stride) return false;
+  const UINT payload_bytes = D3DFVFTexcoordPayloadBytes(fvf);
+  return payload_bytes <= stride - texcoord_base_offset;
+}
+
 struct D3DFVFTexcoordPair {
   float u = 0.0f;
   float v = 0.0f;
@@ -254,8 +260,9 @@ inline D3DFVFTexcoordPair D3DFVFReadTexcoordPair(
 
   const UINT coord_offset = D3DFVFTexcoordOffsetBytes(fvf, coord_index);
   const UINT coord_bytes = D3DFVFTexcoordBytes(fvf, coord_index);
+  if (texcoord_base_offset > stride || coord_offset > stride - texcoord_base_offset) return out;
   const UINT byte_offset = texcoord_base_offset + coord_offset;
-  if (coord_bytes < sizeof(float) || byte_offset + coord_bytes > stride) return out;
+  if (coord_bytes < sizeof(float) || coord_bytes > stride - byte_offset) return out;
 
   const BYTE* field = static_cast<const BYTE*>(vertex) + byte_offset;
   std::memcpy(&out.u, field, sizeof(float));
@@ -366,7 +373,7 @@ inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
   if (!buffer || sizeOfBuffer == 0) return EINVAL;
   va_list args;
   va_start(args, format);
-  int ret = std::vsnprintf(buffer, sizeOfBuffer, format, args);
+  int ret = std::vsnprintf(buffer, sizeOfBuffer, args);
   va_end(args);
   return ret;
 }
