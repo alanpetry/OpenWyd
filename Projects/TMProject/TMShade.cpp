@@ -318,7 +318,7 @@ int TMShade::FrameMove(unsigned int dwServerTime)
         unsigned int dwA = (unsigned int)((float)m_dwA * fAlpha);
         unsigned int dwR = (unsigned int)((float)m_dwR * fAlpha);
         unsigned int dwG = (unsigned int)((float)m_dwG * fAlpha);
-        unsigned int dwB = (unsigned char)((float)m_dwB * fAlpha);
+        unsigned int dwB = (unsigned int)((float)m_dwB * fAlpha);
 
         for (int i = 0; i < m_nVertexNum; ++i)
         {
