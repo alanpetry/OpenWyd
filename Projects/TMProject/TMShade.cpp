@@ -279,6 +279,7 @@ void TMShade::RenderUnder()
         g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
         g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
         g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+        g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
     }
 }
 
@@ -317,7 +318,7 @@ int TMShade::FrameMove(unsigned int dwServerTime)
         unsigned int dwA = (unsigned int)((float)m_dwA * fAlpha);
         unsigned int dwR = (unsigned int)((float)m_dwR * fAlpha);
         unsigned int dwG = (unsigned int)((float)m_dwG * fAlpha);
-        unsigned int dwB = (unsigned int)((float)m_dwB * fAlpha);
+        unsigned int dwB = (unsigned char)((float)m_dwB * fAlpha);
 
         for (int i = 0; i < m_nVertexNum; ++i)
         {
