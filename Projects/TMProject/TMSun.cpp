@@ -276,6 +276,13 @@ int TMSun::Render()
 	}
 	g_wydSunFlareDraws += 12;
 	g_wydSunLastFlareCount = 12;
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+	g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+	g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+	g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
 	return 1;
 }
 
