@@ -147,8 +147,17 @@ enum D3DTEXTURESTAGESTATETYPE : DWORD {
   D3DTSS_ALPHAOP = 4,
   D3DTSS_ALPHAARG1 = 5,
   D3DTSS_ALPHAARG2 = 6,
+  D3DTSS_BUMPENVMAT00 = 7,
+  D3DTSS_BUMPENVMAT01 = 8,
+  D3DTSS_BUMPENVMAT10 = 9,
+  D3DTSS_BUMPENVMAT11 = 10,
   D3DTSS_TEXCOORDINDEX = 11,
+  D3DTSS_BUMPENVLSCALE = 22,
+  D3DTSS_BUMPENVLOFFSET = 23,
   D3DTSS_TEXTURETRANSFORMFLAGS = 24,
+  D3DTSS_COLORARG0 = 26,
+  D3DTSS_ALPHAARG0 = 27,
+  D3DTSS_RESULTARG = 28,
 };
 
 enum D3DTEXTUREOP : DWORD {
@@ -637,7 +646,7 @@ struct IDirect3DTexture9 : public IDirect3DBaseTexture9 {
     return WydD3D9Texture_GetSurfaceLevel(this, Level, ppSurfaceLevel);
   }
   HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Texture_LockRect(this, Level, pLockedRect, pRect, Flags);
+    return WydD3D9Texture_LockRect(this, Level, pLockedRect, Flags);
   }
   HRESULT UnlockRect(UINT Level) { return WydD3D9Texture_UnlockRect(this, Level); }
 };
