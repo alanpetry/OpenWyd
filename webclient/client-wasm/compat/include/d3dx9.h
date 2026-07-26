@@ -1,5 +1,16 @@
 #pragma once
 #include "d3d9.h"
+#include "d3dx9_sprite_begin_policy.h"
+
+constexpr DWORD D3DXSPRITE_DONOTSAVESTATE = wyd::d3dx_compat::kD3DXSpriteDoNotSaveState;
+constexpr DWORD D3DXSPRITE_DONOTMODIFY_RENDERSTATE = wyd::d3dx_compat::kD3DXSpriteDoNotModifyRenderState;
+constexpr DWORD D3DXSPRITE_OBJECTSPACE = wyd::d3dx_compat::kD3DXSpriteObjectSpace;
+constexpr DWORD D3DXSPRITE_BILLBOARD = wyd::d3dx_compat::kD3DXSpriteBillboard;
+constexpr DWORD D3DXSPRITE_ALPHABLEND = wyd::d3dx_compat::kD3DXSpriteAlphaBlend;
+constexpr DWORD D3DXSPRITE_SORT_TEXTURE = wyd::d3dx_compat::kD3DXSpriteSortTexture;
+constexpr DWORD D3DXSPRITE_SORT_DEPTH_FRONTTOBACK = wyd::d3dx_compat::kD3DXSpriteSortDepthFrontToBack;
+constexpr DWORD D3DXSPRITE_SORT_DEPTH_BACKTOFRONT = wyd::d3dx_compat::kD3DXSpriteSortDepthBackToFront;
+constexpr DWORD D3DXSPRITE_DO_NOT_ADDREF_TEXTURE = wyd::d3dx_compat::kD3DXSpriteDoNotAddRefTexture;
 
 struct D3DXVECTOR2 {
   float x, y;
