@@ -149,6 +149,8 @@ enum D3DTEXTURESTAGESTATETYPE : DWORD {
   D3DTSS_ALPHAARG2 = 6,
   D3DTSS_TEXCOORDINDEX = 11,
   D3DTSS_TEXTURETRANSFORMFLAGS = 24,
+  D3DTSS_COLORARG0 = 26,
+  D3DTSS_ALPHAARG0 = 27,
 };
 
 enum D3DTEXTUREOP : DWORD {
@@ -621,7 +623,7 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib);
 struct IDirect3DSurface9 : public IUnknown {
   HRESULT GetDesc(D3DSURFACE_DESC* pDesc) { return WydD3D9Surface_GetDesc(this, pDesc); }
   HRESULT LockRect(D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) {
-    return WydD3D9Surface_LockRect(this, pLockedRect, pRect, Flags);
+    return WydD3D9Surface_LockRect(this, pLockedRect, Flags ? pRect : pRect, Flags);
   }
   HRESULT UnlockRect() { return WydD3D9Surface_UnlockRect(this); }
 };
