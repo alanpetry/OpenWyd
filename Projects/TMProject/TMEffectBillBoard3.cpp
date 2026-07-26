@@ -93,6 +93,7 @@ int TMEffectBillBoard3::Render()
 	g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
 	g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 	g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+	g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 
 	if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 		g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
@@ -176,7 +177,7 @@ void TMEffectBillBoard3::SetPosition(TMVector3 vecStart, TMVector3 vecEnd)
 	m_vertex2[0].position = TMVector3{ vecStart.x - m_fScaleV, vecStart.y, vecStart.z };
 	m_vertex2[1].position = TMVector3{ vecEnd.x - m_fScaleV, vecEnd.y, vecEnd.z };
 	m_vertex2[2].position = TMVector3{ vecEnd.x + m_fScaleV, vecEnd.y, vecEnd.z };
-	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecStart.z };
+	m_vertex2[3].position = TMVector3{ vecStart.x + m_fScaleV, vecStart.y, vecEnd.z };
 }
 
 void TMEffectBillBoard3::SetShort(unsigned int dwTime)
