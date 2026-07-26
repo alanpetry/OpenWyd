@@ -59,8 +59,9 @@ v769ClientRelease/Mesh/*.msa@/Mesh/
 v769ClientRelease/Mesh/*.wys@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
-# Audio assets used by startup scenes.
-v769ClientRelease/Sound/*@/Sound/
+# Audio assets used by startup scenes.  soundlist.txt references nested paths
+# such as sound\ambient\amb01.wav, so keep Sound recursive in the WASM FS.
+v769ClientRelease/Sound/**/*@/Sound/
 v769ClientRelease/music/*@/music/
 
 # Legacy D3D9 shader bytecode.
