@@ -58,6 +58,15 @@ the command placeholders with current source-build outputs/scripts, then
 enable only the components needed for a run. Commands are arrays and execute
 without a shell.
 
+Build and prepare the real Windows DBSrv/TMSrv stack with
+`tools/build_windows_servers_from_source.ps1`; its input must be an external or
+ignored source bundle, and its runtime contains only the newly built server
+EXEs plus filtered data. See `docs/windows-server-stack.md` for ports, startup
+order, clean shutdown, and flat-file snapshot/restore. For a standalone local
+stack, `tools/run_windows_servers.ps1` validates generated hashes, starts
+DBSrv/TMSrv in order, records PID/readiness evidence, and drives their official
+clean shutdown paths.
+
 Readiness can be one object or an array of objects, all of which must pass:
 
 ```json
