@@ -23,11 +23,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from PIL import UnidentifiedImageError
 
-from . import frame_compare
+from . import frame_compare, paired_report
 from .frame_schema import FrameSchemaError, validate_frame_record
 
 
@@ -82,7 +82,6 @@ class LoadedConfig:
 @dataclass
 class ManagedProcess:
     popen: subprocess.Popen[bytes]
-    log_stream: BinaryIO
     log_path: Path
     record: dict[str, Any]
     shutdown_timeout: float
@@ -504,11 +503,18 @@ def _start_process(
             creationflags=creationflags,
         )
     except OSError:
-        log_stream.close()
         record["status"] = "start-failed"
         record["finished_at"] = _utc_now()
         _save_manifest(run_dir, manifest)
         raise
+    finally:
+        # CreateProcess duplicates the configured standard handles into the
+        # child.  Keeping the parent's file object alive for the whole run is
+        # unnecessary and, on Windows, leaves the artifact locked until
+        # shutdown cleanup reaches this ManagedProcess.  Readiness reads the
+        # path through independent short-lived handles, so release the parent
+        # handle as soon as process creation has completed.
+        log_stream.close()
 
     record["pid"] = popen.pid
     record["status"] = "waiting-readiness"
@@ -516,7 +522,6 @@ def _start_process(
     _save_manifest(run_dir, manifest)
     return ManagedProcess(
         popen=popen,
-        log_stream=log_stream,
         log_path=log_path,
         record=record,
         shutdown_timeout=float(spec.get("shutdown_timeout_seconds", 5)),
@@ -529,6 +534,61 @@ def _process_exit_message(process: ManagedProcess) -> str:
         f"process {process.record['name']!r} exited with code {return_code} "
         "before readiness"
     )
+
+
+def _wait_for_windows_delete_access(path: Path, timeout: float) -> None:
+    if os.name != "nt":
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    delete_access = 0x00010000
+    share_read = 0x00000001
+    share_write = 0x00000002
+    share_delete = 0x00000004
+    open_existing = 3
+    file_attribute_normal = 0x00000080
+    invalid_handle_value = ctypes.c_void_p(-1).value
+    retryable_errors = {5, 32, 33}  # access denied, sharing/lock violation
+
+    create_file = ctypes.WinDLL("kernel32", use_last_error=True).CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+
+    deadline = time.monotonic() + timeout
+    while True:
+        handle = create_file(
+            str(path),
+            delete_access,
+            share_read | share_write | share_delete,
+            None,
+            open_existing,
+            file_attribute_normal,
+            None,
+        )
+        if handle != invalid_handle_value:
+            close_handle(handle)
+            return
+
+        error_code = ctypes.get_last_error()
+        if error_code not in retryable_errors or time.monotonic() >= deadline:
+            raise OSError(
+                error_code,
+                f"log artifact did not become releasable: {path}",
+            )
+        time.sleep(0.01)
 
 
 def _wait_for_rule(process: ManagedProcess, rule: Mapping[str, Any]) -> dict[str, Any]:
@@ -638,6 +698,10 @@ def _stop_process(
                 action = "kill"
                 process.popen.kill()
                 process.popen.wait(timeout=process.shutdown_timeout)
+        _wait_for_windows_delete_access(
+            process.log_path,
+            process.shutdown_timeout,
+        )
         process.record["return_code"] = process.popen.returncode
         process.record["shutdown_action"] = action
         process.record["status"] = "stopped"
@@ -650,7 +714,6 @@ def _stop_process(
         )
     finally:
         process.record["finished_at"] = _utc_now()
-        process.log_stream.close()
         _manifest_event(
             manifest,
             "process_stopped",
@@ -1283,6 +1346,8 @@ commands:
   doctor   validate config, commands, Node/Playwright and Python dependencies
   run      start configured processes, capture/compare, then stop in reverse
   compare  run the deterministic paired-PNG comparator
+  report-paired
+           turn paired-run.json into a complete multi-frame report
 
 Compatibility: the historical positional form
   python -m tools.openwyd_compare reference.png candidate.png [options]
@@ -1299,6 +1364,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = arguments[0]
     if command == "compare":
         return frame_compare.main(arguments[1:])
+    if command == "report-paired":
+        return paired_report.main(arguments[1:])
     if command not in {"doctor", "run"}:
         # Preserve the original CLI while scripts migrate to the explicit
         # `compare` subcommand.
