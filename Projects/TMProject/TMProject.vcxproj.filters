@@ -357,6 +357,12 @@
     <ClInclude Include="NewApp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="OpenWydCompare.h">
+      <Filter>Header Files\Systems</Filter>
+    </ClInclude>
+    <ClInclude Include="OpenWydCompareRandom.h">
+      <Filter>Header Files\Systems</Filter>
+    </ClInclude>
     <ClInclude Include="MrItemMix.h">
       <Filter>Header Files\Systems</Filter>
     </ClInclude>
@@ -634,6 +640,12 @@
     </ClCompile>
     <ClCompile Include="NewApp.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenWydCompare.cpp">
+      <Filter>Source Files\Systems</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenWydCompareRandom.cpp">
+      <Filter>Source Files\Systems</Filter>
     </ClCompile>
     <ClCompile Include="DirShow.cpp">
       <Filter>Source Files</Filter>

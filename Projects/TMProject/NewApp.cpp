@@ -28,6 +28,10 @@ extern "C" unsigned int wyd_d3d9_get_debug_flags();
 #include "TMFieldScene.h"
 #include "SControlContainer.h"
 
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+#include "OpenWydCompare.h"
+#endif
+
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/console.h>
 #include <emscripten/html5.h>
@@ -111,7 +115,8 @@ NewApp::NewApp()
 	m_pObjectManager = 0;
 	m_pSocketManager = 0;
 	g_pApp = this;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && \
+	!(defined(OPENWYD_COMPARE) && defined(_DEBUG))
 	ShellExecute(0, "open", ChangeUpdate_Path, 0, 0, 1);
 #endif
 	BASE_InitModuleDir();
@@ -296,12 +301,6 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 	else
 		nCursor = 2;
 
-#if defined(__EMSCRIPTEN__)
-	// Browser builds cannot display the Win32 cursor resources. The software
-	// cursor uses the same original UI texture and keeps all in-game styles.
-	if (nCursor == 2)
-		nCursor = 0;
-#endif
 	SCursor::m_nCursorType = nCursor;
 	if (nCursor == 2)
 	{
@@ -397,6 +396,10 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 	WasmInitLog("[newapp:init] window created");
 
 	hWndMain = m_hWnd;
+
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydCompareInitialize(m_hWnd, m_dwScreenWidth, m_dwScreenHeight);
+#endif
 
 	if (!BASE_InitializeBaseDef())
 	{
@@ -663,6 +666,10 @@ void NewApp::InitMusicList()
 
 HRESULT NewApp::Finalize()
 {
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydCompareShutdown();
+#endif
+
 	if (m_hAccel)
 	{
 		DestroyAcceleratorTable(m_hAccel);
@@ -714,6 +721,13 @@ DWORD NewApp::Run()
 
 DWORD NewApp::RunTick(MSG* pMsg)
 {
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydComparePoll();
+	const bool compareFrameActive =
+		!OpenWydCompareIsEnabled() ||
+		OpenWydCompareTryBeginFrame();
+#endif
+
 #if defined(__EMSCRIPTEN__)
 	static int s_wasmTickTraceBudget = 80;
 	constexpr unsigned int kWasmDebugTraceClientTick = 1u << 30;
@@ -732,8 +746,25 @@ DWORD NewApp::RunTick(MSG* pMsg)
 	MSG* pWorkMsg = pMsg ? pMsg : &localMsg;
 
 	int bGotMsg = 0;
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	if (OpenWydCompareIsEnabled() && !compareFrameActive)
+	{
+		bGotMsg =
+			OpenWydCompareTakePausedControlMessage(pWorkMsg) ? 1 : 0;
+	}
+	else
+#endif
 	if (!m_bActive)
+	{
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		if (OpenWydCompareIsEnabled())
+			bGotMsg = PeekMessage(pWorkMsg, 0, 0, 0, PM_REMOVE);
+		else
+			bGotMsg = GetMessage(pWorkMsg, 0, 0, 0);
+#else
 		bGotMsg = GetMessage(pWorkMsg, 0, 0, 0);
+#endif
+	}
 	else
 		bGotMsg = PeekMessage(pWorkMsg, 0, 0, 0, PM_REMOVE);
 
@@ -742,7 +773,16 @@ DWORD NewApp::RunTick(MSG* pMsg)
 #if defined(__EMSCRIPTEN__)
 		TraceTick("[newapp:tick] message dispatch");
 #endif
-		if (!m_hAccel || !m_hWnd || TranslateAccelerator(m_hWnd, m_hAccel, pWorkMsg) == 0)
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		const bool shouldDispatchMessage =
+			OpenWydCompareShouldDispatchMessage(pWorkMsg);
+#else
+		const bool shouldDispatchMessage = true;
+#endif
+		if (shouldDispatchMessage &&
+			(!m_hAccel ||
+				!m_hWnd ||
+				TranslateAccelerator(m_hWnd, m_hAccel, pWorkMsg) == 0))
 		{
 			TranslateMessage(pWorkMsg);
 			DispatchMessage(pWorkMsg);
@@ -750,8 +790,26 @@ DWORD NewApp::RunTick(MSG* pMsg)
 	}
 	else
 	{
-		if (m_bActive == 1)
+		const bool shouldRunFrame =
+			m_bActive == 1
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+			// A comparison STEP is an explicit request for exactly one game
+			// frame.  Window activation is controlled by the desktop and may
+			// change merely because the paired browser receives focus; do not
+			// strand an accepted STEP behind that unrelated UI state.
+			|| (OpenWydCompareIsEnabled() && compareFrameActive)
+#endif
+			;
+		if (shouldRunFrame)
 		{
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+			if (OpenWydCompareIsEnabled() && !OpenWydCompareTryBeginFrame())
+			{
+				MsgWaitForMultipleObjects(0, nullptr, FALSE, 1, QS_ALLINPUT);
+				return (pWorkMsg->message == WM_QUIT) ? 0 : 1;
+			}
+#endif
+
 #if defined(__EMSCRIPTEN__)
 			TraceTick("[newapp:tick] active frame begin");
 #endif
@@ -863,6 +921,9 @@ DWORD NewApp::RunTick(MSG* pMsg)
 #endif
 				m_pObjectManager->CleanUp();
 			}
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+			OpenWydCompareOnFrameTickComplete();
+#endif
 		}
 	}
 
@@ -1035,6 +1096,16 @@ HRESULT NewApp::MsgProc(HWND hWnd, DWORD uMsg, DWORD wParam, int lParam)
 				SetCursor(SCursor::m_hCursor2);
 		}
 
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		WPARAM compareWParam = static_cast<WPARAM>(wParam);
+		OpenWydCompareTakeInjectedMouseMessage(
+			uMsg,
+			&compareWParam,
+			LOWORD(lParam),
+			HIWORD(lParam));
+		wParam = static_cast<DWORD>(compareWParam);
+#endif
+
 		if (m_pEventTranslator != nullptr)
 			m_pEventTranslator->OnMouseEvent(uMsg, wParam, LOWORD(lParam), HIWORD(lParam));		
 	}
@@ -1126,10 +1197,33 @@ HRESULT NewApp::MsgProc(HWND hWnd, DWORD uMsg, DWORD wParam, int lParam)
 		if (m_pEventTranslator == nullptr)
 			break;
 
-		WORD sVal = GetKeyState(VK_CONTROL);
-		m_pEventTranslator->m_bCtrl = (int)sVal >> 8 > 0;
-		WORD sVal2 = GetKeyState(VK_SHIFT);
-		m_pEventTranslator->m_bShift = (int)sVal2 >> 8 > 0;
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		LPARAM compareKeyLParam = static_cast<LPARAM>(lParam);
+		const bool compareInjectedKey =
+			OpenWydCompareTakeInjectedKeyMessage(
+				true,
+				static_cast<WPARAM>(wParam),
+				&compareKeyLParam);
+		lParam = static_cast<int>(compareKeyLParam);
+		if (compareInjectedKey)
+		{
+			m_pEventTranslator->m_bCtrl =
+				OpenWydCompareInjectedKeyIsDown(VK_CONTROL) ||
+				OpenWydCompareInjectedKeyIsDown(VK_LCONTROL) ||
+				OpenWydCompareInjectedKeyIsDown(VK_RCONTROL);
+			m_pEventTranslator->m_bShift =
+				OpenWydCompareInjectedKeyIsDown(VK_SHIFT) ||
+				OpenWydCompareInjectedKeyIsDown(VK_LSHIFT) ||
+				OpenWydCompareInjectedKeyIsDown(VK_RSHIFT);
+		}
+		else
+#endif
+		{
+			WORD sVal = GetKeyState(VK_CONTROL);
+			m_pEventTranslator->m_bCtrl = (int)sVal >> 8 > 0;
+			WORD sVal2 = GetKeyState(VK_SHIFT);
+			m_pEventTranslator->m_bShift = (int)sVal2 >> 8 > 0;
+		}
 
 		if (wParam != VK_CONTROL && g_pCurrentScene != nullptr && m_pEventTranslator->m_bCtrl != 0)
 		{
@@ -1168,13 +1262,39 @@ HRESULT NewApp::MsgProc(HWND hWnd, DWORD uMsg, DWORD wParam, int lParam)
 		if (m_pEventTranslator == nullptr)
 			break;
 
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		LPARAM compareKeyLParam = static_cast<LPARAM>(lParam);
+		const bool compareInjectedKey =
+			OpenWydCompareTakeInjectedKeyMessage(
+				false,
+				static_cast<WPARAM>(wParam),
+				&compareKeyLParam);
+		lParam = static_cast<int>(compareKeyLParam);
+#endif
+
 		if (wParam == VK_SNAPSHOT)
 			m_pRenderDevice->CaptureScreen();
 
-		WORD sVal = GetKeyState(VK_CONTROL);
-		m_pEventTranslator->m_bCtrl = (int)sVal >> 8 > 0;
-		WORD sVal2 = GetKeyState(VK_SHIFT);
-		m_pEventTranslator->m_bShift = (int)sVal2 >> 8 > 0;
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		if (compareInjectedKey)
+		{
+			m_pEventTranslator->m_bCtrl =
+				OpenWydCompareInjectedKeyIsDown(VK_CONTROL) ||
+				OpenWydCompareInjectedKeyIsDown(VK_LCONTROL) ||
+				OpenWydCompareInjectedKeyIsDown(VK_RCONTROL);
+			m_pEventTranslator->m_bShift =
+				OpenWydCompareInjectedKeyIsDown(VK_SHIFT) ||
+				OpenWydCompareInjectedKeyIsDown(VK_LSHIFT) ||
+				OpenWydCompareInjectedKeyIsDown(VK_RSHIFT);
+		}
+		else
+#endif
+		{
+			WORD sVal = GetKeyState(VK_CONTROL);
+			m_pEventTranslator->m_bCtrl = (int)sVal >> 8 > 0;
+			WORD sVal2 = GetKeyState(VK_SHIFT);
+			m_pEventTranslator->m_bShift = (int)sVal2 >> 8 > 0;
+		}
 
 		m_pEventTranslator->OnKeyUp(wParam);
 	}
@@ -1291,6 +1411,15 @@ HRESULT NewApp::MsgProc(HWND hWnd, DWORD uMsg, DWORD wParam, int lParam)
 			SAFE_DELETE(m_pAviPlayer);
 			InitDevice();
 		}
+
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		WPARAM compareWParam = wParam;
+		OpenWydCompareTakeInjectedMouseMessage(
+			uMsg,
+			&compareWParam,
+			LOWORD(lParam),
+			HIWORD(lParam));
+#endif
 	}
 	break;
 	case WM_USER + 13:
@@ -1559,6 +1688,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_ LPWSTR    lpCmdLine,
 	_In_ int       nCmdShow)
 {
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydCompareArmRandomFromEnvironment();
+#endif
+
 #if !defined(_DEBUG)
 	if (FindWindow(0, ClassName))
 		return 0;

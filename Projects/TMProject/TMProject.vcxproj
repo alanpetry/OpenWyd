@@ -196,6 +196,8 @@
     <ClInclude Include="Mission.h" />
     <ClInclude Include="MrItemMix.h" />
     <ClInclude Include="NewApp.h" />
+    <ClInclude Include="OpenWydCompare.h" />
+    <ClInclude Include="OpenWydCompareRandom.h" />
     <ClInclude Include="NewClientB.h" />
     <ClInclude Include="ObjectManager.h" />
     <ClInclude Include="pch.h" />
@@ -326,6 +328,8 @@
     <ClCompile Include="Mission.cpp" />
     <ClCompile Include="MrItemMix.cpp" />
     <ClCompile Include="NewApp.cpp" />
+    <ClCompile Include="OpenWydCompare.cpp" />
+    <ClCompile Include="OpenWydCompareRandom.cpp" />
     <ClCompile Include="ObjectManager.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
