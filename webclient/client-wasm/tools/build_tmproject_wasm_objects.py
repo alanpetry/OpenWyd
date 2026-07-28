@@ -10,13 +10,19 @@ import os
 import re
 import subprocess
 import time
-import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
-NS = {"msb": "http://schemas.microsoft.com/developer/msbuild/2003"}
+from tmproject_wasm_object_contract import (
+    compile_arguments,
+    compiler_identity,
+    make_stamp,
+    parse_vcxproj_sources,
+    publish_stamp,
+    stamp_with_object_hashes,
+    stamp_path,
+)
 
 FIRST_ERROR_RE = re.compile(r"error: (.*)")
 VALID_OPT_LEVELS = {"O0", "O1", "O2", "O3", "Os", "Oz"}
@@ -34,16 +40,6 @@ class CompileResult:
     stderr_log: str
 
 
-def parse_vcxproj_sources(vcxproj: Path) -> list[Path]:
-    root = ET.parse(vcxproj).getroot()
-    out: list[Path] = []
-    for node in root.findall(".//msb:ClCompile", NS):
-        include = node.attrib.get("Include")
-        if include:
-            out.append((vcxproj.parent / include).resolve())
-    return out
-
-
 def first_error(stderr: str) -> str | None:
     for line in stderr.splitlines():
         if "error:" in line:
@@ -52,16 +48,30 @@ def first_error(stderr: str) -> str | None:
     return None
 
 
+def capture_contract(
+    repo_root: Path,
+    obj_root: Path,
+    vcxproj: Path,
+    optimization_flag: str,
+    sources: list[Path],
+) -> dict:
+    """Capture inputs with a fresh compiler/toolchain identity."""
+
+    compiler_identity.cache_clear()
+    return make_stamp(
+        repo_root,
+        obj_root,
+        vcxproj,
+        optimization_flag,
+        sources,
+    )
+
+
 def run_compile(
     src: Path,
     repo_root: Path,
-    compat_include: Path,
-    directx_include: Path,
-    tmproject_include: Path,
-    preinclude: Path,
     obj_root: Path,
     logs_dir: Path,
-    extra_defines: Sequence[str],
     optimization_flag: str,
 ) -> CompileResult:
     rel = src.relative_to(repo_root).as_posix()
@@ -70,21 +80,7 @@ def run_compile(
     obj_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "em++",
-        "-std=c++17",
-        optimization_flag,
-        "-c",
-        "-fms-extensions",
-        "-Wno-microsoft-cast",
-        "-Wno-microsoft-anon-tag",
-        "-Wno-unknown-pragmas",
-        "-include",
-        str(preinclude),
-        f"-I{compat_include / 'case_shims'}",
-        f"-I{compat_include}",
-        f"-I{tmproject_include}",
-        f"-I{directx_include}",
-        *extra_defines,
+        *compile_arguments(repo_root, optimization_flag),
         str(src),
         "-o",
         str(obj_path),
@@ -175,22 +171,20 @@ def main() -> int:
     logs_dir.mkdir(parents=True, exist_ok=True)
     obj_root.mkdir(parents=True, exist_ok=True)
 
-    compat_include = (repo_root / "webclient/client-wasm/compat/include").resolve()
-    directx_include = (repo_root / "Dependencies/Directx/Include").resolve()
-    tmproject_include = (repo_root / "Projects/TMProject").resolve()
-    preinclude = (compat_include / "tm_emscripten_prelude.h").resolve()
-
-    sources = parse_vcxproj_sources(vcxproj)
+    contract_sources = parse_vcxproj_sources(vcxproj)
+    sources = contract_sources
     if args.limit > 0:
         sources = sources[: args.limit]
 
-    defines = [
-        "-DWIN32",
-        "-D_WINDOWS",
-        "-DNDEBUG",
-        "-D_CRT_SECURE_NO_WARNINGS",
-        "-D_WINSOCK_DEPRECATED_NO_WARNINGS",
-    ]
+    contract_path = stamp_path(obj_root)
+    contract_path.unlink(missing_ok=True)
+    contract_before = capture_contract(
+        repo_root,
+        obj_root,
+        vcxproj,
+        optimization_flag,
+        contract_sources,
+    )
 
     print(f"[obj] vcxproj={vcxproj}")
     print(f"[obj] tus={len(sources)} jobs={args.jobs} optimization={optimization_flag}")
@@ -204,13 +198,8 @@ def main() -> int:
                 run_compile,
                 src,
                 repo_root,
-                compat_include,
-                directx_include,
-                tmproject_include,
-                preinclude,
                 obj_root,
                 logs_dir,
-                defines,
                 optimization_flag,
             ): src
             for src in sources
@@ -232,12 +221,66 @@ def main() -> int:
     slowest = sorted(results, key=lambda r: r.elapsed_ms, reverse=True)[:20]
     fails = [r for r in results if not r.ok]
 
+    contract_after = capture_contract(
+        repo_root,
+        obj_root,
+        vcxproj,
+        optimization_flag,
+        contract_sources,
+    )
+    contract_unchanged = contract_after == contract_before
+    contract_error: str | None = None
+    certified = False
+
+    if fail_count == 0 and args.limit == 0 and contract_unchanged:
+        try:
+            stamp_candidate = stamp_with_object_hashes(
+                repo_root,
+                obj_root,
+                contract_sources,
+                contract_before,
+            )
+            contract_after_hash = capture_contract(
+                repo_root,
+                obj_root,
+                vcxproj,
+                optimization_flag,
+                contract_sources,
+            )
+            if contract_after_hash != contract_before:
+                contract_unchanged = False
+                contract_after = contract_after_hash
+                contract_error = (
+                    "source or toolchain contract changed while object hashes "
+                    "were being captured"
+                )
+            else:
+                publish_stamp(obj_root, stamp_candidate)
+                certified = True
+        except OSError as error:
+            contract_error = f"could not certify object set: {error}"
+    elif not contract_unchanged:
+        contract_error = (
+            "source or toolchain contract changed while compilation was in "
+            "progress"
+        )
+
+    if not certified:
+        contract_path.unlink(missing_ok=True)
+
     report = {
         "vcxproj": str(vcxproj.relative_to(repo_root)),
         "jobs": args.jobs,
         "optimization": optimization_flag,
         "elapsed_ms": elapsed_ms,
         "summary": {"total": len(results), "ok": ok_count, "failed": fail_count},
+        "contract": {
+            "before_fingerprint": contract_before.get("fingerprint"),
+            "after_fingerprint": contract_after.get("fingerprint"),
+            "unchanged": contract_unchanged,
+            "certified": certified,
+            "error": contract_error,
+        },
         "top_first_errors": first_errors.most_common(50),
         "results": [r.__dict__ for r in results],
     }
@@ -248,9 +291,17 @@ def main() -> int:
 
     print(f"[obj] done in {elapsed_ms} ms")
     print(f"[obj] ok={ok_count} failed={fail_count}")
+    print(
+        f"[obj] contract_unchanged={str(contract_unchanged).lower()} "
+        f"certified={str(certified).lower()}"
+    )
+    if contract_error:
+        print(f"[obj] contract_error={contract_error}")
     print(f"[obj] report_json={report_json.relative_to(repo_root)}")
     print(f"[obj] report_md={report_md.relative_to(repo_root)}")
 
+    if not contract_unchanged or contract_error:
+        return 2
     return 0 if fail_count == 0 else 1
 
 
