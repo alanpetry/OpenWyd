@@ -76,6 +76,7 @@ float g_debug_demo_camera_offset_y = 0.0f;
 float g_debug_demo_camera_offset_z = 0.0f;
 float g_debug_demo_camera_offset_h = 0.0f;
 float g_debug_demo_camera_offset_v = 0.0f;
+HCURSOR g_current_cursor = nullptr;
 
 struct FileHandle {
   int fd = -1;
@@ -3004,8 +3005,73 @@ BOOL IntersectRect(RECT* lprcDst, const RECT* lprcSrc1, const RECT* lprcSrc2) {
   return (lprcDst->left < lprcDst->right && lprcDst->top < lprcDst->bottom) ? TRUE : FALSE;
 }
 
+EM_JS(void, WydWebSetCursor, (unsigned int resource_id), {
+  const canvas =
+      Module.canvas ||
+      (typeof document !== 'undefined' ? document.querySelector('#canvas') : null);
+  if (!canvas) return;
+
+  const state = Module.wydCursorState || (Module.wydCursorState = {
+    currentResource: 0,
+    entries: new Map()
+  });
+  const resourceId = resource_id >>> 0;
+  state.currentResource = resourceId;
+
+  if (resourceId === 0) {
+    canvas.style.cursor = 'none';
+    return;
+  }
+
+  const path =
+      resourceId === 129 ? '/UI/cursor11.CUR' :
+      resourceId === 130 ? '/UI/cursor21.CUR' :
+      null;
+  if (!path) {
+    canvas.style.cursor = 'auto';
+    return;
+  }
+
+  let entry = state.entries.get(resourceId);
+  if (!entry) {
+    try {
+      const bytes = FS.readFile(path);
+      let hotspotX = 0;
+      let hotspotY = 0;
+      if (
+        bytes.length >= 14 &&
+        bytes[0] === 0 && bytes[1] === 0 &&
+        bytes[2] === 2 && bytes[3] === 0
+      ) {
+        hotspotX = bytes[10] | (bytes[11] << 8);
+        hotspotY = bytes[12] | (bytes[13] << 8);
+      }
+      entry = {
+        hotspotX,
+        hotspotY,
+        url: URL.createObjectURL(
+            new Blob([bytes], {type: 'image/x-icon'}))
+      };
+      state.entries.set(resourceId, entry);
+    } catch (_) {
+      canvas.style.cursor = 'auto';
+      return;
+    }
+  }
+
+  canvas.style.cursor =
+      `url("${entry.url}") ${entry.hotspotX} ${entry.hotspotY}, auto`;
+});
+
 BOOL AdjustWindowRect(RECT*, DWORD, BOOL) { return TRUE; }
-HCURSOR SetCursor(HCURSOR hCursor) { return hCursor; }
+HCURSOR SetCursor(HCURSOR hCursor) {
+  HCURSOR previous = g_current_cursor;
+  g_current_cursor = hCursor;
+  WydWebSetCursor(
+      static_cast<unsigned int>(
+          reinterpret_cast<uintptr_t>(hCursor) & 0xFFFFFFFFu));
+  return previous;
+}
 HGDIOBJ GetStockObject(int) { return reinterpret_cast<HGDIOBJ>(NewOpaqueHandle()); }
 BOOL DeleteObject(HGDIOBJ object) {
   void* key = reinterpret_cast<void*>(object);
@@ -3020,7 +3086,12 @@ BOOL DeleteObject(HGDIOBJ object) {
   return TRUE;
 }
 HBITMAP LoadBitmapA(HINSTANCE, LPCSTR) { return reinterpret_cast<HBITMAP>(NewOpaqueHandle()); }
-HCURSOR LoadCursorA(HINSTANCE, LPCSTR) { return reinterpret_cast<HCURSOR>(NewOpaqueHandle()); }
+HCURSOR LoadCursorA(HINSTANCE, LPCSTR lpCursorName) {
+  const uintptr_t resource = reinterpret_cast<uintptr_t>(lpCursorName);
+  if (resource != 0 && resource <= 0xFFFFu)
+    return reinterpret_cast<HCURSOR>(resource);
+  return reinterpret_cast<HCURSOR>(NewOpaqueHandle());
+}
 HICON LoadIconA(HINSTANCE, LPCSTR) { return reinterpret_cast<HICON>(NewOpaqueHandle()); }
 HACCEL LoadAcceleratorsA(HINSTANCE, LPCSTR) { return reinterpret_cast<HACCEL>(NewOpaqueHandle()); }
 int TranslateAcceleratorA(HWND, HACCEL, MSG*) { return 0; }
@@ -5945,6 +6016,19 @@ float SafeClipW(float clip_w) {
   return (clip_w < 0.0f) ? -kEpsilonW : kEpsilonW;
 }
 
+void ApplyD3D9PixelCenterToClip(float clip_w, float* clip_x, float* clip_y) {
+  if (!clip_x || !clip_y) return;
+  const float vp_w =
+      std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Width));
+  const float vp_h =
+      std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Height));
+  // D3D9 samples pixels at integer window coordinates while WebGL samples at
+  // half-integers. In homogeneous coordinates this is +0.5 pixel in the
+  // top-left viewport convention: +1/width in NDC X and -1/height in NDC Y.
+  *clip_x += clip_w / vp_w;
+  *clip_y -= clip_w / vp_h;
+}
+
 void TrackGLErrorsPostDraw() {
   bool had_error = false;
   for (;;) {
@@ -7683,10 +7767,14 @@ bool DecodeVertexFromDeclaration(
   } else {
     D3DXVec3Transform(&clip, &cam_pos, reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
   }
+  out_vertex->w = std::isfinite(clip.w) ? clip.w : 1.0e-5f;
   out_vertex->x = clip.x;
   out_vertex->y = clip.y;
+  ApplyD3D9PixelCenterToClip(
+      out_vertex->w,
+      &out_vertex->x,
+      &out_vertex->y);
   out_vertex->z = ((g_debug_ffp_flags & kDebugUseRawClipZ) != 0u) ? clip.z : (2.0f * clip.z - clip.w);
-  out_vertex->w = std::isfinite(clip.w) ? clip.w : 1.0e-5f;
   out_vertex->u0 = decoded.tex0_u;
   out_vertex->v0 = decoded.tex0_v;
   out_vertex->u1 = decoded.tex1_u;
@@ -8712,8 +8800,13 @@ bool DecodeVertexFromFVF(
   if (has_xyzrhw || force_screen_space) {
     const float vp_w = std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Width));
     const float vp_h = std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Height));
-    const float ndc_x = ((vx - static_cast<float>(g_wasm_d3d9_state.viewport.X)) / vp_w) * 2.0f - 1.0f;
-    const float ndc_y = 1.0f - ((vy - static_cast<float>(g_wasm_d3d9_state.viewport.Y)) / vp_h) * 2.0f;
+    // D3D9 samples pixels at integer window coordinates; OpenGL/WebGL samples
+    // at half-integers. Move the D3D9 position to the corresponding WebGL
+    // sample centre before converting viewport coordinates to NDC.
+    const float webgl_x = vx + 0.5f;
+    const float webgl_y = vy + 0.5f;
+    const float ndc_x = ((webgl_x - static_cast<float>(g_wasm_d3d9_state.viewport.X)) / vp_w) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - ((webgl_y - static_cast<float>(g_wasm_d3d9_state.viewport.Y)) / vp_h) * 2.0f;
     const float ndc_z = vz * 2.0f - 1.0f;
     // FVF322 startup overlays can be emitted in viewport space without XYZRHW.
     // Replay them like projected quads only when the whole draw matches.
@@ -8726,11 +8819,12 @@ bool DecodeVertexFromFVF(
     D3DXVECTOR4 clip{};
     D3DXVec3Transform(&clip, &in, &wvp);
     // Preserve clip-space and let GL perform clipping/perspective divide.
+    clip_w = SafeClipW(clip.w);
     clip_x = clip.x;
     clip_y = clip.y;
+    ApplyD3D9PixelCenterToClip(clip_w, &clip_x, &clip_y);
     // D3D clip-space z maps to [0,w], while GL expects [-w,w].
     clip_z = ((g_debug_ffp_flags & kDebugUseRawClipZ) != 0u) ? clip.z : (2.0f * clip.z - clip.w);
-    clip_w = SafeClipW(clip.w);
 
     D3DXVec3TransformCoord(&cam_pos, &in, &world_view);
 
