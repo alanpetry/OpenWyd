@@ -41,4 +41,31 @@ inline D3DXSpriteBeginPolicy ResolveD3DXSpriteBeginPolicy(DWORD flags) {
   return policy;
 }
 
+inline HRESULT ApplyD3DXSpriteBeginRenderState(
+    IDirect3DDevice9* device,
+    const D3DXSpriteBeginPolicy& policy) {
+  if (!device) return D3DERR_INVALIDCALL;
+  if (!policy.modify_render_state) return S_OK;
+
+  HRESULT first_failure = S_OK;
+  const auto apply = [&first_failure](HRESULT hr) {
+    if (FAILED(hr) && SUCCEEDED(first_failure)) first_failure = hr;
+  };
+
+  apply(device->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE));
+  apply(device->SetRenderState(D3DRS_ZWRITEENABLE, 0u));
+  apply(device->SetRenderState(D3DRS_ALPHATESTENABLE, 0u));
+  apply(device->SetRenderState(D3DRS_LIGHTING, 0u));
+
+  if (policy.enable_alpha_blend) {
+    apply(device->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u));
+    apply(device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA));
+    apply(device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA));
+  }
+
+  apply(device->SetVertexShader(nullptr));
+  apply(device->SetPixelShader(nullptr));
+  return first_failure;
+}
+
 }  // namespace wyd::d3dx_compat
