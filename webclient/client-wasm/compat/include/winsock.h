@@ -23,6 +23,35 @@ using SOCKET = std::uintptr_t;
 #define IPPROTO_TCP 6
 #endif
 
+#ifndef FD_READ
+#define FD_READ 0x01
+#endif
+#ifndef FD_WRITE
+#define FD_WRITE 0x02
+#endif
+#ifndef FD_OOB
+#define FD_OOB 0x04
+#endif
+#ifndef FD_ACCEPT
+#define FD_ACCEPT 0x08
+#endif
+#ifndef FD_CONNECT
+#define FD_CONNECT 0x10
+#endif
+#ifndef FD_CLOSE
+#define FD_CLOSE 0x20
+#endif
+
+#ifndef WSAGETSELECTEVENT
+#define WSAGETSELECTEVENT(lParam) LOWORD(lParam)
+#endif
+#ifndef WSAGETSELECTERROR
+#define WSAGETSELECTERROR(lParam) HIWORD(lParam)
+#endif
+#ifndef WSAMAKESELECTREPLY
+#define WSAMAKESELECTREPLY(event, error) MAKELONG(event, error)
+#endif
+
 struct in_addr {
   union {
     struct {

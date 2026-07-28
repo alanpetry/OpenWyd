@@ -353,9 +353,11 @@ struct WindowState {
   HMENU menu = nullptr;
   RECT rect{0, 0, kDefaultWidth, kDefaultHeight};
   std::string text;
+  WNDPROC wnd_proc = nullptr;
 };
 
 std::unordered_map<HWND, WindowState> g_windows;
+std::unordered_map<std::string, WNDPROC> g_window_classes;
 std::deque<MSG> g_msg_queue;
 HWND g_focus = nullptr;
 uint64_t g_tex_decode_success = 0;
@@ -2941,6 +2943,13 @@ BOOL PeekMessageA(MSG* lpMsg, HWND, UINT, UINT, UINT wRemoveMsg) {
 BOOL TranslateMessage(const MSG*) { return TRUE; }
 LRESULT DispatchMessageA(const MSG* lpMsg) {
   if (!lpMsg) return 0;
+  WNDPROC wnd_proc = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_windows.find(lpMsg->hwnd);
+    if (it != g_windows.end()) wnd_proc = it->second.wnd_proc;
+  }
+  if (wnd_proc) return wnd_proc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
   return DefWindowProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
 }
 
@@ -3156,12 +3165,28 @@ BOOL GetTextExtentPoint32A(HDC hdc, LPCSTR lpString, int c, SIZE* pSize) {
   pSize->cy = font_h + 4;
   return TRUE;
 }
-ATOM RegisterClassA(const WNDCLASSA*) { return 1; }
-ATOM RegisterClassExA(const WNDCLASSEXA*) { return 1; }
-BOOL UnregisterClassA(LPCSTR, HINSTANCE) { return TRUE; }
+ATOM RegisterClassA(const WNDCLASSA* wndClass) {
+  if (!wndClass || !wndClass->lpszClassName || !wndClass->lpfnWndProc) return 0;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_window_classes[wndClass->lpszClassName] = wndClass->lpfnWndProc;
+  return 1;
+}
+
+ATOM RegisterClassExA(const WNDCLASSEXA* wndClass) {
+  if (!wndClass || !wndClass->lpszClassName || !wndClass->lpfnWndProc) return 0;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_window_classes[wndClass->lpszClassName] = wndClass->lpfnWndProc;
+  return 1;
+}
+
+BOOL UnregisterClassA(LPCSTR className, HINSTANCE) {
+  if (!className) return FALSE;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_window_classes.erase(className) ? TRUE : FALSE;
+}
 
 HWND CreateWindowExA(DWORD,
-                     LPCSTR,
+                     LPCSTR lpClassName,
                      LPCSTR lpWindowName,
                      DWORD dwStyle,
                      int X,
@@ -3182,6 +3207,10 @@ HWND CreateWindowExA(DWORD,
   if (lpWindowName) st.text = lpWindowName;
 
   std::lock_guard<std::mutex> lock(g_mutex);
+  if (lpClassName) {
+    auto class_it = g_window_classes.find(lpClassName);
+    if (class_it != g_window_classes.end()) st.wnd_proc = class_it->second;
+  }
   g_windows[hwnd] = st;
   if (!g_focus) g_focus = hwnd;
   return hwnd;
@@ -3724,7 +3753,11 @@ int WSAStartup(WORD wVersionRequested, WSAData* lpWSAData) {
 
 int WSACleanup(void) { return 0; }
 int WSAGetLastError(void) { return errno; }
-int WSAAsyncSelect(SOCKET, HWND, unsigned int, long) { return 0; }
+extern "C" int wyd_wasm_socket_async_select(SOCKET, HWND, unsigned int, long);
+
+int WSAAsyncSelect(SOCKET socket, HWND window, unsigned int message, long events) {
+  return wyd_wasm_socket_async_select(socket, window, message, events);
+}
 
 int closesocket(SOCKET s) {
   return close(static_cast<int>(s));
