@@ -41,31 +41,69 @@ inline D3DXSpriteBeginPolicy ResolveD3DXSpriteBeginPolicy(DWORD flags) {
   return policy;
 }
 
+class D3DXSpriteHRESULTAccumulator {
+ public:
+  void Add(HRESULT hr) {
+    if (FAILED(hr) && SUCCEEDED(first_failure_)) first_failure_ = hr;
+  }
+
+  HRESULT Result() const { return first_failure_; }
+
+ private:
+  HRESULT first_failure_ = S_OK;
+};
+
 inline HRESULT ApplyD3DXSpriteBeginRenderState(
     IDirect3DDevice9* device,
     const D3DXSpriteBeginPolicy& policy) {
   if (!device) return D3DERR_INVALIDCALL;
   if (!policy.modify_render_state) return S_OK;
 
-  HRESULT first_failure = S_OK;
-  const auto apply = [&first_failure](HRESULT hr) {
-    if (FAILED(hr) && SUCCEEDED(first_failure)) first_failure = hr;
-  };
-
-  apply(device->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE));
-  apply(device->SetRenderState(D3DRS_ZWRITEENABLE, 0u));
-  apply(device->SetRenderState(D3DRS_ALPHATESTENABLE, 0u));
-  apply(device->SetRenderState(D3DRS_LIGHTING, 0u));
+  D3DXSpriteHRESULTAccumulator result;
+  result.Add(device->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE));
+  result.Add(device->SetRenderState(D3DRS_ZWRITEENABLE, 0u));
+  result.Add(device->SetRenderState(D3DRS_ALPHATESTENABLE, 0u));
+  result.Add(device->SetRenderState(D3DRS_LIGHTING, 0u));
 
   if (policy.enable_alpha_blend) {
-    apply(device->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u));
-    apply(device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA));
-    apply(device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA));
+    result.Add(device->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u));
+    result.Add(device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA));
+    result.Add(device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA));
   }
 
-  apply(device->SetVertexShader(nullptr));
-  apply(device->SetPixelShader(nullptr));
-  return first_failure;
+  result.Add(device->SetVertexShader(nullptr));
+  result.Add(device->SetPixelShader(nullptr));
+  return result.Result();
+}
+
+inline HRESULT ApplyD3DXSpriteDrawRenderState(
+    IDirect3DDevice9* device,
+    const D3DXSpriteBeginPolicy& policy,
+    IDirect3DTexture9* texture) {
+  if (!device || !texture) return D3DERR_INVALIDCALL;
+
+  D3DXSpriteHRESULTAccumulator result;
+  result.Add(device->SetTexture(0, texture));
+  result.Add(device->SetTexture(1, nullptr));
+  result.Add(device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE));
+  result.Add(device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE));
+  result.Add(device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE));
+  result.Add(device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0u));
+  result.Add(device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1u));
+  result.Add(device->SetFVF(324u));  // D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1
+
+  if (policy.modify_render_state && policy.enable_alpha_blend) {
+    result.Add(device->SetRenderState(D3DRS_ALPHABLENDENABLE, 1u));
+    result.Add(device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA));
+    result.Add(device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA));
+  }
+
+  return result.Result();
 }
 
 }  // namespace wyd::d3dx_compat
