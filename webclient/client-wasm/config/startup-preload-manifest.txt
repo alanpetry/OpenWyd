@@ -19,6 +19,7 @@ v769ClientRelease/sound.txt@/sound.txt
 v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
 v769ClientRelease/notice.txt@/notice.txt
+v769ClientRelease/minimap.dat@/minimap.dat
 
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
@@ -59,8 +60,8 @@ v769ClientRelease/Mesh/*.wys@/Mesh/
 v769ClientRelease/Mesh/*.dat@/Mesh/
 
 # Audio assets used by startup scenes.
-v769ClientRelease/Sound/*@/Sound/
-v769ClientRelease/music/*@/music/
+v769ClientRelease/Sound/**/*@/Sound/
+v769ClientRelease/music/**/*@/music/
 
 # Legacy D3D9 shader bytecode.
 v769ClientRelease/shader/skinmesh1.bin@/shader/skinmesh1.bin

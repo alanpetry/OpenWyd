@@ -15,6 +15,22 @@ int g_wydLastMouseProcessedType = -1;
 int g_wydLastMouseProcessedX = 0;
 int g_wydLastMouseProcessedY = 0;
 
+struct WydVisibleTextControl
+{
+	unsigned int id;
+	int type;
+	float x;
+	float y;
+	float width;
+	float height;
+	unsigned int color;
+	char text[256];
+};
+
+constexpr unsigned int kWydVisibleTextControlCapacity = 512;
+WydVisibleTextControl g_wydVisibleTextControls[kWydVisibleTextControlCapacity]{};
+unsigned int g_wydVisibleTextControlCount = 0;
+
 SControl* WydFindControl(unsigned int idwControlID)
 {
 	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
@@ -38,6 +54,54 @@ float WydControlAbsY(SControl* pControl)
 		y += pNode->m_nPosY;
 	return y;
 }
+
+bool WydControlIsEffectivelyVisible(SControl* pControl)
+{
+	for (SControl* pNode = pControl; pNode != nullptr; pNode = static_cast<SControl*>(pNode->m_pTop))
+	{
+		if (!pNode->m_bVisible)
+			return false;
+	}
+	return pControl != nullptr;
+}
+
+void WydCollectVisibleTextControls(SControl* pControl)
+{
+	if (!pControl || g_wydVisibleTextControlCount >= kWydVisibleTextControlCapacity)
+		return;
+
+	if (WydControlIsEffectivelyVisible(pControl) &&
+		(pControl->m_eCtrlType == CONTROL_TYPE::CTRL_TYPE_TEXT ||
+		 pControl->m_eCtrlType == CONTROL_TYPE::CTRL_TYPE_EDITABLETEXT))
+	{
+		auto pText = static_cast<SText*>(pControl);
+		auto& sample = g_wydVisibleTextControls[g_wydVisibleTextControlCount++];
+		sample.id = pControl->m_dwControlID;
+		sample.type = static_cast<int>(pControl->m_eCtrlType);
+		sample.x = WydControlAbsX(pControl);
+		sample.y = WydControlAbsY(pControl);
+		sample.width = pControl->m_nWidth;
+		sample.height = pControl->m_nHeight;
+		sample.color = pText->m_GCText.dwColor;
+		std::snprintf(sample.text, sizeof(sample.text), "%s", pText->m_GCText.strString);
+	}
+
+	for (TreeNode* pChild = pControl->m_pDown; pChild; pChild = pChild->m_pNextLink)
+		WydCollectVisibleTextControls(static_cast<SControl*>(pChild));
+}
+
+const WydVisibleTextControl* WydVisibleTextControlAt(unsigned int index)
+{
+	return index < g_wydVisibleTextControlCount ? &g_wydVisibleTextControls[index] : nullptr;
+}
+
+void WydRefreshVisibleTextControls()
+{
+	g_wydVisibleTextControlCount = 0;
+	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
+		return;
+	WydCollectVisibleTextControls(g_pCurrentScene->m_pControlContainer->m_pControlRoot);
+}
 } // namespace
 
 extern "C" unsigned int wyd_control_last_event_id() { return g_wydLastControlEventID; }
@@ -52,7 +116,7 @@ extern "C" int wyd_control_exists(unsigned int idwControlID) { return WydFindCon
 extern "C" int wyd_control_visible(unsigned int idwControlID)
 {
 	SControl* pControl = WydFindControl(idwControlID);
-	return pControl ? pControl->m_bVisible : 0;
+	return WydControlIsEffectivelyVisible(pControl) ? 1 : 0;
 }
 extern "C" int wyd_control_enabled(unsigned int idwControlID)
 {
@@ -102,6 +166,51 @@ extern "C" float wyd_control_height(unsigned int idwControlID)
 {
 	SControl* pControl = WydFindControl(idwControlID);
 	return pControl ? pControl->m_nHeight : 0.0f;
+}
+extern "C" unsigned int wyd_control_visible_text_count()
+{
+	WydRefreshVisibleTextControls();
+	return g_wydVisibleTextControlCount;
+}
+extern "C" unsigned int wyd_control_visible_text_id(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->id : 0;
+}
+extern "C" int wyd_control_visible_text_type(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->type : -1;
+}
+extern "C" float wyd_control_visible_text_x(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->x : 0.0f;
+}
+extern "C" float wyd_control_visible_text_y(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->y : 0.0f;
+}
+extern "C" float wyd_control_visible_text_width(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->width : 0.0f;
+}
+extern "C" float wyd_control_visible_text_height(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->height : 0.0f;
+}
+extern "C" unsigned int wyd_control_visible_text_color(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->color : 0;
+}
+extern "C" const char* wyd_control_visible_text_value(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->text : "";
 }
 #endif
 

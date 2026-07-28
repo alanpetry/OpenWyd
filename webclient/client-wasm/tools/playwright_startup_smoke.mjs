@@ -32,6 +32,7 @@ function parseArgs(argv) {
     state: GAME_STATE_FIELD,
     screen: null,
     debugFlags: 0,
+    detailedTelemetry: true,
     debugSkipFvf: 0,
     ticks: 30,
     tickMs: 100,
@@ -50,6 +51,7 @@ function parseArgs(argv) {
     fit: null,
     fieldMode: "real",
     weatherMode: 0,
+    selectServerDemoType: -1,
     fieldCaptureTicks: null,
     fieldCaptureDir: "webclient/client-wasm/build/reports/field-captures",
     socketProxy: null,
@@ -62,6 +64,8 @@ function parseArgs(argv) {
     summaryOnly: false,
     mouseTests: [],
     mouseMoveTicks: 90,
+    keyboardTests: [],
+    audioTest: false,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -94,6 +98,10 @@ function parseArgs(argv) {
     if (a === "--preboot-debug-flags" && argv[i + 1]) {
       opts.preBootDebugFlags = Number.parseInt(argv[i + 1], 10) || 0;
       i += 1;
+      continue;
+    }
+    if (a === "--no-detailed-telemetry") {
+      opts.detailedTelemetry = false;
       continue;
     }
     if (a === "--debug-skip-fvf" && argv[i + 1]) {
@@ -167,6 +175,12 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (a === "--selserver-demo" && argv[i + 1]) {
+      const parsed = Number.parseInt(argv[i + 1], 10);
+      opts.selectServerDemoType = Number.isFinite(parsed) ? parsed : -1;
+      i += 1;
+      continue;
+    }
     if (a === "--socket-proxy" && argv[i + 1]) {
       opts.socketProxy = argv[i + 1];
       i += 1;
@@ -199,6 +213,15 @@ function parseArgs(argv) {
     if (a === "--mouse-move-ticks" && argv[i + 1]) {
       opts.mouseMoveTicks = Number.parseInt(argv[i + 1], 10) || opts.mouseMoveTicks;
       i += 1;
+      continue;
+    }
+    if (a === "--keyboard-test" && argv[i + 1]) {
+      opts.keyboardTests.push(String(argv[i + 1] || "").toLowerCase());
+      i += 1;
+      continue;
+    }
+    if (a === "--audio-test") {
+      opts.audioTest = true;
       continue;
     }
     if (a === "--login-ticks" && argv[i + 1]) {
@@ -333,7 +356,9 @@ async function tickWasm(page, count, tickMs) {
       if (tickDelta > 0 && typeof Module._wyd_debug_advance_fake_time === "function") {
         Module._wyd_debug_advance_fake_time(tickDelta >>> 0);
       }
-      out.push(Module._wyd_tick_client());
+      out.push(typeof window.tickClient === "function"
+        ? window.tickClient(true, false)
+        : Module._wyd_tick_client());
     }
     return out;
   }, { count, tickMs });
@@ -383,11 +408,40 @@ async function readFieldMouseState(page) {
 }
 
 async function runFieldUiMouseTest(page, opts) {
+  const miniPanelBootstrap = await page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => (typeof M[name] === "function" ? M[name](...args) : null);
+    return {
+      panelVisible: call("_wyd_control_visible", 65788),
+      buttonVisible: call("_wyd_control_visible", 65787),
+      buttonX: call("_wyd_control_abs_x", 65787),
+      buttonY: call("_wyd_control_abs_y", 65787),
+      buttonW: call("_wyd_control_width", 65787),
+      buttonH: call("_wyd_control_height", 65787),
+      eventCount: call("_wyd_control_event_count"),
+    };
+  });
+
+  if (miniPanelBootstrap.panelVisible !== 1 &&
+      miniPanelBootstrap.buttonVisible === 1 &&
+      miniPanelBootstrap.buttonW > 0 &&
+      miniPanelBootstrap.buttonH > 0) {
+    const point = await logicalToPagePoint(
+      page,
+      miniPanelBootstrap.buttonX + miniPanelBootstrap.buttonW * 0.5,
+      miniPanelBootstrap.buttonY + miniPanelBootstrap.buttonH * 0.5,
+    );
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: "left" });
+    await tickWasm(page, 3, opts.tickMs);
+    await page.mouse.up({ button: "left" });
+    await tickWasm(page, 8, opts.tickMs);
+  }
+
   const candidates = [
     { id: 65790, label: "B_CHAR" },
     { id: 65791, label: "B_EQUIP" },
     { id: 65793, label: "B_QUESTLOG" },
-    { id: 65787, label: "P_MINIBTNPANEL_BTN" },
     { id: 65795, label: "B_HELP" },
     { id: 65796, label: "B_SYSTEM" },
   ];
@@ -451,10 +505,16 @@ async function runFieldUiMouseTest(page, opts) {
     const ok = after.lastControlId === candidate.id && after.eventCount > before.eventCount && humanDelta < 0.25;
     const attempt = { name: "field-ui", ok, controlId: candidate.id, label: candidate.label, point, before, after, humanDelta };
     attempts.push(attempt);
-    if (ok) return { ...attempt, attempts };
+    if (ok) return { ...attempt, miniPanelBootstrap, attempts };
   }
 
-  return { name: "field-ui", ok: false, attempts, error: "no official field UI button produced OnControlEvent" };
+  return {
+    name: "field-ui",
+    ok: false,
+    miniPanelBootstrap,
+    attempts,
+    error: "no official Field subpanel button produced OnControlEvent",
+  };
 }
 
 async function chooseFieldMoveTarget(page) {
@@ -533,6 +593,32 @@ async function runFieldWheelMouseTest(page, opts) {
   return { name: "field-wheel", ok: sightDelta > 0.0001 || wantDelta > 0.0001, before, after, sightDelta, wantDelta };
 }
 
+async function runFieldDoubleClickMouseTest(page, opts) {
+  const point = await logicalToPagePoint(page, 400, 300);
+  await page.mouse.move(point.x, point.y);
+
+  await page.mouse.down({ button: "left", clickCount: 1 });
+  await page.mouse.up({ button: "left", clickCount: 1 });
+  await page.mouse.down({ button: "left", clickCount: 2 });
+  const leftMsg = await page.evaluate(() => window.Module?._wyd_input_mouse_last_msg?.() ?? null);
+  await page.mouse.up({ button: "left", clickCount: 2 });
+
+  await page.mouse.down({ button: "right", clickCount: 1 });
+  await page.mouse.up({ button: "right", clickCount: 1 });
+  await page.mouse.down({ button: "right", clickCount: 2 });
+  const rightMsg = await page.evaluate(() => window.Module?._wyd_input_mouse_last_msg?.() ?? null);
+  await page.mouse.up({ button: "right", clickCount: 2 });
+  await tickWasm(page, 3, opts.tickMs);
+
+  return {
+    name: "field-double-click",
+    ok: leftMsg === 0x0203 && rightMsg === 0x0206,
+    point,
+    leftMsg,
+    rightMsg,
+  };
+}
+
 async function runMouseTests(page, opts) {
   const tests = [];
   for (const test of opts.mouseTests) {
@@ -544,11 +630,270 @@ async function runMouseTests(page, opts) {
       tests.push(await runFieldCameraMouseTest(page, opts));
     } else if (test === "field-wheel") {
       tests.push(await runFieldWheelMouseTest(page, opts));
+    } else if (test === "field-double-click") {
+      tests.push(await runFieldDoubleClickMouseTest(page, opts));
     } else {
       tests.push({ name: test, ok: false, error: "unknown mouse test" });
     }
   }
   return tests;
+}
+
+async function readFocusedAnsiText(page) {
+  return page.evaluate(() => {
+    const M = window.Module || {};
+    if (typeof M._wyd_text_input_value !== "function") return null;
+    const ptr = M._wyd_text_input_value() >>> 0;
+    if (!ptr) return "";
+    let end = ptr;
+    while (M.HEAPU8[end]) end += 1;
+    return new TextDecoder("windows-1252").decode(M.HEAPU8.slice(ptr, end));
+  });
+}
+
+async function ensureFieldInputUnlocked(page, opts) {
+  const currentTime = await page.evaluate(() =>
+    typeof Module._wyd_debug_get_time === "function" ? Module._wyd_debug_get_time() >>> 0 : 0);
+  if (currentTime < 6100 && opts.tickMs > 0) {
+    await tickWasm(page, Math.ceil((6100 - currentTime) / opts.tickMs), opts.tickMs);
+  }
+}
+
+async function runFieldChatKeyboardTest(page, opts) {
+  const expected = "OpenWyd ação çã áéíóú";
+  await ensureFieldInputUnlocked(page, opts);
+  await page.locator("#canvas").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(20);
+  const opened = await page.evaluate(() => ({
+    active: typeof Module._wyd_text_input_active === "function" ? Module._wyd_text_input_active() : 0,
+    domFocus: document.activeElement?.id || "",
+  }));
+  if (opened.active !== 1 || opened.domFocus !== "wyd-text-input") {
+    return { name: "field-chat", ok: false, expected, opened, error: "official chat editor did not receive focus" };
+  }
+
+  await page.keyboard.type(expected);
+  const typed = await readFocusedAnsiText(page);
+  await page.keyboard.press("Backspace");
+  const afterBackspace = await readFocusedAnsiText(page);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(20);
+  const closed = await page.evaluate(() => ({
+    active: typeof Module._wyd_text_input_active === "function" ? Module._wyd_text_input_active() : 0,
+    domFocus: document.activeElement?.id || "",
+  }));
+
+  const expectedAfterBackspace = expected.slice(0, -1);
+  const ok =
+    typed === expected &&
+    afterBackspace === expectedAfterBackspace &&
+    closed.active === 0;
+  return {
+    name: "field-chat",
+    ok,
+    expected,
+    typed,
+    expectedAfterBackspace,
+    afterBackspace,
+    opened,
+    closed,
+  };
+}
+
+async function runFieldShortcutKeyboardTest(page, opts) {
+  await ensureFieldInputUnlocked(page, opts);
+  const shortcuts = [
+    { key: "c", controlId: 65696, panel: "character" },
+    { key: "i", controlId: 589832, panel: "inventory" },
+    { key: "s", controlId: 65567, panel: "skill" },
+    { key: "m", controlId: 289, panel: "minimap" },
+    { key: "p", controlId: 475136, panel: "party" },
+  ];
+  const attempts = [];
+
+  for (const shortcut of shortcuts) {
+    const before = await page.evaluate((controlId) => ({
+      exists: typeof Module._wyd_control_exists === "function" ? Module._wyd_control_exists(controlId) : 0,
+      visible: typeof Module._wyd_control_visible === "function" ? Module._wyd_control_visible(controlId) : 0,
+    }), shortcut.controlId);
+    await page.locator("#canvas").focus();
+    await page.keyboard.press(shortcut.key);
+    await tickWasm(page, 2, opts.tickMs);
+    const toggled = await page.evaluate((controlId) => ({
+      visible: typeof Module._wyd_control_visible === "function" ? Module._wyd_control_visible(controlId) : 0,
+    }), shortcut.controlId);
+    const restoreStates = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await page.keyboard.press(shortcut.key);
+      await tickWasm(page, 2, opts.tickMs);
+      const state = await page.evaluate((controlId) => ({
+        visible: typeof Module._wyd_control_visible === "function" ? Module._wyd_control_visible(controlId) : 0,
+      }), shortcut.controlId);
+      restoreStates.push(state);
+      if (state.visible === before.visible) break;
+    }
+    const restored = restoreStates.at(-1) || toggled;
+    attempts.push({
+      ...shortcut,
+      ok: before.exists === 1 && toggled.visible !== before.visible && restored.visible === before.visible,
+      before,
+      toggled,
+      restoreStates,
+      restored,
+    });
+  }
+
+  return {
+    name: "field-shortcuts",
+    ok: attempts.every((attempt) => attempt.ok),
+    attempts,
+  };
+}
+
+async function runCreateCharKeyboardTest(page, opts) {
+  const candidates = [
+    [163, 350],
+    [305, 350],
+    [470, 350],
+    [625, 350],
+  ];
+  let selected = null;
+
+  for (const [logicalX, logicalY] of candidates) {
+    const point = await logicalToPagePoint(page, logicalX, logicalY);
+    await page.mouse.move(point.x, point.y);
+    await tickWasm(page, 4, opts.tickMs);
+    await page.mouse.down({ button: "left" });
+    await tickWasm(page, 1, opts.tickMs);
+    await page.mouse.up({ button: "left" });
+    await tickWasm(page, 12, opts.tickMs);
+    const state = await page.evaluate(() => ({
+      createPanelVisible: Module._wyd_control_visible?.(1542) ?? 0,
+      textActive: Module._wyd_text_input_active?.() ?? 0,
+      domFocus: document.activeElement?.id || "",
+    }));
+    if (state.createPanelVisible === 1 && state.textActive === 1) {
+      selected = { logicalX, logicalY, point, state };
+      break;
+    }
+  }
+
+  if (!selected) {
+    return {
+      name: "createchar-name",
+      ok: false,
+      error: "no official sample human opened the create-character panel",
+    };
+  }
+
+  const expected = "OpenWyd";
+  await page.keyboard.type(expected);
+  const typed = await readFocusedAnsiText(page);
+  const cancel = await page.evaluate(() => ({
+    exists: Module._wyd_control_exists?.(1552) ?? 0,
+    visible: Module._wyd_control_visible?.(1552) ?? 0,
+    x: Module._wyd_control_abs_x?.(1552) ?? 0,
+    y: Module._wyd_control_abs_y?.(1552) ?? 0,
+    w: Module._wyd_control_width?.(1552) ?? 0,
+    h: Module._wyd_control_height?.(1552) ?? 0,
+  }));
+
+  const cancelPoint = await logicalToPagePoint(
+    page,
+    cancel.x + cancel.w * 0.5,
+    cancel.y + cancel.h * 0.5,
+  );
+  await page.mouse.move(cancelPoint.x, cancelPoint.y);
+  await page.mouse.down({ button: "left" });
+  await tickWasm(page, 1, opts.tickMs);
+  await page.mouse.up({ button: "left" });
+  await tickWasm(page, 8, opts.tickMs);
+  await page.waitForTimeout(20);
+
+  const closed = await page.evaluate(() => ({
+    createPanelVisible: Module._wyd_control_visible?.(1542) ?? 0,
+    textActive: Module._wyd_text_input_active?.() ?? 0,
+    domFocus: document.activeElement?.id || "",
+    lastControlId: Module._wyd_control_last_event_id?.() ?? 0,
+    glErrors: Module._wyd_d3d9_gl_error_total?.() ?? 0,
+  }));
+
+  return {
+    name: "createchar-name",
+    ok:
+      typed === expected &&
+      cancel.exists === 1 &&
+      cancel.visible === 1 &&
+      closed.createPanelVisible === 0 &&
+      closed.textActive === 0 &&
+      closed.lastControlId === 1552 &&
+      closed.glErrors === 0,
+    expected,
+    typed,
+    selected,
+    cancel,
+    cancelPoint,
+    closed,
+  };
+}
+
+async function runKeyboardTests(page, opts) {
+  const tests = [];
+  for (const test of opts.keyboardTests) {
+    if (test === "field-chat") {
+      tests.push(await runFieldChatKeyboardTest(page, opts));
+    } else if (test === "field-shortcuts") {
+      tests.push(await runFieldShortcutKeyboardTest(page, opts));
+    } else if (test === "createchar-name") {
+      tests.push(await runCreateCharKeyboardTest(page, opts));
+    } else {
+      tests.push({ name: test, ok: false, error: "unknown keyboard test" });
+    }
+  }
+  return tests;
+}
+
+async function runAudioTest(page) {
+  await page.locator("#canvas").click({ position: { x: 400, y: 300 } });
+  await page.waitForTimeout(50);
+  const state = await page.evaluate(async () => {
+    if (typeof Module._wyd_audio_resume === "function") Module._wyd_audio_resume();
+    if (Module.wydMusic?.audio?.paused) {
+      try {
+        await Module.wydMusic.audio.play();
+      } catch {
+        // The resulting state below records whether browser autoplay still blocked playback.
+      }
+    }
+    const call = (name) => (typeof Module[name] === "function" ? Module[name]() : null);
+    return {
+      buffersCreated: call("_wyd_audio_buffers_created"),
+      uploads: call("_wyd_audio_uploads"),
+      playCalls: call("_wyd_audio_play_calls"),
+      musicPlayCalls: call("_wyd_audio_music_play_calls"),
+      musicState: call("_wyd_audio_music_state"),
+      contextState: Module.wydAudio?.context?.state || "unavailable",
+      browserBuffers: Module.wydAudio?.buffers?.size ?? 0,
+      musicElementState: Module.wydMusic?.audio
+        ? (Module.wydMusic.audio.paused ? "paused" : "playing")
+        : "unavailable",
+      musicDuration: Number.isFinite(Module.wydMusic?.audio?.duration)
+        ? Module.wydMusic.audio.duration
+        : 0,
+    };
+  });
+  const soundEffectsOk =
+    state.playCalls === 0 ||
+    (state.uploads > 0 &&
+      state.browserBuffers > 0 &&
+      state.contextState === "running");
+  const musicOk =
+    state.musicPlayCalls > 0 &&
+    state.musicState === 2 &&
+    state.musicElementState === "playing" &&
+    state.musicDuration > 0;
+  return { name: "webaudio", ok: soundEffectsOk && musicOk, soundEffectsOk, musicOk, ...state };
 }
 
 const opts = parseArgs(process.argv);
@@ -893,16 +1238,30 @@ try {
   result.step = "boot";
   result.boot = await page.evaluate(() => Module._wyd_boot_client(0));
   result.step = "configure-state";
-  await page.evaluate(({ state, debugFlags, debugSkipFvf, fieldMode, weatherMode }) => {
+  await page.evaluate(({ state, debugFlags, debugSkipFvf, fieldMode, weatherMode, selectServerDemoType, detailedTelemetry }) => {
     if (typeof Module._wyd_set_field_mode === "function") Module._wyd_set_field_mode(fieldMode === "placeholder" ? 0 : 1);
     if (typeof Module._wyd_d3d9_set_debug_flags === "function") Module._wyd_d3d9_set_debug_flags(debugFlags >>> 0);
+    if (typeof Module._wyd_d3d9_set_detailed_telemetry === "function") {
+      Module._wyd_d3d9_set_detailed_telemetry(detailedTelemetry ? 1 : 0);
+    }
     if (typeof Module._wyd_d3d9_set_debug_skip_fvf === "function") Module._wyd_d3d9_set_debug_skip_fvf(debugSkipFvf >>> 0);
     if (typeof Module._wyd_debug_set_weather_mode === "function") Module._wyd_debug_set_weather_mode(weatherMode >>> 0);
+    if (typeof Module._wyd_selserver_set_demo_type_override === "function") {
+      Module._wyd_selserver_set_demo_type_override(selectServerDemoType);
+    }
     if (typeof Module._wyd_set_game_state === "function") Module._wyd_set_game_state(state);
     if (typeof Module._wyd_d3d9_reset_debug_counters === "function") Module._wyd_d3d9_reset_debug_counters();
     if (typeof Module._wyd_sky_reset_debug_counters === "function") Module._wyd_sky_reset_debug_counters();
     if (typeof Module._wyd_sun_reset_debug_counters === "function") Module._wyd_sun_reset_debug_counters();
-  }, { state: opts.state, debugFlags: opts.debugFlags, debugSkipFvf: opts.debugSkipFvf, fieldMode: opts.fieldMode, weatherMode: opts.weatherMode });
+  }, {
+    state: opts.state,
+    debugFlags: opts.debugFlags,
+    debugSkipFvf: opts.debugSkipFvf,
+    fieldMode: opts.fieldMode,
+    weatherMode: opts.weatherMode,
+    selectServerDemoType: opts.selectServerDemoType,
+    detailedTelemetry: opts.detailedTelemetry,
+  });
   result.debugFlagsEarly = await page.evaluate(() => (
     typeof Module._wyd_d3d9_get_debug_flags === "function" ? Module._wyd_d3d9_get_debug_flags() : null
   ));
@@ -1076,7 +1435,18 @@ try {
   }
   if (opts.mouseTests.length > 0) {
     result.step = "mouse-tests";
+    if (opts.state === GAME_STATE_FIELD) {
+      await ensureFieldInputUnlocked(page, opts);
+    }
     result.mouseTests = await runMouseTests(page, opts);
+  }
+  if (opts.keyboardTests.length > 0) {
+    result.step = "keyboard-tests";
+    result.keyboardTests = await runKeyboardTests(page, opts);
+  }
+  if (opts.audioTest) {
+    result.step = "audio-test";
+    result.audioTest = await runAudioTest(page);
   }
   await page.waitForTimeout(120);
   if (opts.trace) {
@@ -1165,18 +1535,19 @@ try {
     });
   }
   result.step = "pixel-readback";
-  result.pixel = await page.evaluate(() => {
-    const canvas = document.getElementById("canvas");
-    if (!canvas) return { ok: false, reason: "canvas-not-found" };
-    const gl =
-      canvas.getContext("webgl2", { preserveDrawingBuffer: true }) ||
-      canvas.getContext("webgl", { preserveDrawingBuffer: true }) ||
-      canvas.getContext("experimental-webgl");
-    if (!gl) return { ok: false, reason: "no-webgl-context" };
+  const finalCanvasScreenshot = await canvas.screenshot();
+  result.pixel = await page.evaluate(async (pngBase64) => {
+    const response = await fetch(`data:image/png;base64,${pngBase64}`);
+    const bitmap = await createImageBitmap(await response.blob());
+    const scratch = document.createElement("canvas");
+    scratch.width = bitmap.width;
+    scratch.height = bitmap.height;
+    const context = scratch.getContext("2d", { willReadFrequently: true });
+    if (!context) return { ok: false, reason: "no-2d-context" };
+    context.drawImage(bitmap, 0, 0);
 
-    const w = canvas.width;
-    const h = canvas.height;
-    // readPixels uses bottom-left origin; grid fractions are top-left.
+    const w = scratch.width;
+    const h = scratch.height;
     const probes = [];
     for (let row = 0; row < 5; row++) {
       for (let col = 0; col < 5; col++) {
@@ -1189,9 +1560,8 @@ try {
     const results = [];
     for (const probe of probes) {
       const px_x = Math.max(0, Math.min(w - 1, Math.floor(w * probe.ux)));
-      const px_y_gl = Math.max(0, Math.min(h - 1, Math.floor(h * (1.0 - probe.uy))));
-      const px = new Uint8Array(4);
-      gl.readPixels(px_x, px_y_gl, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const px_y = Math.max(0, Math.min(h - 1, Math.floor(h * probe.uy)));
+      const px = context.getImageData(px_x, px_y, 1, 1).data;
       results.push({
         label: probe.label,
         rgba: [px[0], px[1], px[2], px[3]],
@@ -1200,8 +1570,8 @@ try {
 
     const cx = Math.floor(w * 0.5);
     const cy = Math.floor(h * 0.5);
-    const cpx = new Uint8Array(4);
-    gl.readPixels(cx, cy, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, cpx);
+    const cpx = context.getImageData(cx, cy, 1, 1).data;
+    const nonBlackProbes = results.filter(({ rgba }) => rgba[0] + rgba[1] + rgba[2] > 6).length;
     return {
       ok: true,
       rgba: [cpx[0], cpx[1], cpx[2], cpx[3]],
@@ -1210,11 +1580,11 @@ try {
       width: w,
       height: h,
       probes: results,
+      nonBlackProbes,
     };
-  });
-  if (result.pixel?.ok && Array.isArray(result.pixel.rgba)) {
-    const [r, g, b, a] = result.pixel.rgba;
-    result.renderVisible = (r + g + b) > 0 || a > 0;
+  }, finalCanvasScreenshot.toString("base64"));
+  if (result.pixel?.ok) {
+    result.renderVisible = (result.pixel.nonBlackProbes || 0) > 0;
   }
   result.step = "camera";
   result.camera = await page.evaluate(() => {
@@ -1922,6 +2292,21 @@ try {
     }
     return null;
   });
+  result.fvf322RequestedDepthWriteEnabled = await page.evaluate(() => (
+    typeof Module._wyd_d3d9_fvf322_requested_depth_write_enabled === "function"
+      ? Module._wyd_d3d9_fvf322_requested_depth_write_enabled()
+      : null
+  ));
+  result.fvf322RequestedDepthWriteDisabled = await page.evaluate(() => (
+    typeof Module._wyd_d3d9_fvf322_requested_depth_write_disabled === "function"
+      ? Module._wyd_d3d9_fvf322_requested_depth_write_disabled()
+      : null
+  ));
+  result.fvf322ForcedDepthWriteDisabled = await page.evaluate(() => (
+    typeof Module._wyd_d3d9_fvf322_forced_depth_write_disabled === "function"
+      ? Module._wyd_d3d9_fvf322_forced_depth_write_disabled()
+      : null
+  ));
   result.textureDrawsSky = await page.evaluate(() => {
     if (typeof Module._wyd_d3d9_texture_draws_sky === "function") {
       return Module._wyd_d3d9_texture_draws_sky();
@@ -2338,6 +2723,8 @@ try {
         id: i,
         name: text(call("_wyd_d3d9_fvf322_class_name", i >>> 0)),
         count: call("_wyd_d3d9_fvf322_class_count", i >>> 0),
+        requestedDepthWriteEnabled: call("_wyd_d3d9_fvf322_requested_depth_write_enabled_class", i >>> 0),
+        requestedDepthWriteDisabled: call("_wyd_d3d9_fvf322_requested_depth_write_disabled_class", i >>> 0),
       });
     }
 
@@ -2509,6 +2896,25 @@ try {
       lastNonEmptyRenderType: call("_wyd_font2_last_nonempty_render_type"),
       lastText: typeof Module.UTF8ToString === "function" && textPtr ? Module.UTF8ToString(textPtr >>> 0) : "",
       lastNonEmptyText: typeof Module.UTF8ToString === "function" && nonEmptyTextPtr ? Module.UTF8ToString(nonEmptyTextPtr >>> 0) : "",
+    };
+  });
+  result.audio = await page.evaluate(() => {
+    const call = (name) => (typeof Module[name] === "function" ? Module[name]() : null);
+    const state = Module.wydAudio || null;
+    return {
+      buffersCreated: call("_wyd_audio_buffers_created"),
+      uploads: call("_wyd_audio_uploads"),
+      playCalls: call("_wyd_audio_play_calls"),
+      stopCalls: call("_wyd_audio_stop_calls"),
+      musicPlayCalls: call("_wyd_audio_music_play_calls"),
+      musicStopCalls: call("_wyd_audio_music_stop_calls"),
+      musicState: call("_wyd_audio_music_state"),
+      musicVolume: call("_wyd_audio_get_music_volume"),
+      contextState: state?.context?.state || "unavailable",
+      browserBuffers: state?.buffers?.size ?? 0,
+      musicElementState: Module.wydMusic?.audio
+        ? (Module.wydMusic.audio.paused ? "paused" : "playing")
+        : "unavailable",
     };
   });
   result.debugFlags = await page.evaluate(() => {
@@ -2701,7 +3107,8 @@ try {
     };
   });
 
-  await canvas.screenshot({ path: opts.screenshot });
+  fs.mkdirSync(path.dirname(opts.screenshot), { recursive: true });
+  fs.writeFileSync(opts.screenshot, finalCanvasScreenshot);
   result.screenshot = opts.screenshot;
 
   result.shutdown = await page.evaluate(() => Module._wyd_shutdown_client());
@@ -2729,6 +3136,12 @@ try {
   const mouseTestsOk =
     !result.mouseTests ||
     result.mouseTests.every((test) => test.ok === true);
+  const keyboardTestsOk =
+    !result.keyboardTests ||
+    result.keyboardTests.every((test) => test.ok === true);
+  const audioTestOk =
+    !result.audioTest ||
+    result.audioTest.ok === true;
   result.ok =
     result.boot === 1 &&
     result.shutdown === 1 &&
@@ -2748,7 +3161,9 @@ try {
     fieldCriticalOk &&
     fieldHeightDeltaOk &&
     fieldCapturesAllOk &&
-    mouseTestsOk;
+    mouseTestsOk &&
+    keyboardTestsOk &&
+    audioTestOk;
 } catch (err) {
   result.error = err?.message || String(err);
 }
@@ -2771,6 +3186,8 @@ const output = opts.summaryOnly
       field: result.field,
       fieldVisual: result.fieldVisual,
       mouseTests: result.mouseTests,
+      keyboardTests: result.keyboardTests,
+      audioTest: result.audioTest,
       glErrorTotal: result.glErrorTotal,
       consoleErrorCount: result.consoleErrorCount,
       screenshot: result.screenshot,

@@ -16,8 +16,10 @@
 #include "TMItem.h"
 #include "TMGround.h"
 #include "TMHuman.h"
+#include "ItemEffect.h"
 
 #if defined(__EMSCRIPTEN__)
+#include "CPSock.h"
 #include "RenderDevice.h"
 #include "TMRain.h"
 #include "TMSnow.h"
@@ -31,6 +33,8 @@ namespace {
 bool g_wasmStateIsPlaceholder = false;
 ESCENE_TYPE g_wasmStateSceneType = ESCENE_TYPE::ESCENE_NONE;
 char g_wasmStateDebugLabel[128] = "None";
+bool g_wasmDeferredStateRequested = false;
+bool g_wasmDirectStateRequest = false;
 int g_wasmFieldMode = 1;
 bool g_wasmFieldDebugFixtureUsed = false;
 float g_wasmLastFieldPickX = 0.0f;
@@ -39,6 +43,7 @@ float g_wasmLastFieldPickZ = 0.0f;
 int g_wasmLastFieldPickValid = 0;
 
 void WasmEnsureFieldDebugMobData(ObjectManager* objectManager);
+void WasmEnsureDirectSelectCharData(ObjectManager* objectManager);
 
 void WasmStateLog(const char* msg)
 {
@@ -122,13 +127,18 @@ void WasmRecordStateDebug(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneT
 class TMWasmDebugStateScene final : public TMScene
 {
 public:
-	TMWasmDebugStateScene(ObjectManager::TM_GAME_STATE state, ESCENE_TYPE sceneType, const char* rcPath)
+	TMWasmDebugStateScene(
+		ObjectManager::TM_GAME_STATE state,
+		ESCENE_TYPE sceneType,
+		const char* rcPath,
+		bool showDebugOverlay)
 		: TMScene()
 		, m_eDebugState(state)
 		, m_eDebugSceneType(sceneType)
 		, m_pTitleText(nullptr)
 		, m_pDetailText(nullptr)
 		, m_bLoadedRc(0)
+		, m_bShowDebugOverlay(showDebugOverlay)
 	{
 		m_eSceneType = sceneType;
 		m_dwID = static_cast<unsigned int>(sceneType);
@@ -152,7 +162,7 @@ public:
 		if (m_szRcPath[0])
 			m_bLoadedRc = LoadRC(m_szRcPath);
 
-		if (m_pControlContainer)
+			if (m_bShowDebugOverlay && m_pControlContainer)
 		{
 			const unsigned int titleColor = m_bLoadedRc ? 0xFFBBDDEE : 0xFFFFFFFF;
 			m_pTitleText = new SText(
@@ -193,10 +203,13 @@ public:
 
 	int Render() override
 	{
-		if (!g_pDevice)
-			return 1;
+			if (!g_pDevice)
+				return 1;
 
-		g_pDevice->SetMatrixForUI();
+			if (!m_bShowDebugOverlay)
+				return 1;
+
+			g_pDevice->SetMatrixForUI();
 		g_pDevice->SetRenderStateBlock(0);
 		g_pDevice->RenderRectNoTex(
 			0.0f,
@@ -219,9 +232,10 @@ private:
 	ObjectManager::TM_GAME_STATE m_eDebugState;
 	ESCENE_TYPE m_eDebugSceneType;
 	SText* m_pTitleText;
-	SText* m_pDetailText;
-	int m_bLoadedRc;
-	char m_szRcPath[128];
+		SText* m_pDetailText;
+		int m_bLoadedRc;
+		bool m_bShowDebugOverlay;
+		char m_szRcPath[128];
 	char m_szTitle[96];
 	char m_szDetail[160];
 };
@@ -229,13 +243,16 @@ private:
 TMScene* WasmCreateDebugScene(ObjectManager::TM_GAME_STATE state)
 {
 	const char* rcPath = nullptr;
+	bool showDebugOverlay = true;
 	switch (state)
 	{
 	case ObjectManager::TM_GAME_STATE::TM_LOGIN_STATE:
 		rcPath = "UI\\LoginScene.txt";
+		showDebugOverlay = false;
 		break;
 	case ObjectManager::TM_GAME_STATE::TM_CREATEID_STATE:
 		rcPath = "UI\\LoginScene2.txt";
+		showDebugOverlay = false;
 		break;
 	case ObjectManager::TM_GAME_STATE::TM_TEST2_STATE:
 	case ObjectManager::TM_GAME_STATE::TM_SEA_STATE:
@@ -244,7 +261,7 @@ TMScene* WasmCreateDebugScene(ObjectManager::TM_GAME_STATE state)
 		rcPath = "UI\\DemoScene.txt";
 		break;
 	}
-	return new TMWasmDebugStateScene(state, WasmSceneTypeForState(state), rcPath);
+	return new TMWasmDebugStateScene(state, WasmSceneTypeForState(state), rcPath, showDebugOverlay);
 }
 
 class TMWasmCreateCharScene final : public TMSelectCharScene
@@ -252,11 +269,56 @@ class TMWasmCreateCharScene final : public TMSelectCharScene
 public:
 	int InitializeScene() override
 	{
+			if (!TMSelectCharScene::InitializeScene())
+				return 0;
+
+			if (m_pAccountLockDlg)
+				m_pAccountLockDlg->SetVisible(0);
+			if (m_pAccountLock)
+				m_pAccountLock->SetVisible(0);
+			if (m_pInputPWPanel)
+				m_pInputPWPanel->SetVisible(0);
+			VisibleSelectCreate(0);
+			return 1;
+		}
+
+		int OnMouseEvent(unsigned int dwFlags, unsigned int wParam, int nX, int nY) override
+		{
+			const char accountLock = g_AccountLock;
+			g_AccountLock = 1;
+			const int result = TMSelectCharScene::OnMouseEvent(dwFlags, wParam, nX, nY);
+			g_AccountLock = accountLock;
+			return result;
+	}
+};
+
+class TMWasmDirectSelectCharScene final : public TMSelectCharScene
+{
+public:
+	int InitializeScene() override
+	{
+		WasmEnsureDirectSelectCharData(g_pObjectManager);
+
 		if (!TMSelectCharScene::InitializeScene())
 			return 0;
 
-		VisibleSelectCreate(0);
+		if (m_pAccountLockDlg)
+			m_pAccountLockDlg->SetVisible(0);
+		if (m_pAccountLock)
+			m_pAccountLock->SetVisible(0);
+		if (m_pInputPWPanel)
+			m_pInputPWPanel->SetVisible(0);
+		VisibleSelectCreate(1);
 		return 1;
+	}
+
+	int OnMouseEvent(unsigned int dwFlags, unsigned int wParam, int nX, int nY) override
+	{
+		const char accountLock = g_AccountLock;
+		g_AccountLock = 1;
+		const int result = TMSelectCharScene::OnMouseEvent(dwFlags, wParam, nX, nY);
+		g_AccountLock = accountLock;
+		return result;
 	}
 };
 
@@ -349,7 +411,100 @@ void WasmEnsureFieldDebugMobData(ObjectManager* objectManager)
 
 	WasmStateLog("[obj:field] using WASM debug login fixture for real TMFieldScene");
 }
+
+void WasmEnsureDirectSelectCharData(ObjectManager* objectManager)
+{
+	if (!objectManager)
+		return;
+
+	for (int i = 0; i < 4; ++i)
+	{
+		if (objectManager->m_stSelCharData.MobName[i][0])
+			return;
+	}
+
+	FILE* fp = nullptr;
+	fopen_s(&fp, "UI\\selchar.txt", "rt");
+	if (!fp)
+		return;
+
+	std::memset(&objectManager->m_stSelCharData, 0, sizeof(objectManager->m_stSelCharData));
+	for (int i = 0; i < 4; ++i)
+	{
+		int face = 0;
+		int helm = 0;
+		int body = 0;
+		int mantle = 0;
+		int right = 0;
+		int left = 0;
+		int sanc = 0;
+		if (fscanf(fp, "%d,%d,%d,%d,%d,%d,%d", &face, &helm, &body, &mantle, &right, &left, &sanc) != 7)
+			break;
+
+		const char* className = g_pMessageStringTable[121 + i];
+		std::snprintf(
+			objectManager->m_stSelCharData.MobName[i],
+			sizeof(objectManager->m_stSelCharData.MobName[i]),
+			"%s",
+			className ? className : "");
+
+		auto* equip = objectManager->m_stSelCharData.Equip[i];
+		equip[0].sIndex = face;
+		equip[1].sIndex = helm;
+		equip[2].sIndex = body;
+		equip[3].sIndex = body;
+		equip[4].sIndex = body;
+		equip[5].sIndex = body;
+		equip[6].sIndex = left;
+		equip[7].sIndex = right;
+		equip[15].sIndex = mantle;
+		for (int part = 0; part <= 7; ++part)
+		{
+			if (equip[part].sIndex)
+			{
+				equip[part].stEffect[0].cEffect = EF_SANC;
+				equip[part].stEffect[0].cValue = static_cast<unsigned char>(sanc);
+			}
+		}
+		if (equip[15].sIndex)
+		{
+			equip[15].stEffect[0].cEffect = EF_SANC;
+			equip[15].stEffect[0].cValue = static_cast<unsigned char>(sanc);
+		}
+
+		auto& score = objectManager->m_stSelCharData.Score[i];
+		score.Level = 0;
+		score.Hp = 1;
+		score.MaxHp = 100;
+		score.MaxMp = 100;
+		score.Str = 10;
+		score.Int = 10;
+		score.Dex = 10;
+		score.Con = 10;
+		objectManager->m_stSelCharData.HomeTownX[i] = 2096;
+		objectManager->m_stSelCharData.HomeTownY[i] = 2092;
+		objectManager->m_stSelCharData.Coin[i] = 1000;
+	}
+	fclose(fp);
+
+	WasmStateLog("[obj:selectchar] using official selchar.txt visual fixture");
+}
 } // namespace
+
+extern "C" int wyd_wasm_deferred_state_requested()
+{
+	return g_wasmDeferredStateRequested ? 1 : 0;
+}
+
+extern "C" void wyd_wasm_clear_deferred_state_request()
+{
+	g_wasmDeferredStateRequested = false;
+}
+
+extern "C" void wyd_wasm_set_direct_state_request(int active)
+{
+	g_wasmDirectStateRequest = active != 0;
+}
 
 extern "C" int wyd_get_scene_type()
 {
@@ -1386,6 +1541,14 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #if defined(__EMSCRIPTEN__)
 	WasmStateLogValue("[obj:set-state] request=", static_cast<int>(ieNewState));
 
+	if (g_pDevice && !g_pDevice->m_bLoadMeshManager)
+	{
+		m_eCurrentState = ieNewState;
+		g_wasmDeferredStateRequested = true;
+		WasmStateLog("[obj:set-state] deferred until mesh manager is ready");
+		return;
+	}
+
 	if (m_eCurrentState == ieNewState && g_pCurrentScene != nullptr)
 		return;
 
@@ -1443,9 +1606,19 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		break;
 	case TM_GAME_STATE::TM_SELECTCHAR_STATE:
 #if defined(__EMSCRIPTEN__)
-		WasmStateLog("[obj:set-state] new TMSelectCharScene");
-#endif
+		if (g_wasmDirectStateRequest || !g_pSocketManager || !g_pSocketManager->Sock)
+		{
+			WasmStateLog("[obj:set-state] new direct-navigation TMSelectCharScene");
+			pScene = new TMWasmDirectSelectCharScene();
+		}
+		else
+		{
+			WasmStateLog("[obj:set-state] new TMSelectCharScene");
+			pScene = new TMSelectCharScene();
+		}
+#else
 		pScene = new TMSelectCharScene();
+#endif
 		break;
 	case TM_GAME_STATE::TM_CREATECHAR_STATE:
 #if defined(__EMSCRIPTEN__)

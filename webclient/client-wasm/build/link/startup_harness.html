@@ -120,6 +120,18 @@
       display: block;
       background: #000;
       image-rendering: pixelated;
+      cursor: none;
+    }
+    #wyd-text-input {
+      position: fixed;
+      left: -10000px;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
     }
     .loading-overlay {
       display: none;
@@ -192,7 +204,9 @@
       <div id="log">loading...</div>
     </div>
     <div class="canvas-wrap">
-      <canvas id="canvas" width="800" height="600"></canvas>
+      <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
+      <textarea id="wyd-text-input" aria-hidden="true" autocomplete="off" autocapitalize="off"
+        autocorrect="off" spellcheck="false" tabindex="-1"></textarea>
       <div id="loading-overlay" class="loading-overlay">Loading OpenWyd Field preview...</div>
     </div>
   </div>
@@ -201,6 +215,7 @@
     const statusEl = document.getElementById('status');
     const stateInfoEl = document.getElementById('state-info');
     const canvasEl = document.getElementById('canvas');
+    const textInputEl = document.getElementById('wyd-text-input');
     const loadingOverlayEl = document.getElementById('loading-overlay');
     const bootBtn = document.getElementById('boot-btn');
     const tickBtn = document.getElementById('tick-btn');
@@ -277,7 +292,9 @@
       debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
       skipFvf: Number.parseInt(query.get('skipFvf') || '0', 10) || 0,
       tickBurst: Number.parseInt(query.get('tickBurst') || '0', 10) || 0,
-      tickMs: Number.parseInt(query.get('tickMs') || '100', 10) || 0,
+      // Live play follows the browser clock. Deterministic tests opt into fake
+      // time explicitly with ?tickMs=N.
+      tickMs: Number.parseInt(query.get('tickMs') || '0', 10) || 0,
       autoboot: query.get('autoboot') !== '0',
       autostart: query.get('autostart') !== '0',
       quiet: query.get('quiet') === '1',
@@ -409,11 +426,18 @@
     const WM_MOUSEMOVE = 0x0200;
     const WM_LBUTTONDOWN = 0x0201;
     const WM_LBUTTONUP = 0x0202;
+    const WM_LBUTTONDBLCLK = 0x0203;
     const WM_RBUTTONDOWN = 0x0204;
     const WM_RBUTTONUP = 0x0205;
+    const WM_RBUTTONDBLCLK = 0x0206;
     const WM_MBUTTONDOWN = 0x0207;
     const WM_MBUTTONUP = 0x0208;
     const WM_MOUSEWHEEL = 0x020A;
+    const WM_KEYDOWN = 0x0100;
+    const WM_KEYUP = 0x0101;
+    const WM_CHAR = 0x0102;
+    const WM_SYSKEYDOWN = 0x0104;
+    const WM_SYSKEYUP = 0x0105;
     const MK_LBUTTON = 0x0001;
     const MK_RBUTTON = 0x0002;
     const MK_SHIFT = 0x0004;
@@ -440,9 +464,14 @@
       if (event?.ctrlKey) wParam |= MK_CONTROL;
       return wParam >>> 0;
     };
-    const mouseMsgForButton = (button, down) => {
-      if (button === 2) return down ? WM_RBUTTONDOWN : WM_RBUTTONUP;
+    const mouseMsgForButton = (button, down, clickCount = 1) => {
+      const doubleClick = down && clickCount > 0 && clickCount % 2 === 0;
+      if (button === 2) {
+        if (doubleClick) return WM_RBUTTONDBLCLK;
+        return down ? WM_RBUTTONDOWN : WM_RBUTTONUP;
+      }
       if (button === 1) return down ? WM_MBUTTONDOWN : WM_MBUTTONUP;
+      if (doubleClick) return WM_LBUTTONDBLCLK;
       return down ? WM_LBUTTONDOWN : WM_LBUTTONUP;
     };
     const sendMouseEvent = (msg, event, wheelDelta = 0, buttonsOverride = null) => {
@@ -450,6 +479,11 @@
       const point = event ? canvasLogicalPoint(event) : lastMousePoint;
       const buttons = buttonsOverride == null ? (event?.buttons || 0) : buttonsOverride;
       return Module._wyd_mouse_event(msg >>> 0, mouseWParam(event, buttons), point.x | 0, point.y | 0, wheelDelta | 0);
+    };
+    const resumeClientAudio = () => {
+      if (window.Module && typeof Module._wyd_audio_resume === 'function') {
+        Module._wyd_audio_resume();
+      }
     };
     const releaseAllMouseButtons = () => {
       if (!window.Module || typeof Module._wyd_mouse_event !== 'function') return;
@@ -467,17 +501,171 @@
     });
     canvasEl.addEventListener('mousedown', (event) => {
       event.preventDefault();
-      sendMouseEvent(mouseMsgForButton(event.button, true), event);
+      resumeClientAudio();
+      canvasEl.focus({ preventScroll: true });
+      sendMouseEvent(mouseMsgForButton(event.button, true, event.detail), event);
+      queueMicrotask(syncTextInputFocus);
     });
     window.addEventListener('mouseup', (event) => {
       sendMouseEvent(mouseMsgForButton(event.button, false), event);
     });
     canvasEl.addEventListener('wheel', (event) => {
       event.preventDefault();
+      resumeClientAudio();
       const wheelDelta = event.deltaY < 0 ? -120 : 120;
       sendMouseEvent(WM_MOUSEWHEEL, event, wheelDelta);
     }, { passive: false });
     window.addEventListener('blur', releaseAllMouseButtons);
+
+    const heldKeys = new Set();
+    let textInputComposing = false;
+    let suppressCommittedText = '';
+    const cp1252Special = new Map([
+      [0x20AC, 0x80], [0x201A, 0x82], [0x0192, 0x83], [0x201E, 0x84],
+      [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02C6, 0x88],
+      [0x2030, 0x89], [0x0160, 0x8A], [0x2039, 0x8B], [0x0152, 0x8C],
+      [0x017D, 0x8E], [0x2018, 0x91], [0x2019, 0x92], [0x201C, 0x93],
+      [0x201D, 0x94], [0x2022, 0x95], [0x2013, 0x96], [0x2014, 0x97],
+      [0x02DC, 0x98], [0x2122, 0x99], [0x0161, 0x9A], [0x203A, 0x9B],
+      [0x0153, 0x9C], [0x017E, 0x9E], [0x0178, 0x9F]
+    ]);
+    const unicodeToCp1252 = (character) => {
+      const codePoint = character.codePointAt(0);
+      if ((codePoint >= 0x20 && codePoint <= 0x7E) ||
+          (codePoint >= 0xA0 && codePoint <= 0xFF)) {
+        return codePoint;
+      }
+      return cp1252Special.get(codePoint) ?? 0x3F;
+    };
+    const sendClientChars = (text) => {
+      if (!text || !window.Module || typeof Module._wyd_key_event !== 'function') return;
+      for (const character of Array.from(text)) {
+        Module._wyd_key_event(WM_CHAR, unicodeToCp1252(character) >>> 0, 0);
+      }
+    };
+    const clientTextInputActive = () =>
+      !!(window.Module &&
+         typeof Module._wyd_text_input_active === 'function' &&
+         Module._wyd_text_input_active());
+    const syncTextInputFocus = () => {
+      if (clientTextInputActive()) {
+        if (document.activeElement !== textInputEl) {
+          textInputEl.value = '';
+          textInputEl.focus({ preventScroll: true });
+        }
+      } else if (document.activeElement === textInputEl) {
+        textInputEl.value = '';
+        textInputEl.blur();
+        canvasEl.focus({ preventScroll: true });
+      }
+    };
+    const routeKeyboardToClient = () =>
+      publicPlayMode ||
+      document.activeElement === canvasEl ||
+      document.activeElement === textInputEl ||
+      document.activeElement === document.body;
+    const keyCodeForEvent = (event) => {
+      if (event.keyCode) return event.keyCode;
+      const named = {
+        Backspace: 0x08, Tab: 0x09, Enter: 0x0D, Shift: 0x10, Control: 0x11,
+        Alt: 0x12, Escape: 0x1B, ' ': 0x20, PageUp: 0x21, PageDown: 0x22,
+        End: 0x23, Home: 0x24, ArrowLeft: 0x25, ArrowUp: 0x26,
+        ArrowRight: 0x27, ArrowDown: 0x28, Delete: 0x2E
+      };
+      return named[event.key] || (event.key?.length === 1 ? event.key.toUpperCase().charCodeAt(0) : 0);
+    };
+    const charCodeForEvent = (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return 0;
+      if (event.key?.length === 1) return event.key.charCodeAt(0) & 0xFF;
+      if (event.key === 'Backspace') return 0x08;
+      if (event.key === 'Tab') return 0x09;
+      if (event.key === 'Enter') return 0x0D;
+      if (event.key === 'Escape') return 0x1B;
+      return 0;
+    };
+    window.addEventListener('keydown', (event) => {
+      if (!routeKeyboardToClient() || !window.Module || typeof Module._wyd_key_event !== 'function') return;
+      const keyCode = keyCodeForEvent(event);
+      if (!keyCode) return;
+      resumeClientAudio();
+      heldKeys.add(keyCode);
+      Module._wyd_key_event(event.altKey ? WM_SYSKEYDOWN : WM_KEYDOWN, keyCode >>> 0, event.repeat ? 1 : 0);
+      const browserTextMode = document.activeElement === textInputEl;
+      if (browserTextMode) {
+        const directControlChars = {
+          Backspace: 0x08, Tab: 0x09, Enter: 0x0D, Escape: 0x1B
+        };
+        const charCode = directControlChars[event.key] || 0;
+        if (charCode) {
+          event.preventDefault();
+          Module._wyd_key_event(WM_CHAR, charCode >>> 0, event.repeat ? 1 : 0);
+        } else if (event.ctrlKey || event.metaKey || event.altKey || event.key?.length !== 1) {
+          event.preventDefault();
+        }
+      } else {
+        event.preventDefault();
+        const charCode = charCodeForEvent(event);
+        if (charCode) Module._wyd_key_event(WM_CHAR, charCode >>> 0, event.repeat ? 1 : 0);
+      }
+      syncTextInputFocus();
+    });
+    window.addEventListener('keyup', (event) => {
+      if (!routeKeyboardToClient() || !window.Module || typeof Module._wyd_key_event !== 'function') return;
+      const keyCode = keyCodeForEvent(event);
+      if (!keyCode) return;
+      event.preventDefault();
+      heldKeys.delete(keyCode);
+      Module._wyd_key_event(event.altKey || keyCode === 0x12 ? WM_SYSKEYUP : WM_KEYUP, keyCode >>> 0, 0);
+      syncTextInputFocus();
+    });
+    textInputEl.addEventListener('compositionstart', () => {
+      textInputComposing = true;
+      suppressCommittedText = '';
+    });
+    textInputEl.addEventListener('compositionend', (event) => {
+      textInputComposing = false;
+      const committed = event.data || '';
+      sendClientChars(committed);
+      suppressCommittedText = committed;
+      textInputEl.value = '';
+      syncTextInputFocus();
+    });
+    textInputEl.addEventListener('beforeinput', (event) => {
+      if (!clientTextInputActive()) return;
+      const inputType = event.inputType || '';
+      if (inputType === 'insertCompositionText' || textInputComposing) {
+        event.preventDefault();
+        return;
+      }
+      if (inputType.startsWith('insert')) {
+        const inserted = event.data || '';
+        event.preventDefault();
+        if (inserted && inserted === suppressCommittedText) {
+          suppressCommittedText = '';
+        } else {
+          suppressCommittedText = '';
+          sendClientChars(inserted);
+        }
+      }
+      textInputEl.value = '';
+      syncTextInputFocus();
+    });
+    textInputEl.addEventListener('paste', (event) => {
+      if (!clientTextInputActive()) return;
+      event.preventDefault();
+      const pasted = event.clipboardData?.getData('text/plain') || '';
+      sendClientChars(pasted);
+      suppressCommittedText = pasted;
+      textInputEl.value = '';
+    });
+    textInputEl.addEventListener('input', () => {
+      textInputEl.value = '';
+    });
+    window.addEventListener('blur', () => {
+      if (!window.Module || typeof Module._wyd_key_event !== 'function') return;
+      for (const keyCode of heldKeys) Module._wyd_key_event(WM_KEYUP, keyCode >>> 0, 0);
+      heldKeys.clear();
+    });
 
     const applyFieldMode = () => {
       if (!window.Module || typeof Module._wyd_set_field_mode !== 'function') return;
@@ -520,6 +708,7 @@
       try {
         if (advanceTime) advanceTickTime();
         const ret = Module._wyd_tick_client();
+        syncTextInputFocus();
         if (!silent) write(`_wyd_tick_client returned: ${ret}`, ret >= 0 ? 'ok' : 'err');
         setStatus(`tick=${ret}`);
         if (!silent) refreshStateInfo();

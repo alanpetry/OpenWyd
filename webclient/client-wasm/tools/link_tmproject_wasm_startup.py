@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from collections import Counter
 from pathlib import Path
 
 UNDEF_RE = re.compile(r"undefined symbol: (.+)$")
+VALID_OPT_LEVELS = {"O0", "O1", "O2", "O3", "Os", "Oz"}
 
 
-def compile_source(repo_root: Path, src: Path, out_obj: Path) -> None:
+def compile_source(repo_root: Path, src: Path, out_obj: Path, optimization_flag: str) -> None:
     compat_include = repo_root / "webclient/client-wasm/compat/include"
     case_shims_include = compat_include / "case_shims"
     tmproject_include = repo_root / "Projects/TMProject"
@@ -29,6 +31,7 @@ def compile_source(repo_root: Path, src: Path, out_obj: Path) -> None:
     cmd = [
         "em++",
         "-std=c++17",
+        optimization_flag,
         "-c",
         "-fms-extensions",
         "-Wno-microsoft-cast",
@@ -193,6 +196,13 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
+    opt_level = os.environ.get("OPENWYD_WASM_OPT_LEVEL", "O2")
+    if opt_level not in VALID_OPT_LEVELS:
+        parser.error(
+            "OPENWYD_WASM_OPT_LEVEL must be one of: "
+            + ", ".join(sorted(VALID_OPT_LEVELS))
+        )
+    optimization_flag = f"-{opt_level}"
     obj_root = (repo_root / args.obj_root).resolve()
     link_dir = (repo_root / args.link_dir).resolve()
     report_json = (repo_root / args.report_json).resolve()
@@ -206,11 +216,17 @@ def main() -> int:
     entry_obj = obj_root / "webclient/client-wasm/compat/src/wyd_client_entry.o"
     stubs_obj = obj_root / "webclient/client-wasm/compat/src/win32_emscripten_stubs.o"
 
-    print(f"[startup-link] compiling: {entry_src.relative_to(repo_root)}")
-    compile_source(repo_root, entry_src, entry_obj)
+    print(
+        f"[startup-link] compiling: {entry_src.relative_to(repo_root)} "
+        f"({optimization_flag})"
+    )
+    compile_source(repo_root, entry_src, entry_obj, optimization_flag)
 
-    print(f"[startup-link] compiling: {stubs_src.relative_to(repo_root)}")
-    compile_source(repo_root, stubs_src, stubs_obj)
+    print(
+        f"[startup-link] compiling: {stubs_src.relative_to(repo_root)} "
+        f"({optimization_flag})"
+    )
+    compile_source(repo_root, stubs_src, stubs_obj, optimization_flag)
 
     tm_objs = all_tmproject_objects(obj_root)
     if not tm_objs:
@@ -228,6 +244,7 @@ def main() -> int:
 
     link_cmd = [
         "em++",
+        optimization_flag,
         f"@{rsp_path.relative_to(repo_root)}",
         "--no-entry",
         "--profiling-funcs",
@@ -297,6 +314,11 @@ def main() -> int:
         "_wyd_d3d9_fvf322_class_count",
         "_wyd_d3d9_fvf322_class_max",
         "_wyd_d3d9_fvf322_class_name",
+        "_wyd_d3d9_fvf322_requested_depth_write_enabled",
+        "_wyd_d3d9_fvf322_requested_depth_write_disabled",
+        "_wyd_d3d9_fvf322_forced_depth_write_disabled",
+        "_wyd_d3d9_fvf322_requested_depth_write_enabled_class",
+        "_wyd_d3d9_fvf322_requested_depth_write_disabled_class",
         "_wyd_d3d9_clipw_empty_signature_count",
         "_wyd_d3d9_clipw_empty_signature_sample",
         "_wyd_d3d9_skin_suspicious_texture_draws",
@@ -306,6 +328,11 @@ def main() -> int:
         "_wyd_d3d9_terrain_stage1_modulate2x_draws",
         "_wyd_d3d9_terrain_stage1_disable_draws",
         "_wyd_d3d9_fvf322_lightmap_heuristic_draws",
+        "_wyd_selserver_set_demo_type_override",
+        "_wyd_cursor_visible",
+        "_wyd_selserver_demo_type",
+        "_wyd_selserver_start_run",
+        "_wyd_selserver_demo_elapsed",
         "_wyd_selserver_human_version",
         "_wyd_selserver_human_count",
         "_wyd_selserver_human_present",
@@ -400,6 +427,25 @@ def main() -> int:
         "_wyd_selchar_char_count",
         "_wyd_selchar_human_present",
         "_wyd_selchar_name",
+        "_wyd_selchar_sample_present",
+        "_wyd_selchar_sample_skin_present",
+        "_wyd_selchar_sample_visible",
+        "_wyd_selchar_sample_x",
+        "_wyd_selchar_sample_y",
+        "_wyd_selchar_sample_height",
+        "_wyd_selchar_sample_animation",
+        "_wyd_selchar_sample_mesh_type",
+        "_wyd_selchar_sample_mesh_generated",
+        "_wyd_selchar_sample_frame_meshes",
+        "_wyd_selchar_sample_bone_animation",
+        "_wyd_selchar_sample_look_mesh",
+        "_wyd_selchar_sample_look_skin",
+        "_wyd_selchar_skin_restore_calls",
+        "_wyd_selchar_skin_restore_loads",
+        "_wyd_selchar_skin_restore_parents",
+        "_wyd_selchar_skin_restore_last",
+        "_wyd_skin_animation_num_parts",
+        "_wyd_skin_animation_num_bones",
         "_wyd_serverlist_entry",
         "_wyd_get_scene_type",
         "_wyd_state_is_placeholder",
@@ -408,6 +454,12 @@ def main() -> int:
         "_wyd_debug_camera_sight_length",
         "_wyd_debug_camera_want_length",
         "_wyd_mouse_event",
+        "_wyd_key_event",
+        "_wyd_text_input_active",
+        "_wyd_text_input_value",
+        "_wyd_input_key_event_count",
+        "_wyd_input_key_last_msg",
+        "_wyd_input_key_last_key",
         "_wyd_input_mouse_x",
         "_wyd_input_mouse_y",
         "_wyd_input_mouse_left_down",
@@ -435,6 +487,15 @@ def main() -> int:
         "_wyd_control_abs_y",
         "_wyd_control_width",
         "_wyd_control_height",
+        "_wyd_control_visible_text_count",
+        "_wyd_control_visible_text_id",
+        "_wyd_control_visible_text_type",
+        "_wyd_control_visible_text_x",
+        "_wyd_control_visible_text_y",
+        "_wyd_control_visible_text_width",
+        "_wyd_control_visible_text_height",
+        "_wyd_control_visible_text_color",
+        "_wyd_control_visible_text_value",
         "_wyd_set_field_mode",
         "_wyd_get_field_mode",
         "_wyd_field_debug_fixture_used",
@@ -560,6 +621,17 @@ def main() -> int:
         "_wyd_sun_last_screen_x",
         "_wyd_sun_last_screen_y",
         "_wyd_sun_last_screen_z",
+        "_wyd_audio_resume",
+        "_wyd_audio_buffers_created",
+        "_wyd_audio_uploads",
+        "_wyd_audio_play_calls",
+        "_wyd_audio_stop_calls",
+        "_wyd_audio_music_play_calls",
+        "_wyd_audio_music_stop_calls",
+        "_wyd_audio_music_state",
+        "_wyd_audio_get_music_volume",
+        "_wyd_d3d9_set_detailed_telemetry",
+        "_wyd_d3d9_get_detailed_telemetry",
     ]
     for index, arg in enumerate(link_cmd):
         if arg.startswith("-sEXPORTED_FUNCTIONS=["):

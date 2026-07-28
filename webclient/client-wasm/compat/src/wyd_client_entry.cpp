@@ -2,15 +2,21 @@
 
 #include "d3d9.h"
 #include "d3dx9.h"
+#include "CFrame.h"
+#include "DirShow.h"
+#include "MeshManager.h"
 #include "NewApp.h"
 #include "ObjectManager.h"
 #include "ResourceControl.h"
 #include "SControl.h"
+#include "SControlContainer.h"
 #include "TimerManager.h"
 #include "TMGlobal.h"
+#include "TMHuman.h"
 #include "TMScene.h"
 #include "TMSelectCharScene.h"
 #include "TMSelectServerScene.h"
+#include "TMSkinMesh.h"
 
 #include <cstring>
 #include <cstdio>
@@ -27,6 +33,7 @@ extern char g_szOS[3];
 extern ObjectManager* g_pObjectManager;
 extern NewApp* g_pApp;
 extern char g_pServerList[MAX_SERVERGROUP][MAX_SERVERNUMBER][64];
+extern "C" void wyd_wasm_set_direct_state_request(int active);
 
 // Real client entrypoint from Projects/TMProject/NewApp.cpp
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow);
@@ -60,6 +67,7 @@ void WydBootLog(const char* msg) {
 }  // namespace
 
 extern "C" void wyd_dinput_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta);
+extern "C" void wyd_dinput_key_event(unsigned int msg, unsigned int key);
 
 extern "C" int wyd_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
   wyd_dinput_mouse_event(msg, wParam, x, y, wheel_delta);
@@ -87,6 +95,50 @@ extern "C" int wyd_mouse_event(unsigned int msg, unsigned int wParam, int x, int
   }
 
   return 1;
+}
+
+extern "C" int wyd_key_event(unsigned int msg, unsigned int wParam, int lParam) {
+  wyd_dinput_key_event(msg, wParam);
+  if (!g_wyd_app) return 0;
+  return static_cast<int>(
+      g_wyd_app->MsgProc(g_wyd_app->m_hWnd, msg, static_cast<WPARAM>(wParam), lParam));
+}
+
+static bool WydControlEffectivelyInteractive(
+    const SControlContainer* controls,
+    const SControl* control) {
+  if (!controls || !control) return false;
+
+  const TreeNode* node = control;
+  while (node) {
+    const auto* current = static_cast<const SControl*>(node);
+    if (!current->m_bVisible || !current->m_bEnable) return false;
+    if (current == controls->m_pControlRoot) return true;
+    node = node->m_pTop;
+  }
+  return false;
+}
+
+extern "C" int wyd_text_input_active() {
+  if (!g_pObjectManager) return 0;
+
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  SControlContainer* controls = scene ? scene->GetCtrlContainer() : nullptr;
+  SControl* focus = controls ? controls->m_pFocusControl : nullptr;
+  return focus &&
+         focus->m_eCtrlType == CONTROL_TYPE::CTRL_TYPE_EDITABLETEXT &&
+         focus->m_bFocused &&
+         WydControlEffectivelyInteractive(controls, focus);
+}
+
+extern "C" const char* wyd_text_input_value() {
+  static const char empty[] = "";
+  if (!wyd_text_input_active()) return empty;
+
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  SControlContainer* controls = scene ? scene->GetCtrlContainer() : nullptr;
+  SControl* focus = controls ? controls->m_pFocusControl : nullptr;
+  return focus ? static_cast<SEditableText*>(focus)->GetText() : empty;
 }
 
 extern "C" int wyd_boot_client(int fullscreen) {
@@ -174,13 +226,25 @@ extern "C" int wyd_get_game_state() {
   return static_cast<int>(g_pObjectManager->m_eCurrentState);
 }
 
+extern "C" int wyd_cursor_visible() {
+  return g_pCursor && g_pCursor->m_bVisible ? 1 : 0;
+}
+
 extern "C" int wyd_set_game_state(int state) {
   if (!g_pObjectManager) return 0;
   if (state < static_cast<int>(ObjectManager::TM_GAME_STATE::TM_NONE_STATE) ||
       state > static_cast<int>(ObjectManager::TM_GAME_STATE::TM_FIELD2_STATE)) {
     return 0;
   }
+  if (static_cast<int>(g_pObjectManager->m_eCurrentState) != state) {
+    // Direct harness navigation can bypass the original transition packet
+    // that invalidates the cached BGM index. Let the destination scene choose
+    // and start its official track again.
+    DS_SOUND_MANAGER::m_nMusicIndex = -1;
+  }
+  wyd_wasm_set_direct_state_request(1);
   g_pObjectManager->SetCurrentState(static_cast<ObjectManager::TM_GAME_STATE>(state));
+  wyd_wasm_set_direct_state_request(0);
   return 1;
 }
 
@@ -211,6 +275,100 @@ extern "C" const char* wyd_selchar_name(int slot) {
   static char empty[1] = {0};
   if (!g_pObjectManager || slot < 0 || slot >= 4) return empty;
   return g_pObjectManager->m_stSelCharData.MobName[slot];
+}
+
+static TMHuman* WydSelectCharSampleHuman(int slot) {
+  if (!g_pObjectManager || slot < 0 || slot >= 4) return nullptr;
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  if (!scene || scene->GetSceneType() != ESCENE_TYPE::ESCENE_SELCHAR) return nullptr;
+  return static_cast<TMSelectCharScene*>(scene)->m_pSampleHuman[slot];
+}
+
+static int WydCountFrameMeshes(CFrame* frame) {
+  int count = 0;
+  for (CFrame* node = frame; node; node = node->m_pSibling) {
+    if (node->m_pMesh) ++count;
+    if (node->m_pFirstChild) count += WydCountFrameMeshes(node->m_pFirstChild);
+  }
+  return count;
+}
+
+extern "C" int wyd_selchar_sample_present(int slot) {
+  return WydSelectCharSampleHuman(slot) ? 1 : 0;
+}
+
+extern "C" int wyd_selchar_sample_skin_present(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human && human->m_pSkinMesh ? 1 : 0;
+}
+
+extern "C" int wyd_selchar_sample_visible(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human ? static_cast<int>(human->m_bVisible) : 0;
+}
+
+extern "C" float wyd_selchar_sample_x(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human ? human->m_vecPosition.x : 0.0f;
+}
+
+extern "C" float wyd_selchar_sample_y(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human ? human->m_vecPosition.y : 0.0f;
+}
+
+extern "C" float wyd_selchar_sample_height(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human ? human->m_fHeight : 0.0f;
+}
+
+extern "C" int wyd_selchar_sample_animation(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human && human->m_pSkinMesh ? human->m_pSkinMesh->m_nAniIndex : -1;
+}
+
+extern "C" int wyd_selchar_sample_mesh_type(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human ? human->m_nSkinMeshType : -1;
+}
+
+extern "C" int wyd_selchar_sample_mesh_generated(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human && human->m_pSkinMesh ? human->m_pSkinMesh->m_bMeshGenerated : 0;
+}
+
+extern "C" int wyd_selchar_sample_frame_meshes(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human && human->m_pSkinMesh ? WydCountFrameMeshes(human->m_pSkinMesh->m_pRoot) : 0;
+}
+
+extern "C" int wyd_selchar_sample_bone_animation(int slot) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  return human && human->m_pSkinMesh ? human->m_pSkinMesh->m_nBoneAniIndex : -1;
+}
+
+extern "C" int wyd_selchar_sample_look_mesh(int slot, int part) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  if (!human || part < 0 || part >= 8) return -1;
+  const short* look = reinterpret_cast<const short*>(&human->m_stLookInfo);
+  return static_cast<int>(look[part * 2]);
+}
+
+extern "C" int wyd_selchar_sample_look_skin(int slot, int part) {
+  TMHuman* human = WydSelectCharSampleHuman(slot);
+  if (!human || part < 0 || part >= 8) return -1;
+  const short* look = reinterpret_cast<const short*>(&human->m_stLookInfo);
+  return static_cast<int>(look[part * 2 + 1]);
+}
+
+extern "C" int wyd_skin_animation_num_parts(int bone_animation) {
+  if (bone_animation < 0 || bone_animation >= MAX_BONE_ANIMATION_LIST) return -1;
+  return static_cast<int>(MeshManager::m_BoneAnimationList[bone_animation].numParts);
+}
+
+extern "C" int wyd_skin_animation_num_bones(int bone_animation) {
+  if (bone_animation < 0 || bone_animation >= MAX_BONE_ANIMATION_LIST) return -1;
+  return static_cast<int>(MeshManager::m_BoneAnimationList[bone_animation].numBone);
 }
 
 extern "C" const char* wyd_serverlist_entry(int group, int index) {

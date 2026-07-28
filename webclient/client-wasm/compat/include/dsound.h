@@ -42,6 +42,12 @@ using LPDIRECTSOUND3DLISTENER = IDirectSound3DListener*;
 #ifndef DSBPLAY_LOOPING
 #define DSBPLAY_LOOPING 0x00000001
 #endif
+#ifndef DSBSTATUS_PLAYING
+#define DSBSTATUS_PLAYING 0x00000001
+#endif
+#ifndef DSBSTATUS_BUFFERLOST
+#define DSBSTATUS_BUFFERLOST 0x00000002
+#endif
 #ifndef DSERR_BUFFERTOOSMALL
 #define DSERR_BUFFERTOOSMALL ((HRESULT)0x88780096L)
 #endif
@@ -87,49 +93,44 @@ struct DS3DLISTENER {
 };
 
 struct IDirectSoundBuffer : public IUnknown {
-  template <typename... Args>
-  HRESULT GetStatus(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT Restore(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT SetFormat(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT SetVolume(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT SetCurrentPosition(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT GetCurrentPosition(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT Lock(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT Unlock(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT Play(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT Stop(Args...) { return E_NOTIMPL; }
+  virtual HRESULT GetStatus(DWORD* status) = 0;
+  virtual HRESULT Restore() = 0;
+  virtual HRESULT SetFormat(const WAVEFORMATEX* format) = 0;
+  virtual HRESULT SetVolume(LONG volume) = 0;
+  virtual HRESULT SetCurrentPosition(DWORD position) = 0;
+  virtual HRESULT GetCurrentPosition(DWORD* playCursor, DWORD* writeCursor) = 0;
+  virtual HRESULT Lock(
+      DWORD offset,
+      DWORD bytes,
+      void** audioPtr1,
+      DWORD* audioBytes1,
+      void** audioPtr2,
+      DWORD* audioBytes2,
+      DWORD flags) = 0;
+  virtual HRESULT Unlock(void* audioPtr1, DWORD audioBytes1, void* audioPtr2, DWORD audioBytes2) = 0;
+  virtual HRESULT Play(DWORD reserved1, DWORD priority, DWORD flags) = 0;
+  virtual HRESULT Stop() = 0;
 };
 
 struct IDirectSound3DBuffer : public IUnknown {
-  template <typename... Args>
-  HRESULT GetAllParameters(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT SetAllParameters(Args...) { return E_NOTIMPL; }
+  virtual HRESULT GetAllParameters(DS3DBUFFER* parameters) = 0;
+  virtual HRESULT SetAllParameters(const DS3DBUFFER* parameters, DWORD apply) = 0;
 };
 
 struct IDirectSound3DListener : public IUnknown {
-  template <typename... Args>
-  HRESULT GetAllParameters(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT SetAllParameters(Args...) { return E_NOTIMPL; }
+  virtual HRESULT GetAllParameters(DS3DLISTENER* parameters) = 0;
+  virtual HRESULT SetAllParameters(const DS3DLISTENER* parameters, DWORD apply) = 0;
 };
 
 struct IDirectSound8 : public IUnknown {
-  template <typename... Args>
-  HRESULT SetCooperativeLevel(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT CreateSoundBuffer(Args...) { return E_NOTIMPL; }
-  template <typename... Args>
-  HRESULT DuplicateSoundBuffer(Args...) { return E_NOTIMPL; }
+  virtual HRESULT SetCooperativeLevel(HWND window, DWORD level) = 0;
+  virtual HRESULT CreateSoundBuffer(
+      const DSBUFFERDESC* description,
+      IDirectSoundBuffer** buffer,
+      IUnknown* outer) = 0;
+  virtual HRESULT DuplicateSoundBuffer(
+      IDirectSoundBuffer* original,
+      IDirectSoundBuffer** duplicate) = 0;
 };
 
 inline constexpr GUID IID_IDirectSound3DListener = {0x279afa83, 0x4981, 0x11ce, {0xa5, 0x21, 0x00, 0x20, 0xaf, 0x0b, 0xe5, 0x60}};

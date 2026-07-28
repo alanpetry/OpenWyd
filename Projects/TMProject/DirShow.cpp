@@ -2,6 +2,13 @@
 #include "DirShow.h"
 #include "TMGlobal.h"
 
+#if defined(__EMSCRIPTEN__)
+extern "C" int wyd_audio_play_music_file(const char* path, int volume);
+extern "C" int wyd_audio_stop_music();
+extern "C" int wyd_audio_set_music_volume(int volume);
+extern "C" int wyd_audio_get_music_volume();
+#endif
+
 int DS_SOUND_MANAGER::m_nMusicIndex = -1;
 int DS_SOUND_MANAGER::m_nCastleIndex = -1;
 char DS_SOUND_MANAGER::m_szMusicPathOrigin[15][256] = {
@@ -44,26 +51,47 @@ void ConvertBGM(const char* szFileName)
 {
 	static char byte_801BB0[172] =
 	{
-	  '±', 'Ý', '°', '­', '»', 'ê', 'Ã', '£', '¾', 'Æ', '°', '¡', 'À', 'Ú', 'À', 'Ï', '¸', '¸', 'À', 'Ì', 'Ã', 'µ', 'º',
-	  'À', 'º', '¼', '¼', 'ö', '·', 'Ï', '¾', 'Æ', '¸', '§', '´', 'ä', '°', 'í', '½', 'Å', 'º', 'ñ', 'Ç', 'Ï', '±', '¸',
-	  '³', 'ª', '¿', 'ì', '¸', '®', '³', 'ª', '¶', 'ó', 'Á', 'Á', 'À', 'º', '³', 'ª', '¶', 'ó', '»', 'õ', '³', 'ª', '¶',
-	  'ó', 'À', 'Ç', '¾', 'î', '¸', '°', 'À', 'Ì', '´', 'Â', 'À', 'Ï', 'Â', 'ï', 'À', 'Ï', '¾', 'î', '³', '³', '´', 'Ï',
-	  '´', 'Ù', 'À', 'á', '²', 'Ù', '·', '¯', '±', 'â', '¾', 'ø', '´', 'Â', '³', 'ª', '¶', 'ó', '¿', 'ì', '¸', '®', '³',
-	  'ª', '¶', 'ó', 'Á', 'Á', 'À', 'º', '³', 'ª', '¶', 'ó', '¹', '«', '±', 'Ã', 'È', '­', '¹', '«', '±', 'Ã', 'È', '­',
-	  '¿', 'ì', '¸', '®', '³', 'ª', '¶', 'ó', '²', 'É', '»', 'ï', 'Ã', 'µ', '¸', '®', '°', '­', '»', 'ê', '¿', '¡', '¿',
-	  'ì', '¸', '®', '³', 'ª', '¶', 'ó', '²', 'É', '\0' 
+	  '\xB1', '\xDD', '\xB0', '\xAD', '\xBB', '\xEA', '\xC3', '\xA3', '\xBE', '\xC6', '\xB0', '\xA1', '\xC0', '\xDA', '\xC0', '\xCF', '\xB8', '\xB8', '\xC0', '\xCC', '\xC3', '\xB5', '\xBA',
+	  '\xC0', '\xBA', '\xBC', '\xBC', '\xF6', '\xB7', '\xCF', '\xBE', '\xC6', '\xB8', '\xA7', '\xB4', '\xE4', '\xB0', '\xED', '\xBD', '\xC5', '\xBA', '\xF1', '\xC7', '\xCF', '\xB1', '\xB8',
+	  '\xB3', '\xAA', '\xBF', '\xEC', '\xB8', '\xAE', '\xB3', '\xAA', '\xB6', '\xF3', '\xC1', '\xC1', '\xC0', '\xBA', '\xB3', '\xAA', '\xB6', '\xF3', '\xBB', '\xF5', '\xB3', '\xAA', '\xB6',
+	  '\xF3', '\xC0', '\xC7', '\xBE', '\xEE', '\xB8', '\xB0', '\xC0', '\xCC', '\xB4', '\xC2', '\xC0', '\xCF', '\xC2', '\xEF', '\xC0', '\xCF', '\xBE', '\xEE', '\xB3', '\xB3', '\xB4', '\xCF',
+	  '\xB4', '\xD9', '\xC0', '\xE1', '\xB2', '\xD9', '\xB7', '\xAF', '\xB1', '\xE2', '\xBE', '\xF8', '\xB4', '\xC2', '\xB3', '\xAA', '\xB6', '\xF3', '\xBF', '\xEC', '\xB8', '\xAE', '\xB3',
+	  '\xAA', '\xB6', '\xF3', '\xC1', '\xC1', '\xC0', '\xBA', '\xB3', '\xAA', '\xB6', '\xF3', '\xB9', '\xAB', '\xB1', '\xC3', '\xC8', '\xAD', '\xB9', '\xAB', '\xB1', '\xC3', '\xC8', '\xAD',
+	  '\xBF', '\xEC', '\xB8', '\xAE', '\xB3', '\xAA', '\xB6', '\xF3', '\xB2', '\xC9', '\xBB', '\xEF', '\xC3', '\xB5', '\xB8', '\xAE', '\xB0', '\xAD', '\xBB', '\xEA', '\xBF', '\xA1', '\xBF',
+	  '\xEC', '\xB8', '\xAE', '\xB3', '\xAA', '\xB6', '\xF3', '\xB2', '\xC9', '\0'
 	};
 
-	auto nLenF = strlen(szFileName);
-	char szTemp[MAX_PATH];
-	sprintf_s(szTemp, szFileName);
-	sprintf_s((char*)szTemp[nLenF + 3], 256, "bon");
+	if (!szFileName || !szFileName[0])
+		return;
+
+	char szTemp[MAX_PATH]{};
+	sprintf_s(szTemp, "%s", szFileName);
+
+	char* pExtension = strrchr(szTemp, '.');
+	if (pExtension)
+		sprintf_s(pExtension, MAX_PATH - static_cast<size_t>(pExtension - szTemp), ".bon");
+	else
+	{
+		const size_t nLength = strlen(szTemp);
+		sprintf_s(szTemp + nLength, MAX_PATH - nLength, ".bon");
+	}
 
 	auto handle = _open(szTemp, 0x8000, 0);
 	if (handle != -1)
 	{
 		auto sz = _filelength(handle);
+		if (sz <= 0)
+		{
+			_close(handle);
+			return;
+		}
+
 		auto pBuffer = (char*)malloc(sz);
+		if (!pBuffer)
+		{
+			_close(handle);
+			return;
+		}
 
 		_read(handle, pBuffer, sz);
 		_close(handle);
@@ -89,6 +117,8 @@ DS_SOUND_CHANNEL::DS_SOUND_CHANNEL()
 	media_seeking = nullptr;
 	media_control = nullptr;
 	graph_builder = nullptr;
+	media_event = nullptr;
+	init_flag = false;
 
 	CoInitialize(0);
 
@@ -243,23 +273,32 @@ HRESULT DS_SOUND_CHANNEL::SetPosition(long long pos)
 DS_SOUND_MANAGER::DS_SOUND_MANAGER(int channel_num, int lBGMVolume)
 {
 	m_hwndASFPlayer = NULL;
+	this->channel_num = channel_num;
+	cur_channel = 1;
+	m_lBGMVolume = lBGMVolume;
 
+#if defined(__EMSCRIPTEN__)
+	channels = nullptr;
+	init_flag = channel_num >= 1;
+	return;
+#else
 //	int* block = new int[24 * channel_num | -((24 * channel_num >> 32) != 0) + 4];
 	channels = new DS_SOUND_CHANNEL[channel_num];
 
 	if (channels && channel_num >= 1)
 	{
-		this->channel_num = channel_num;
-		cur_channel = 1;
 		init_flag = 1;
-		m_lBGMVolume = lBGMVolume;
 	}
 	else
 		init_flag = 0;
+#endif
 }
 
 DS_SOUND_MANAGER::~DS_SOUND_MANAGER()
 {
+#if defined(__EMSCRIPTEN__)
+	wyd_audio_stop_music();
+#endif
 	if (channels)
 		delete[] channels;
 
@@ -286,6 +325,11 @@ int DS_SOUND_MANAGER::PlaySoundA(const char* path, const bool BGM_flag)
 	if (!init_flag)
 		return -1;
 
+#if defined(__EMSCRIPTEN__)
+	if (!patha || !BGM_flag)
+		return -1;
+	return wyd_audio_play_music_file(patha, m_lBGMVolume) ? 0 : -1;
+#else
 	int channel = 0;
 	if (BGM_flag == 1)
 		channel = 0;
@@ -344,6 +388,7 @@ int DS_SOUND_MANAGER::PlaySoundA(const char* path, const bool BGM_flag)
 		++cur_channel;
 
 	return play_channel;
+#endif
 }
 
 int DS_SOUND_MANAGER::PlayBGM(const char* path)
@@ -411,7 +456,11 @@ void DS_SOUND_MANAGER::StopASF()
 
 void DS_SOUND_MANAGER::OnEvent()
 {
+#if defined(__EMSCRIPTEN__)
+	return;
+#else
 	channels->OnEvent();
+#endif
 }
 
 HRESULT DS_SOUND_MANAGER::RunAll()
@@ -451,7 +500,11 @@ HRESULT DS_SOUND_MANAGER::PauseSounds()
 
 HRESULT DS_SOUND_MANAGER::StopBGM()
 {
+#if defined(__EMSCRIPTEN__)
+	return wyd_audio_stop_music() ? S_OK : E_FAIL;
+#else
 	return channels->Stop();
+#endif
 }
 
 HRESULT DS_SOUND_MANAGER::Run()
@@ -481,13 +534,24 @@ HRESULT DS_SOUND_MANAGER::SetEntBalance()
 
 HRESULT DS_SOUND_MANAGER::SetVolume(const int which, const int vol)
 {
+#if defined(__EMSCRIPTEN__)
+	if (which != 0)
+		return E_INVALIDARG;
+	m_lBGMVolume = vol;
+	return wyd_audio_set_music_volume(vol) ? S_OK : E_FAIL;
+#else
 	return channels[which].SetVolume(vol);
+#endif
 }
 
 int DS_SOUND_MANAGER::GetVolume(const int which)
 {
+#if defined(__EMSCRIPTEN__)
+	return which == 0 ? wyd_audio_get_music_volume() : -10000;
+#else
 	long vol;
 	channels[which].GetVolume(&vol);
 
 	return vol;
+#endif
 }

@@ -17,6 +17,9 @@
 
 #if defined(__EMSCRIPTEN__)
 extern "C" void wyd_debug_record_camera_now(TMCamera* pCamera);
+extern "C" int wyd_wasm_deferred_state_requested();
+extern "C" void wyd_wasm_clear_deferred_state_request();
+extern "C" unsigned int wyd_d3d9_get_debug_flags();
 #endif
 #include <WinInet.h>
 #include "TMSkinMesh.h"
@@ -70,14 +73,23 @@ void WasmActivatePostMeshScene(ObjectManager* objectManager)
 
 	SAFE_DELETE(g_pApp->m_pAviPlayer);
 
-	if (objectManager->m_eCurrentState == ObjectManager::TM_GAME_STATE::TM_NONE_STATE || g_pCurrentScene == nullptr)
+	const bool bDeferredStateRequested = wyd_wasm_deferred_state_requested() != 0;
+	if (objectManager->m_eCurrentState == ObjectManager::TM_GAME_STATE::TM_NONE_STATE &&
+		!bDeferredStateRequested)
 	{
 		WasmInitLog("[newapp:tick] wasm post-mesh fallback state selectserver");
 		objectManager->SetCurrentState(ObjectManager::TM_GAME_STATE::TM_SELECTSERVER_STATE);
 	}
-	else
+	else if (g_pCurrentScene == nullptr)
 	{
-		WasmInitLog("[newapp:tick] wasm post-mesh preserving requested state");
+		const ObjectManager::TM_GAME_STATE requestedState = objectManager->m_eCurrentState;
+		WasmInitLog("[newapp:tick] wasm post-mesh activating deferred state");
+		objectManager->m_eCurrentState =
+			requestedState == ObjectManager::TM_GAME_STATE::TM_NONE_STATE
+				? ObjectManager::TM_GAME_STATE::TM_FIELD_STATE
+				: ObjectManager::TM_GAME_STATE::TM_NONE_STATE;
+		wyd_wasm_clear_deferred_state_request();
+		objectManager->SetCurrentState(requestedState);
 	}
 }
 #endif
@@ -247,11 +259,6 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 
 	m_nSound = Config.Config[2];
 	m_nMusic = Config.Config[3];
-#if defined(__EMSCRIPTEN__)
-	// Audio backend is still stubbed in WASM path.
-	m_nSound = 0;
-	m_nMusic = 0;
-#endif
 	nBright = Config.Config[5];
 	nCursor = Config.Config[6];
 
@@ -289,6 +296,12 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 	else
 		nCursor = 2;
 
+#if defined(__EMSCRIPTEN__)
+	// Browser builds cannot display the Win32 cursor resources. The software
+	// cursor uses the same original UI texture and keeps all in-game styles.
+	if (nCursor == 2)
+		nCursor = 0;
+#endif
 	SCursor::m_nCursorType = nCursor;
 	if (nCursor == 2)
 	{
@@ -703,9 +716,11 @@ DWORD NewApp::RunTick(MSG* pMsg)
 {
 #if defined(__EMSCRIPTEN__)
 	static int s_wasmTickTraceBudget = 80;
+	constexpr unsigned int kWasmDebugTraceClientTick = 1u << 30;
 	auto TraceTick = [&](const char* msg)
 	{
-		if (s_wasmTickTraceBudget > 0)
+		if ((wyd_d3d9_get_debug_flags() & kWasmDebugTraceClientTick) != 0 &&
+			s_wasmTickTraceBudget > 0)
 		{
 			WasmInitLog(msg);
 			--s_wasmTickTraceBudget;

@@ -571,7 +571,7 @@ BOOL CSound::IsSoundPlaying()
 			DWORD dwStatus = 0;
 			m_apDSBuffer[i]->GetStatus(&dwStatus);
 			
-			bIsPlaying |= ((dwStatus % 1) != 0);
+			bIsPlaying |= (dwStatus & DSBSTATUS_PLAYING) != 0;
 		}
 	}
 
@@ -965,6 +965,16 @@ HRESULT CWaveFile::Read(BYTE* pBuffer, DWORD dwSizeToRead, DWORD* pdwSizeRead)
 			if(pdwSizeRead)
 				*pdwSizeRead = 0;
 
+#if defined(__EMSCRIPTEN__)
+			const DWORD cbDataIn = std::min(dwSizeToRead, m_ck.cksize);
+			const LONG bytesRead = mmioRead(m_hmmio, reinterpret_cast<HPSTR>(pBuffer), cbDataIn);
+			if (bytesRead < 0)
+				return E_FAIL;
+
+			m_ck.cksize -= static_cast<DWORD>(bytesRead);
+			*pdwSizeRead = static_cast<DWORD>(bytesRead);
+			return S_OK;
+#else
 			_MMIOINFO mmioinfoIn{};
 			if (mmioGetInfo(m_hmmio, &mmioinfoIn, 0))
 				return E_FAIL;
@@ -997,6 +1007,7 @@ HRESULT CWaveFile::Read(BYTE* pBuffer, DWORD dwSizeToRead, DWORD* pdwSizeRead)
 				*pdwSizeRead = cbDataIn;
 
 			return S_OK;
+#endif
 		}
 
 		return E_INVALIDARG;

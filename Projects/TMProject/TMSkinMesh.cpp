@@ -16,8 +16,17 @@
 
 namespace {
 int g_wydSkinRestoreLogCount = 0;
+unsigned int g_wydSelCharSkinRestoreCalls = 0;
+unsigned int g_wydSelCharSkinRestoreLoads = 0;
+unsigned int g_wydSelCharSkinRestoreParents = 0;
+char g_wydSelCharSkinRestoreLast[512]{};
 extern "C" unsigned int wyd_d3d9_get_debug_flags();
 static constexpr unsigned int kWydDebugLogSkinRestore = 1u << 30;
+
+extern "C" unsigned int wyd_selchar_skin_restore_calls() { return g_wydSelCharSkinRestoreCalls; }
+extern "C" unsigned int wyd_selchar_skin_restore_loads() { return g_wydSelCharSkinRestoreLoads; }
+extern "C" unsigned int wyd_selchar_skin_restore_parents() { return g_wydSelCharSkinRestoreParents; }
+extern "C" const char* wyd_selchar_skin_restore_last() { return g_wydSelCharSkinRestoreLast; }
 
 void WydLogSkinRestore(
 	const char* stage,
@@ -29,9 +38,33 @@ void WydLogSkinRestore(
 	int loadResult,
 	int parentFound)
 {
+	if (g_pCurrentScene &&
+		g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_SELCHAR)
+	{
+		++g_wydSelCharSkinRestoreCalls;
+		if (loadResult == 1)
+			++g_wydSelCharSkinRestoreLoads;
+		if (parentFound)
+			++g_wydSelCharSkinRestoreParents;
+		std::snprintf(
+			g_wydSelCharSkinRestoreLast,
+			sizeof(g_wydSelCharSkinRestoreLast),
+			"scene=%d stage=%s bone=%d part=%u mesh=%s load=%d id=%u parent=%d",
+			static_cast<int>(g_pCurrentScene->m_eSceneType),
+			stage ? stage : "?",
+			skin ? skin->m_nBoneAniIndex : -1,
+			part,
+			meshName ? meshName : "(null)",
+			loadResult,
+			mesh ? static_cast<unsigned int>(mesh->m_dwID) : 0u,
+			parentFound);
+	}
+
 	if ((wyd_d3d9_get_debug_flags() & kWydDebugLogSkinRestore) == 0u)
 		return;
-	if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELECT_SERVER)
+	if (!g_pCurrentScene ||
+		(g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELECT_SERVER &&
+		 g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELCHAR))
 		return;
 	if (g_wydSkinRestoreLogCount >= 160)
 		return;

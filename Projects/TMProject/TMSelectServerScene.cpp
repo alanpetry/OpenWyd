@@ -86,6 +86,40 @@ struct WydSelServerHumanTelemetry
 
 static WydSelServerHumanTelemetry g_wydSelServerHumanTelemetry[50]{};
 static unsigned int g_wydSelServerHumanTelemetryVersion = 0;
+static int g_wydSelServerDemoTypeOverride = -1;
+
+extern "C" void wyd_selserver_set_demo_type_override(int demoType)
+{
+	g_wydSelServerDemoTypeOverride = demoType >= 0 && demoType <= 2 ? demoType : -1;
+}
+
+static TMSelectServerScene* WydCurrentSelectServerScene()
+{
+	if (!g_pCurrentScene ||
+		g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_SELECT_SERVER)
+		return nullptr;
+	return static_cast<TMSelectServerScene*>(g_pCurrentScene);
+}
+
+extern "C" int wyd_selserver_demo_type()
+{
+	auto scene = WydCurrentSelectServerScene();
+	return scene ? scene->m_nDemoType : -1;
+}
+
+extern "C" int wyd_selserver_start_run()
+{
+	auto scene = WydCurrentSelectServerScene();
+	return scene ? static_cast<int>(scene->m_cStartRun) : -1;
+}
+
+extern "C" unsigned int wyd_selserver_demo_elapsed()
+{
+	auto scene = WydCurrentSelectServerScene();
+	if (!scene || !g_pTimerManager)
+		return 0;
+	return g_pTimerManager->GetServerTime() - scene->m_dwStartCamTime;
+}
 
 static const WydSelServerHumanTelemetry* WydSelServerHumanTelemetryAt(unsigned int index)
 {
@@ -909,6 +943,10 @@ int TMSelectServerScene::InitializeScene()
 	sprintf_s(szDataPath, "env\\Field1616.dat");
 
 	m_nDemoType = time.wSecond % 3;
+#if defined(__EMSCRIPTEN__)
+	if (g_wydSelServerDemoTypeOverride >= 0)
+		m_nDemoType = g_wydSelServerDemoTypeOverride;
+#endif
 	if (m_nDemoType)
 	{
 		switch (m_nDemoType)
@@ -990,11 +1028,6 @@ int TMSelectServerScene::InitializeScene()
 		GetLocalTime(&time);
 
 		int nWeatherState = time.wDay % 4;
-#if defined(__EMSCRIPTEN__)
-		// Keep the WASM startup harness deterministic against the official
-		// select-server reference capture, which uses the blue daytime sky.
-		nWeatherState = 0;
-#endif
 
 		g_nSelServerWeather = nWeatherState;
 		m_pSky->SetWeatherState(nWeatherState);

@@ -58,6 +58,8 @@
 #if defined(__EMSCRIPTEN__)
 static int g_wydDebugWeatherMode = 0;
 
+extern "C" int wyd_field_debug_fixture_used();
+
 extern "C" int wyd_debug_get_weather_mode()
 {
 	return g_wydDebugWeatherMode;
@@ -1760,6 +1762,16 @@ int TMFieldScene::InitializeScene()
 	m_pMyHuman->CheckWeapon(pMobData->Equip[6].sIndex, pMobData->Equip[7].sIndex);
 	m_pMyHuman->InitAngle(0.0f, 0.39269909f, 0.0f);
 	m_pMyHuman->InitPosition((float)pMobData->HomeTownX + 0.5f, 0, (float)pMobData->HomeTownY + 0.5f);
+#if defined(__EMSCRIPTEN__)
+	// A connected client receives its own create-mob packet, which initializes
+	// this target. The offline fixture has no server packet, so preserve that
+	// side effect here to avoid an artificial route toward (0, 0).
+	if (wyd_field_debug_fixture_used())
+	{
+		m_vecMyNext.x = (int)m_pMyHuman->m_vecPosition.x;
+		m_vecMyNext.y = (int)m_pMyHuman->m_vecPosition.y;
+	}
+#endif
 
 	g_pObjectManager->m_pCamera->SetFocusedObject(m_pMyHuman);
 	g_pObjectManager->m_pCamera->m_nQuaterView = 0;

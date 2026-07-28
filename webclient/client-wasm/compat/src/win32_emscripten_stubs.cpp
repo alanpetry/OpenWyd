@@ -11,6 +11,7 @@
 #include "WinInet.h"
 #include "winsock2.h"
 
+#include <emscripten.h>
 #include <emscripten/html5.h>
 #include <GLES2/gl2.h>
 
@@ -42,6 +43,7 @@
 #include <filesystem>
 #include <fstream>
 #include <fnmatch.h>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -160,6 +162,18 @@ void EnsureFontRenderer() {
     g_font_file_data.clear();
 }
 
+int AnsiCodepoint(unsigned char ch) {
+  static constexpr int kCp1252[32] = {
+      0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+      0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+      0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+      0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+  };
+  if (ch >= 0x80u && ch <= 0x9Fu)
+    return kCp1252[ch - 0x80u];
+  return static_cast<int>(ch);
+}
+
 // Returns rendered width.  Writes alpha-blended glyphs into dib->pixels.
 int RenderTextToDIB(DibSection* dib, int x, int y,
                     const char* text, int len,
@@ -181,10 +195,11 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
   for (int i = 0; i < len; ++i) {
     unsigned char ch = static_cast<unsigned char>(text[i]);
     if (ch == '\n' || ch == '\r') continue;
+    const int codepoint = AnsiCodepoint(ch);
 
     int gw = 0, gh = 0, xoff = 0, yoff = 0;
     unsigned char* glyph = stbtt_GetCodepointBitmap(
-        &g_font_stb, 0, scale, ch, &gw, &gh, &xoff, &yoff);
+        &g_font_stb, 0, scale, codepoint, &gw, &gh, &xoff, &yoff);
     if (glyph) {
       int dx = pen_x + xoff;
       int dy = pen_y + yoff;
@@ -211,12 +226,14 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
     }
 
     int advance = 0;
-    stbtt_GetCodepointHMetrics(&g_font_stb, ch, &advance, nullptr);
+    stbtt_GetCodepointHMetrics(&g_font_stb, codepoint, &advance, nullptr);
     pen_x += static_cast<int>(std::round(advance * scale));
     if (i + 1 < len) {
+      const int next_codepoint =
+          AnsiCodepoint(static_cast<unsigned char>(text[i + 1]));
       pen_x += static_cast<int>(std::round(
-          stbtt_GetCodepointKernAdvance(&g_font_stb, ch,
-                                         static_cast<unsigned char>(text[i + 1])) *
+          stbtt_GetCodepointKernAdvance(
+              &g_font_stb, codepoint, next_codepoint) *
           scale));
     }
     if (pen_x > max_pen) max_pen = pen_x;
@@ -236,13 +253,16 @@ int MeasureTextWidth(const char* text, int len, FontInfo* finfo) {
   for (int i = 0; i < len; ++i) {
     unsigned char ch = static_cast<unsigned char>(text[i]);
     if (ch == '\n' || ch == '\r') continue;
+    const int codepoint = AnsiCodepoint(ch);
     int advance = 0;
-    stbtt_GetCodepointHMetrics(&g_font_stb, ch, &advance, nullptr);
+    stbtt_GetCodepointHMetrics(&g_font_stb, codepoint, &advance, nullptr);
     pen_x += static_cast<int>(std::round(advance * scale));
     if (i + 1 < len) {
+      const int next_codepoint =
+          AnsiCodepoint(static_cast<unsigned char>(text[i + 1]));
       pen_x += static_cast<int>(std::round(
-          stbtt_GetCodepointKernAdvance(&g_font_stb, ch,
-                                         static_cast<unsigned char>(text[i + 1])) *
+          stbtt_GetCodepointKernAdvance(
+              &g_font_stb, codepoint, next_codepoint) *
           scale));
     }
   }
@@ -433,6 +453,11 @@ uint64_t g_fvf322_without_stage0_texture = 0;
 uint64_t g_fvf322_screenlike_vertices = 0;
 uint64_t g_fvf322_screenlike_draws = 0;
 uint64_t g_fvf322_screenlike_replay_draws = 0;
+uint64_t g_fvf322_requested_depth_write_enabled = 0;
+uint64_t g_fvf322_requested_depth_write_disabled = 0;
+uint64_t g_fvf322_forced_depth_write_disabled = 0;
+std::array<uint64_t, 8> g_fvf322_requested_depth_write_enabled_by_class{};
+std::array<uint64_t, 8> g_fvf322_requested_depth_write_disabled_by_class{};
 uint64_t g_fvf322_auto_clipw_draws = 0;
 uint64_t g_fvf322_auto_clipw_reject_draws = 0;
 uint64_t g_fvf530_auto_clipw_draws = 0;
@@ -674,6 +699,7 @@ constexpr uint32_t kDebugDisableAutoClipWReject = 1u << 14;
 constexpr uint32_t kDebugDisableFvf322ScreenlikeReplay = 1u << 15;
 constexpr uint32_t kDebugClipTriangleRepair = 1u << 16;
 constexpr uint32_t kDebugSkipSkyDraw = 1u << 17;
+constexpr uint32_t kDebugForceFvf322DepthWriteOff = 1u << 19;
 constexpr uint32_t kDebugForceFVF594White = 1u << 24;
 constexpr uint32_t kDebugDisableFVF530LargeBoundsSkip = 1u << 20;
 constexpr uint32_t kDebugEnableDrawTrace = 1u << 21;
@@ -683,6 +709,12 @@ constexpr uint32_t kDebugEnableSkyScreenQuad = 1u << 26;
 constexpr uint32_t kDebugTerrainDepthTestOff = 1u << 27;
 constexpr uint32_t kDebugEnableFVF530LargeBoundsSkip = 1u << 28;
 constexpr uint32_t kDebugCollectFVF530Stats = 1u << 29;
+constexpr uint32_t kDebugTrackGlErrorsPerDraw = 1u << 31;
+bool g_debug_collect_detailed_telemetry = false;
+
+bool CollectDetailedTelemetry() {
+  return g_debug_collect_detailed_telemetry;
+}
 
 bool DrawTraceIsEnabled();
 void ResetDrawOrderFrame();
@@ -1210,6 +1242,10 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
   bool locked = false;
   GLuint gl_texture = 0;
   bool gl_dirty = true;
+  GLint gl_wrap_s = -1;
+  GLint gl_wrap_t = -1;
+  GLint gl_min_filter = -1;
+  GLint gl_mag_filter = -1;
   std::string debug_source_path;
   uint32_t debug_category_flags = 0;
 };
@@ -1221,11 +1257,448 @@ DummyDirect3DSurface9::~DummyDirect3DSurface9() {
   }
 }
 
+EM_JS(void, WydWebAudioUpload, (int id, const void* data, int byte_length, int channels,
+                                int sample_rate, int bits_per_sample), {
+  if (!globalThis.AudioContext && !globalThis.webkitAudioContext) return;
+  const state = Module.wydAudio || (Module.wydAudio = {
+    context: null,
+    buffers: new Map(),
+    unlockInstalled: false
+  });
+  if (!state.context) {
+    const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
+    state.context = new Context();
+  }
+  if (!state.unlockInstalled && typeof document !== 'undefined') {
+    const unlock = () => {
+      if (state.context && state.context.state === 'suspended') {
+        state.context.resume().catch(() => {});
+      }
+    };
+    document.addEventListener('pointerdown', unlock, {capture: true, passive: true});
+    document.addEventListener('keydown', unlock, {capture: true, passive: true});
+    state.unlockInstalled = true;
+  }
+
+  const channelCount = Math.max(1, channels | 0);
+  const bytesPerSample = Math.max(1, (bits_per_sample | 0) >> 3);
+  const frameCount = Math.floor((byte_length | 0) / (channelCount * bytesPerSample));
+  if (frameCount <= 0 || sample_rate <= 0) return;
+
+  const audioBuffer = state.context.createBuffer(channelCount, frameCount, sample_rate | 0);
+  const sourceBytes = HEAPU8.subarray(data, data + byte_length);
+  for (let channel = 0; channel < channelCount; ++channel) {
+    const output = audioBuffer.getChannelData(channel);
+    for (let frame = 0; frame < frameCount; ++frame) {
+      const sampleOffset = (frame * channelCount + channel) * bytesPerSample;
+      if (bits_per_sample === 8) {
+        output[frame] = (sourceBytes[sampleOffset] - 128) / 128;
+      } else if (bits_per_sample === 16) {
+        const lo = sourceBytes[sampleOffset];
+        const hi = sourceBytes[sampleOffset + 1];
+        let sample = lo | (hi << 8);
+        if (sample & 0x8000) sample -= 0x10000;
+        output[frame] = sample / 32768;
+      }
+    }
+  }
+
+  const previous = state.buffers.get(id);
+  if (previous && previous.source) {
+    try { previous.source.stop(); } catch (_) {}
+  }
+  state.buffers.set(id, {
+    buffer: audioBuffer,
+    source: null,
+    gain: null,
+    volume: previous ? previous.volume : 0,
+    startedAt: 0,
+    offset: 0,
+    loop: false,
+    playing: false
+  });
+});
+
+EM_JS(void, WydWebAudioPlay, (int id, int looping), {
+  const state = Module.wydAudio;
+  if (!state || !state.context) return;
+  const item = state.buffers.get(id);
+  if (!item || !item.buffer) return;
+  if (item.source) {
+    try { item.source.stop(); } catch (_) {}
+  }
+  const source = state.context.createBufferSource();
+  const gain = state.context.createGain();
+  source.buffer = item.buffer;
+  source.loop = !!looping;
+  gain.gain.value = item.volume <= -10000 ? 0 : Math.pow(10, item.volume / 2000);
+  source.connect(gain);
+  gain.connect(state.context.destination);
+  source.onended = () => {
+    if (item.source === source && !source.loop) {
+      item.source = null;
+      item.gain = null;
+      item.playing = false;
+      item.offset = 0;
+    }
+  };
+  item.source = source;
+  item.gain = gain;
+  item.loop = !!looping;
+  item.playing = true;
+  item.startedAt = state.context.currentTime;
+  const duration = Math.max(0, item.buffer.duration);
+  const offset = duration > 0 ? Math.min(Math.max(0, item.offset), duration) : 0;
+  source.start(0, offset);
+  if (state.context.state === 'suspended') state.context.resume().catch(() => {});
+});
+
+EM_JS(void, WydWebAudioStop, (int id), {
+  const state = Module.wydAudio;
+  if (!state) return;
+  const item = state.buffers.get(id);
+  if (!item) return;
+  if (item.source) {
+    try { item.source.stop(); } catch (_) {}
+  }
+  item.source = null;
+  item.gain = null;
+  item.playing = false;
+  item.offset = 0;
+});
+
+EM_JS(void, WydWebAudioSetVolume, (int id, int volume), {
+  const state = Module.wydAudio;
+  if (!state) return;
+  const item = state.buffers.get(id);
+  if (!item) return;
+  item.volume = volume | 0;
+  if (item.gain) {
+    item.gain.gain.value = item.volume <= -10000 ? 0 : Math.pow(10, item.volume / 2000);
+  }
+});
+
+EM_JS(void, WydWebAudioSetPosition, (int id, double seconds), {
+  const state = Module.wydAudio;
+  if (!state) return;
+  const item = state.buffers.get(id);
+  if (!item) return;
+  if (item.source) {
+    try { item.source.stop(); } catch (_) {}
+  }
+  item.source = null;
+  item.gain = null;
+  item.playing = false;
+  item.offset = Math.max(0, seconds);
+});
+
+EM_JS(int, WydWebAudioIsPlaying, (int id), {
+  const state = Module.wydAudio;
+  if (!state) return 0;
+  const item = state.buffers.get(id);
+  return item && item.playing ? 1 : 0;
+});
+
+EM_JS(double, WydWebAudioPosition, (int id), {
+  const state = Module.wydAudio;
+  if (!state || !state.context) return 0;
+  const item = state.buffers.get(id);
+  if (!item) return 0;
+  if (!item.playing) return item.offset || 0;
+  const elapsed = Math.max(0, state.context.currentTime - item.startedAt);
+  if (item.loop && item.buffer.duration > 0) return elapsed % item.buffer.duration;
+  return Math.min(elapsed, item.buffer.duration);
+});
+
+EM_JS(void, WydWebAudioDelete, (int id), {
+  const state = Module.wydAudio;
+  if (!state) return;
+  const item = state.buffers.get(id);
+  if (item && item.source) {
+    try { item.source.stop(); } catch (_) {}
+  }
+  state.buffers.delete(id);
+});
+
+EM_JS(int, WydWebAudioResume, (), {
+  const state = Module.wydAudio;
+  if (!state || !state.context) return 0;
+  if (state.context.state === 'suspended') state.context.resume().catch(() => {});
+  return state.context.state === 'running' ? 1 : 0;
+});
+
+EM_JS(int, WydWebMusicPlay, (const void* data, int byte_length, int volume), {
+  if (!data || byte_length <= 0 || typeof Audio === 'undefined') return 0;
+  const bytes = HEAPU8.slice(data, data + byte_length);
+  const blob = new Blob([bytes], {type: 'audio/mpeg'});
+  const url = URL.createObjectURL(blob);
+  const previous = Module.wydMusic || null;
+  if (previous?.audio) {
+    previous.audio.pause();
+    previous.audio.removeAttribute('src');
+  }
+  if (previous?.url) URL.revokeObjectURL(previous.url);
+
+  const audio = new Audio(url);
+  audio.loop = true;
+  audio.preload = 'auto';
+  audio.volume = volume <= -10000 ? 0 : Math.min(1, Math.max(0, Math.pow(10, volume / 2000)));
+  Module.wydMusic = {audio, url, volume: volume | 0};
+  const start = () => audio.play().catch(() => {});
+  start();
+  if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', start, {once: true, capture: true, passive: true});
+    document.addEventListener('keydown', start, {once: true, capture: true, passive: true});
+  }
+  return 1;
+});
+
+EM_JS(void, WydWebMusicStop, (), {
+  const music = Module.wydMusic;
+  if (!music?.audio) return;
+  music.audio.pause();
+  music.audio.currentTime = 0;
+});
+
+EM_JS(void, WydWebMusicSetVolume, (int volume), {
+  const music = Module.wydMusic;
+  if (!music) return;
+  music.volume = volume | 0;
+  if (music.audio) {
+    music.audio.volume =
+        volume <= -10000 ? 0 : Math.min(1, Math.max(0, Math.pow(10, volume / 2000)));
+  }
+});
+
+EM_JS(int, WydWebMusicState, (), {
+  const music = Module.wydMusic;
+  if (!music?.audio) return 0;
+  if (!music.audio.paused && !music.audio.ended) return 2;
+  return 1;
+});
+
+std::atomic<int> g_wydAudioBufferSeed{1};
+std::atomic<unsigned int> g_wydAudioBuffersCreated{0};
+std::atomic<unsigned int> g_wydAudioUploads{0};
+std::atomic<unsigned int> g_wydAudioPlayCalls{0};
+std::atomic<unsigned int> g_wydAudioStopCalls{0};
+std::atomic<unsigned int> g_wydMusicPlayCalls{0};
+std::atomic<unsigned int> g_wydMusicStopCalls{0};
+std::atomic<int> g_wydMusicVolume{0};
+
+bool WydGuidEquals(REFGUID lhs, REFGUID rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(GUID)) == 0;
+}
+
+class DummyDirectSoundListener final : public IDirectSound3DListener, private ComRefBase {
+ public:
+  DummyDirectSoundListener() {
+    std::memset(&parameters_, 0, sizeof(parameters_));
+    parameters_.dwSize = sizeof(parameters_);
+    parameters_.vOrientFront.z = 1.0f;
+    parameters_.vOrientTop.y = 1.0f;
+    parameters_.flDistanceFactor = 1.0f;
+    parameters_.flRolloffFactor = 1.0f;
+    parameters_.flDopplerFactor = 1.0f;
+  }
+
+  HRESULT QueryInterface(REFIID, void** ppvObject) override {
+    if (!ppvObject) return E_POINTER;
+    *ppvObject = static_cast<IDirectSound3DListener*>(this);
+    AddRefImpl();
+    return S_OK;
+  }
+  ULONG AddRef() override { return AddRefImpl(); }
+  ULONG Release() override { return ReleaseImpl(); }
+  HRESULT GetAllParameters(DS3DLISTENER* parameters) override {
+    if (!parameters) return E_POINTER;
+    *parameters = parameters_;
+    return S_OK;
+  }
+  HRESULT SetAllParameters(const DS3DLISTENER* parameters, DWORD) override {
+    if (!parameters) return E_POINTER;
+    parameters_ = *parameters;
+    return S_OK;
+  }
+
+ private:
+  DS3DLISTENER parameters_{};
+};
+
+class DummyDirectSoundBuffer final
+    : public IDirectSoundBuffer,
+      public IDirectSound3DBuffer,
+      private ComRefBase {
+ public:
+  explicit DummyDirectSoundBuffer(const DSBUFFERDESC* description)
+      : audio_id_(g_wydAudioBufferSeed.fetch_add(1)) {
+    std::memset(&format_, 0, sizeof(format_));
+    std::memset(&parameters3d_, 0, sizeof(parameters3d_));
+    parameters3d_.dwSize = sizeof(parameters3d_);
+    parameters3d_.flMinDistance = 1.0f;
+    parameters3d_.flMaxDistance = 1000000000.0f;
+    if (description) {
+      flags_ = description->dwFlags;
+      bytes_.resize(description->dwBufferBytes);
+      if (description->lpwfxFormat) format_ = *description->lpwfxFormat;
+    }
+    ++g_wydAudioBuffersCreated;
+  }
+
+  DummyDirectSoundBuffer(const DummyDirectSoundBuffer& other)
+      : audio_id_(g_wydAudioBufferSeed.fetch_add(1)),
+        flags_(other.flags_),
+        format_(other.format_),
+        bytes_(other.bytes_),
+        volume_(other.volume_),
+        parameters3d_(other.parameters3d_) {
+    ++g_wydAudioBuffersCreated;
+    Upload();
+  }
+
+  ~DummyDirectSoundBuffer() override {
+    WydWebAudioDelete(audio_id_);
+  }
+
+  HRESULT QueryInterface(REFIID iid, void** ppvObject) override {
+    if (!ppvObject) return E_POINTER;
+    if (WydGuidEquals(iid, IID_IDirectSound3DBuffer)) {
+      *ppvObject = static_cast<IDirectSound3DBuffer*>(this);
+    } else if (WydGuidEquals(iid, IID_IDirectSound3DListener) &&
+               (flags_ & DSBCAPS_PRIMARYBUFFER)) {
+      *ppvObject = new DummyDirectSoundListener();
+      return S_OK;
+    } else {
+      *ppvObject = static_cast<IDirectSoundBuffer*>(this);
+    }
+    AddRefImpl();
+    return S_OK;
+  }
+  ULONG AddRef() override { return AddRefImpl(); }
+  ULONG Release() override { return ReleaseImpl(); }
+
+  HRESULT GetStatus(DWORD* status) override {
+    if (!status) return E_POINTER;
+    *status = WydWebAudioIsPlaying(audio_id_) ? DSBSTATUS_PLAYING : 0;
+    return S_OK;
+  }
+  HRESULT Restore() override { return S_OK; }
+  HRESULT SetFormat(const WAVEFORMATEX* format) override {
+    if (!format) return E_POINTER;
+    format_ = *format;
+    Upload();
+    return S_OK;
+  }
+  HRESULT SetVolume(LONG volume) override {
+    volume_ = std::max<LONG>(-10000, std::min<LONG>(0, volume));
+    WydWebAudioSetVolume(audio_id_, volume_);
+    return S_OK;
+  }
+  HRESULT SetCurrentPosition(DWORD position) override {
+    const double seconds =
+        format_.nAvgBytesPerSec ? static_cast<double>(position) / format_.nAvgBytesPerSec : 0.0;
+    WydWebAudioSetPosition(audio_id_, seconds);
+    return S_OK;
+  }
+  HRESULT GetCurrentPosition(DWORD* playCursor, DWORD* writeCursor) override {
+    const DWORD position = format_.nAvgBytesPerSec
+        ? static_cast<DWORD>(WydWebAudioPosition(audio_id_) * format_.nAvgBytesPerSec)
+        : 0;
+    if (playCursor) *playCursor = std::min<DWORD>(position, bytes_.size());
+    if (writeCursor) *writeCursor = std::min<DWORD>(position, bytes_.size());
+    return S_OK;
+  }
+  HRESULT Lock(
+      DWORD offset,
+      DWORD bytes,
+      void** audioPtr1,
+      DWORD* audioBytes1,
+      void** audioPtr2,
+      DWORD* audioBytes2,
+      DWORD) override {
+    if (!audioPtr1 || !audioBytes1 || offset > bytes_.size()) return E_INVALIDARG;
+    if (bytes == 0) bytes = static_cast<DWORD>(bytes_.size());
+    const DWORD firstBytes =
+        std::min<DWORD>(bytes, static_cast<DWORD>(bytes_.size() - offset));
+    *audioPtr1 = bytes_.empty() ? nullptr : bytes_.data() + offset;
+    *audioBytes1 = firstBytes;
+    if (audioPtr2) *audioPtr2 = bytes > firstBytes && !bytes_.empty() ? bytes_.data() : nullptr;
+    if (audioBytes2) *audioBytes2 = bytes > firstBytes ? bytes - firstBytes : 0;
+    return S_OK;
+  }
+  HRESULT Unlock(void*, DWORD, void*, DWORD) override {
+    Upload();
+    return S_OK;
+  }
+  HRESULT Play(DWORD, DWORD, DWORD flags) override {
+    ++g_wydAudioPlayCalls;
+    WydWebAudioPlay(audio_id_, (flags & DSBPLAY_LOOPING) != 0);
+    return S_OK;
+  }
+  HRESULT Stop() override {
+    ++g_wydAudioStopCalls;
+    WydWebAudioStop(audio_id_);
+    return S_OK;
+  }
+
+  HRESULT GetAllParameters(DS3DBUFFER* parameters) override {
+    if (!parameters) return E_POINTER;
+    *parameters = parameters3d_;
+    return S_OK;
+  }
+  HRESULT SetAllParameters(const DS3DBUFFER* parameters, DWORD) override {
+    if (!parameters) return E_POINTER;
+    parameters3d_ = *parameters;
+    return S_OK;
+  }
+
+ private:
+  void Upload() {
+    if (bytes_.empty() || format_.nChannels == 0 || format_.nSamplesPerSec == 0 ||
+        (format_.wBitsPerSample != 8 && format_.wBitsPerSample != 16)) {
+      return;
+    }
+    WydWebAudioUpload(
+        audio_id_,
+        bytes_.data(),
+        static_cast<int>(bytes_.size()),
+        format_.nChannels,
+        format_.nSamplesPerSec,
+        format_.wBitsPerSample);
+    WydWebAudioSetVolume(audio_id_, volume_);
+    ++g_wydAudioUploads;
+  }
+
+  int audio_id_ = 0;
+  DWORD flags_ = 0;
+  WAVEFORMATEX format_{};
+  std::vector<unsigned char> bytes_;
+  LONG volume_ = 0;
+  DS3DBUFFER parameters3d_{};
+};
+
 class DummyDirectSound8 final : public IDirectSound8, private ComRefBase {
  public:
   HRESULT QueryInterface(REFIID, void** ppvObject) override { return QueryInterfaceImpl(ppvObject); }
   ULONG AddRef() override { return AddRefImpl(); }
   ULONG Release() override { return ReleaseImpl(); }
+  HRESULT SetCooperativeLevel(HWND, DWORD) override { return S_OK; }
+  HRESULT CreateSoundBuffer(
+      const DSBUFFERDESC* description,
+      IDirectSoundBuffer** buffer,
+      IUnknown*) override {
+    if (!description || !buffer) return E_INVALIDARG;
+    *buffer = new DummyDirectSoundBuffer(description);
+    return S_OK;
+  }
+  HRESULT DuplicateSoundBuffer(
+      IDirectSoundBuffer* original,
+      IDirectSoundBuffer** duplicate) override {
+    if (!original || !duplicate) return E_INVALIDARG;
+    auto* source = static_cast<DummyDirectSoundBuffer*>(original);
+    *duplicate = new DummyDirectSoundBuffer(*source);
+    return S_OK;
+  }
 };
 
 constexpr unsigned int kWydMouseMove = 0x0200u;
@@ -1255,6 +1728,36 @@ struct WydDInputMouseState {
 };
 
 WydDInputMouseState g_wydDInputMouse;
+
+struct WydInputKeyState {
+  std::mutex mutex;
+  std::array<unsigned char, 256> down{};
+  unsigned int event_count = 0;
+  unsigned int last_msg = 0;
+  unsigned int last_key = 0;
+};
+
+WydInputKeyState g_wydInputKeys;
+
+void WydInputKeyEvent(unsigned int msg, unsigned int key) {
+  std::lock_guard<std::mutex> lock(g_wydInputKeys.mutex);
+  if (key < g_wydInputKeys.down.size()) {
+    if (msg == 0x0100u || msg == 0x0104u) {
+      g_wydInputKeys.down[key] = 1;
+    } else if (msg == 0x0101u || msg == 0x0105u) {
+      g_wydInputKeys.down[key] = 0;
+    }
+  }
+  g_wydInputKeys.last_msg = msg;
+  g_wydInputKeys.last_key = key;
+  ++g_wydInputKeys.event_count;
+}
+
+short WydInputKeyQuery(int key) {
+  if (key < 0 || key >= static_cast<int>(g_wydInputKeys.down.size())) return 0;
+  std::lock_guard<std::mutex> lock(g_wydInputKeys.mutex);
+  return g_wydInputKeys.down[static_cast<size_t>(key)] ? static_cast<short>(0x8000) : 0;
+}
 
 void WydSetMouseButtonLocked(int index, bool down) {
   if (index < 0 || index >= 8) return;
@@ -1940,6 +2443,25 @@ extern "C" {
 
 void wyd_dinput_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
   WydDInputMouseEvent(msg, wParam, x, y, wheel_delta);
+}
+
+void wyd_dinput_key_event(unsigned int msg, unsigned int key) {
+  WydInputKeyEvent(msg, key);
+}
+
+unsigned int wyd_input_key_event_count() {
+  std::lock_guard<std::mutex> lock(g_wydInputKeys.mutex);
+  return g_wydInputKeys.event_count;
+}
+
+unsigned int wyd_input_key_last_msg() {
+  std::lock_guard<std::mutex> lock(g_wydInputKeys.mutex);
+  return g_wydInputKeys.last_msg;
+}
+
+unsigned int wyd_input_key_last_key() {
+  std::lock_guard<std::mutex> lock(g_wydInputKeys.mutex);
+  return g_wydInputKeys.last_key;
 }
 
 int wyd_input_mouse_x() {
@@ -2787,8 +3309,8 @@ BOOL PtInRect(const RECT* lprc, POINT pt) {
   return (pt.x >= lprc->left && pt.x < lprc->right && pt.y >= lprc->top && pt.y < lprc->bottom) ? TRUE : FALSE;
 }
 
-short GetAsyncKeyState(int) { return 0; }
-short GetKeyState(int) { return 0; }
+short GetAsyncKeyState(int key) { return WydInputKeyQuery(key); }
+short GetKeyState(int key) { return WydInputKeyQuery(key); }
 
 int MultiByteToWideChar(UINT,
                         DWORD,
@@ -3314,8 +3836,81 @@ MMRESULT mmioClose(HMMIO hmmio, UINT) {
   return 0;
 }
 
-MMRESULT mmioDescend(HMMIO, MMCKINFO*, const MMCKINFO*, UINT) { return 0; }
-MMRESULT mmioAscend(HMMIO, MMCKINFO*, UINT) { return 0; }
+MMRESULT mmioDescend(
+    HMMIO hmmio,
+    MMCKINFO* chunk,
+    const MMCKINFO* parent,
+    UINT flags) {
+  if (!hmmio || !chunk) return 1;
+  FILE* fp = reinterpret_cast<FILE*>(hmmio);
+
+  auto read_dword = [&](DWORD* value) {
+    unsigned char bytes[4]{};
+    if (std::fread(bytes, 1, sizeof(bytes), fp) != sizeof(bytes)) return false;
+    *value = static_cast<DWORD>(bytes[0]) |
+             (static_cast<DWORD>(bytes[1]) << 8) |
+             (static_cast<DWORD>(bytes[2]) << 16) |
+             (static_cast<DWORD>(bytes[3]) << 24);
+    return true;
+  };
+
+  constexpr DWORD kRiff = 0x46464952u;
+  constexpr DWORD kList = 0x5453494Cu;
+  constexpr UINT kFindChunk = 0x0010u;
+
+  if (!parent && (flags & kFindChunk) == 0) {
+    DWORD id = 0;
+    DWORD size = 0;
+    if (!read_dword(&id) || !read_dword(&size)) return 1;
+    chunk->ckid = id;
+    chunk->cksize = size;
+    chunk->dwDataOffset = 8;
+    chunk->dwFlags = 0;
+    chunk->fccType = 0;
+    if (id == kRiff || id == kList) {
+      if (!read_dword(&chunk->fccType)) return 1;
+    }
+    return 0;
+  }
+
+  const long parent_end = parent
+      ? static_cast<long>(parent->dwDataOffset + parent->cksize)
+      : std::numeric_limits<long>::max();
+  while (std::ftell(fp) >= 0 && std::ftell(fp) + 8 <= parent_end) {
+    const long header_offset = std::ftell(fp);
+    DWORD id = 0;
+    DWORD size = 0;
+    if (!read_dword(&id) || !read_dword(&size)) return 1;
+    const long data_offset = std::ftell(fp);
+
+    if ((flags & kFindChunk) == 0 || id == chunk->ckid) {
+      chunk->ckid = id;
+      chunk->cksize = size;
+      chunk->dwDataOffset = static_cast<DWORD>(data_offset);
+      chunk->dwFlags = 0;
+      chunk->fccType = 0;
+      if (id == kRiff || id == kList) {
+        if (!read_dword(&chunk->fccType)) return 1;
+      }
+      return 0;
+    }
+
+    const long next_offset =
+        data_offset + static_cast<long>(size) + static_cast<long>(size & 1u);
+    if (next_offset <= header_offset || next_offset > parent_end ||
+        std::fseek(fp, next_offset, SEEK_SET) != 0) {
+      return 1;
+    }
+  }
+  return 1;
+}
+
+MMRESULT mmioAscend(HMMIO hmmio, MMCKINFO* chunk, UINT) {
+  if (!hmmio || !chunk) return 1;
+  const long next_offset =
+      static_cast<long>(chunk->dwDataOffset + chunk->cksize + (chunk->cksize & 1u));
+  return std::fseek(reinterpret_cast<FILE*>(hmmio), next_offset, SEEK_SET) == 0 ? 0 : 1;
+}
 
 LONG mmioRead(HMMIO hmmio, HPSTR pch, LONG cch) {
   if (!hmmio || !pch || cch <= 0) return -1;
@@ -4037,6 +4632,130 @@ struct WasmD3D9State {
 };
 
 WasmD3D9State g_wasm_d3d9_state;
+std::array<D3DXVECTOR3, 8> g_directional_to_light_view{};
+bool g_directional_light_view_dirty = true;
+
+struct WasmGLStateCache {
+  struct Capability {
+    bool valid = false;
+    bool enabled = false;
+  };
+
+  Capability depth_test;
+  Capability blend;
+  Capability dither;
+  Capability stencil_test;
+  bool depth_mask_valid = false;
+  GLboolean depth_mask = GL_TRUE;
+  bool depth_func_valid = false;
+  GLenum depth_func = GL_LEQUAL;
+  bool blend_func_valid = false;
+  GLenum blend_src_rgb = GL_ONE;
+  GLenum blend_dst_rgb = GL_ZERO;
+  GLenum blend_src_alpha = GL_ONE;
+  GLenum blend_dst_alpha = GL_ZERO;
+  bool blend_equation_valid = false;
+  GLenum blend_equation_rgb = GL_FUNC_ADD;
+  GLenum blend_equation_alpha = GL_FUNC_ADD;
+  bool blend_color_valid = false;
+  std::array<float, 4> blend_color{};
+};
+
+WasmGLStateCache g_gl_state_cache;
+
+WasmGLStateCache::Capability* CachedCapability(GLenum capability) {
+  switch (capability) {
+    case GL_DEPTH_TEST:
+      return &g_gl_state_cache.depth_test;
+    case GL_BLEND:
+      return &g_gl_state_cache.blend;
+    case GL_DITHER:
+      return &g_gl_state_cache.dither;
+    case GL_STENCIL_TEST:
+      return &g_gl_state_cache.stencil_test;
+    default:
+      return nullptr;
+  }
+}
+
+void SetCapabilityCached(GLenum capability, bool enabled) {
+  WasmGLStateCache::Capability* cached = CachedCapability(capability);
+  if (cached && cached->valid && cached->enabled == enabled) return;
+
+  if (enabled) glEnable(capability);
+  else glDisable(capability);
+
+  if (cached) {
+    cached->valid = true;
+    cached->enabled = enabled;
+  }
+}
+
+void SetDepthMaskCached(GLboolean enabled) {
+  if (g_gl_state_cache.depth_mask_valid && g_gl_state_cache.depth_mask == enabled) return;
+  glDepthMask(enabled);
+  g_gl_state_cache.depth_mask_valid = true;
+  g_gl_state_cache.depth_mask = enabled;
+}
+
+void SetDepthFuncCached(GLenum func) {
+  if (g_gl_state_cache.depth_func_valid && g_gl_state_cache.depth_func == func) return;
+  glDepthFunc(func);
+  g_gl_state_cache.depth_func_valid = true;
+  g_gl_state_cache.depth_func = func;
+}
+
+void SetBlendColorCached(float r, float g, float b, float a) {
+  const std::array<float, 4> color{r, g, b, a};
+  if (g_gl_state_cache.blend_color_valid &&
+      std::memcmp(g_gl_state_cache.blend_color.data(), color.data(), sizeof(color)) == 0) {
+    return;
+  }
+  glBlendColor(r, g, b, a);
+  g_gl_state_cache.blend_color_valid = true;
+  g_gl_state_cache.blend_color = color;
+}
+
+void SetBlendFuncCached(
+    GLenum src_rgb,
+    GLenum dst_rgb,
+    GLenum src_alpha,
+    GLenum dst_alpha) {
+  if (g_gl_state_cache.blend_func_valid &&
+      g_gl_state_cache.blend_src_rgb == src_rgb &&
+      g_gl_state_cache.blend_dst_rgb == dst_rgb &&
+      g_gl_state_cache.blend_src_alpha == src_alpha &&
+      g_gl_state_cache.blend_dst_alpha == dst_alpha) {
+    return;
+  }
+
+  if (src_rgb != src_alpha || dst_rgb != dst_alpha) {
+    glBlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
+  } else {
+    glBlendFunc(src_rgb, dst_rgb);
+  }
+
+  g_gl_state_cache.blend_func_valid = true;
+  g_gl_state_cache.blend_src_rgb = src_rgb;
+  g_gl_state_cache.blend_dst_rgb = dst_rgb;
+  g_gl_state_cache.blend_src_alpha = src_alpha;
+  g_gl_state_cache.blend_dst_alpha = dst_alpha;
+}
+
+void SetBlendEquationCached(GLenum rgb, GLenum alpha) {
+  if (g_gl_state_cache.blend_equation_valid &&
+      g_gl_state_cache.blend_equation_rgb == rgb &&
+      g_gl_state_cache.blend_equation_alpha == alpha) {
+    return;
+  }
+
+  if (rgb != alpha) glBlendEquationSeparate(rgb, alpha);
+  else glBlendEquation(rgb);
+
+  g_gl_state_cache.blend_equation_valid = true;
+  g_gl_state_cache.blend_equation_rgb = rgb;
+  g_gl_state_cache.blend_equation_alpha = alpha;
+}
 
 GLenum BlendFactorFromD3DRgb(DWORD blend) {
   switch (blend) {
@@ -4137,20 +4856,11 @@ void ApplyBlendState() {
     const float r = static_cast<float>((c >> 16) & 0xFFu) / 255.0f;
     const float g = static_cast<float>((c >> 8) & 0xFFu) / 255.0f;
     const float b = static_cast<float>(c & 0xFFu) / 255.0f;
-    glBlendColor(r, g, b, a);
+    SetBlendColorCached(r, g, b, a);
   }
 
-  if (src_rgb != src_alpha || dst_rgb != dst_alpha) {
-    glBlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
-  } else {
-    glBlendFunc(src_rgb, dst_rgb);
-  }
-
-  if (rgb_op != alpha_op) {
-    glBlendEquationSeparate(rgb_op, alpha_op);
-  } else {
-    glBlendEquation(rgb_op);
-  }
+  SetBlendFuncCached(src_rgb, dst_rgb, src_alpha, dst_alpha);
+  SetBlendEquationCached(rgb_op, alpha_op);
 }
 
 GLenum FrontFaceFromCullMode(DWORD cull_mode) {
@@ -4214,7 +4924,7 @@ bool EnsureWasmContext() {
   attrs.stencil = EM_FALSE;
   attrs.antialias = EM_TRUE;
   attrs.premultipliedAlpha = EM_FALSE;
-  attrs.preserveDrawingBuffer = EM_TRUE;
+  attrs.preserveDrawingBuffer = EM_FALSE;
   attrs.majorVersion = 2;
   attrs.minorVersion = 0;
 
@@ -4231,6 +4941,7 @@ bool EnsureWasmContext() {
   g_wasm_d3d9_state.ctx = ctx;
   g_wasm_d3d9_state.webgl2 = webgl2;
   if (emscripten_webgl_make_context_current(ctx) != EMSCRIPTEN_RESULT_SUCCESS) return false;
+  g_gl_state_cache = {};
 
   int canvas_w = kDefaultWidth;
   int canvas_h = kDefaultHeight;
@@ -4247,11 +4958,10 @@ bool EnsureWasmContext() {
 
   glViewport(0, 0, canvas_w, canvas_h);
   ApplyCullState();
-  if (g_wasm_d3d9_state.z_enable) glEnable(GL_DEPTH_TEST);
-  else glDisable(GL_DEPTH_TEST);
-  glDepthFunc(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
-  glDepthMask(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
-  glDisable(GL_BLEND);
+  SetCapabilityCached(GL_DEPTH_TEST, g_wasm_d3d9_state.z_enable);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
+  SetCapabilityCached(GL_BLEND, false);
   ApplyBlendState();
   return true;
 }
@@ -4279,6 +4989,8 @@ void ApplyViewport() {
   if (max_z < min_z) std::swap(min_z, max_z);
   glDepthRangef(min_z, max_z);
 }
+
+void TrackGLErrorsPostFrame();
 
 }  // namespace
 
@@ -4313,6 +5025,10 @@ HRESULT WydD3D9Device_EndScene(IDirect3DDevice9*) {
   if (!EnsureWasmContext()) return E_FAIL;
   g_debug_end_scene_calls += 1;
   g_wasm_d3d9_state.scene_active = false;
+  if (CollectDetailedTelemetry() ||
+      (g_debug_ffp_flags & kDebugTrackGlErrorsPerDraw) != 0u) {
+    TrackGLErrorsPostFrame();
+  }
   return S_OK;
 }
 
@@ -4344,14 +5060,14 @@ HRESULT WydD3D9Device_Clear(
   }
   if (flags & D3DCLEAR_ZBUFFER) {
     glClearDepthf(z);
-    glDepthMask(GL_TRUE);
+    SetDepthMaskCached(GL_TRUE);
     mask |= GL_DEPTH_BUFFER_BIT;
   }
   if (mask == 0) return S_OK;
 
   glClear(mask);
   if (flags & D3DCLEAR_ZBUFFER) {
-    glDepthMask(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
+    SetDepthMaskCached(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
   }
   if (DrawTraceIsEnabled()) {
     g_draw_trace_top_samples.clear();
@@ -4413,6 +5129,7 @@ HRESULT WydD3D9Device_SetLight(IDirect3DDevice9*, DWORD index, const D3DLIGHT9* 
   if (!light) return E_POINTER;
   if (index >= g_wasm_d3d9_state.lights.size()) return D3DERR_INVALIDCALL;
   g_wasm_d3d9_state.lights[index] = *light;
+  g_directional_light_view_dirty = true;
   g_light_set_calls += 1;
   return S_OK;
 }
@@ -4444,21 +5161,19 @@ HRESULT WydD3D9Device_SetRenderState(IDirect3DDevice9*, D3DRENDERSTATETYPE state
   switch (state) {
     case D3DRS_ZENABLE:
       g_wasm_d3d9_state.z_enable = (value != 0);
-      if (g_wasm_d3d9_state.z_enable) glEnable(GL_DEPTH_TEST);
-      else glDisable(GL_DEPTH_TEST);
+      SetCapabilityCached(GL_DEPTH_TEST, g_wasm_d3d9_state.z_enable);
       break;
     case D3DRS_ZWRITEENABLE:
       g_wasm_d3d9_state.z_write_enable = (value != 0);
-      glDepthMask(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
+      SetDepthMaskCached(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
       break;
     case D3DRS_ZFUNC:
       g_wasm_d3d9_state.z_func = value;
-      glDepthFunc(DepthFuncFromD3D(value));
+      SetDepthFuncCached(DepthFuncFromD3D(value));
       break;
     case D3DRS_ALPHABLENDENABLE:
       g_wasm_d3d9_state.blend_enabled = (value != 0);
-      if (g_wasm_d3d9_state.blend_enabled) glEnable(GL_BLEND);
-      else glDisable(GL_BLEND);
+      SetCapabilityCached(GL_BLEND, g_wasm_d3d9_state.blend_enabled);
       ApplyBlendState();
       break;
     case D3DRS_SRCBLEND:
@@ -4516,13 +5231,11 @@ HRESULT WydD3D9Device_SetRenderState(IDirect3DDevice9*, D3DRENDERSTATETYPE state
       break;
     case D3DRS_DITHERENABLE:
       g_wasm_d3d9_state.dither_enable = value;
-      if (value) glEnable(GL_DITHER);
-      else glDisable(GL_DITHER);
+      SetCapabilityCached(GL_DITHER, value != 0);
       break;
     case D3DRS_STENCILENABLE:
       g_wasm_d3d9_state.stencil_enable = value;
-      if (value) glEnable(GL_STENCIL_TEST);
-      else glDisable(GL_STENCIL_TEST);
+      SetCapabilityCached(GL_STENCIL_TEST, value != 0);
       break;
     case D3DRS_CLIPPING:
       g_wasm_d3d9_state.clipping_enable = value;
@@ -4628,10 +5341,27 @@ struct FFPVertex {
   uint8_t a = 255;
 };
 
+struct WasmDrawScratch {
+  std::vector<FFPVertex> decoded_vertices;
+  std::vector<uint32_t> decoded_indices;
+};
+
+WasmDrawScratch g_draw_scratch;
+
 struct WasmFFPProgram {
+  struct UniformCacheEntry {
+    bool valid = false;
+    uint8_t kind = 0;
+    uint8_t bytes = 0;
+    std::array<uint8_t, 64> data{};
+  };
+
   GLuint program = 0;
   GLuint vbo = 0;
   GLuint ibo = 0;
+  bool program_bound = false;
+  bool vertex_input_bound = false;
+  bool index_buffer_bound = false;
   GLint attr_pos = -1;
   GLint attr_uv0 = -1;
   GLint attr_uv1 = -1;
@@ -4677,6 +5407,7 @@ struct WasmFFPProgram {
   GLint uni_fog_end = -1;
   GLint uni_fog_density = -1;
   GLint uni_range_fog_enable = -1;
+  std::array<UniformCacheEntry, 128> uniform_cache{};
   bool ready = false;
 };
 
@@ -4707,6 +5438,51 @@ WasmFixedFunctionState g_ffp_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
 DummyDirect3DSurface9* g_default_depth_surface = nullptr;
 bool g_ffp_state_initialized = false;
+
+bool UpdateUniformCache(GLint location, uint8_t kind, const void* data, size_t bytes) {
+  if (location < 0 || !data || bytes == 0) return false;
+  if (location >= static_cast<GLint>(g_ffp_program.uniform_cache.size()) ||
+      bytes > g_ffp_program.uniform_cache[0].data.size()) {
+    return true;
+  }
+
+  auto& cached = g_ffp_program.uniform_cache[static_cast<size_t>(location)];
+  if (cached.valid &&
+      cached.kind == kind &&
+      cached.bytes == bytes &&
+      std::memcmp(cached.data.data(), data, bytes) == 0) {
+    return false;
+  }
+
+  cached.valid = true;
+  cached.kind = kind;
+  cached.bytes = static_cast<uint8_t>(bytes);
+  std::memcpy(cached.data.data(), data, bytes);
+  return true;
+}
+
+void SetUniform1iCached(GLint location, GLint value) {
+  if (location >= 0 && UpdateUniformCache(location, 1, &value, sizeof(value)))
+    glUniform1i(location, value);
+}
+
+void SetUniform1fCached(GLint location, GLfloat value) {
+  if (location >= 0 && UpdateUniformCache(location, 2, &value, sizeof(value)))
+    glUniform1f(location, value);
+}
+
+void SetUniform4fCached(GLint location, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
+  const GLfloat values[4]{x, y, z, w};
+  if (location >= 0 && UpdateUniformCache(location, 3, values, sizeof(values)))
+    glUniform4fv(location, 1, values);
+}
+
+void SetUniformMatrix4Cached(GLint location, const GLfloat* value) {
+  if (location >= 0 && value &&
+      UpdateUniformCache(location, 4, value, sizeof(GLfloat) * 16u)) {
+    glUniformMatrix4fv(location, 1, GL_FALSE, value);
+  }
+}
 
 template <typename T>
 T ReadUnaligned(const uint8_t* ptr) {
@@ -5146,6 +5922,15 @@ void TrackGLErrorsPostDraw() {
     g_gl_error_last = static_cast<uint32_t>(err);
   }
   if (had_error) g_gl_error_draw_calls += 1;
+}
+
+void TrackGLErrorsPostFrame() {
+  for (;;) {
+    const GLenum err = glGetError();
+    if (err == GL_NO_ERROR) break;
+    g_gl_error_total += 1;
+    g_gl_error_last = static_cast<uint32_t>(err);
+  }
 }
 
 GLenum PrimitiveToGL(D3DPRIMITIVETYPE primitive_type) {
@@ -6532,10 +7317,23 @@ D3DXVECTOR3 TransformPositionToView(const D3DVECTOR& position) {
       position.x * g_ffp_state.view._13 + position.y * g_ffp_state.view._23 + position.z * g_ffp_state.view._33 + g_ffp_state.view._43);
 }
 
+void UpdateDirectionalLightViewCache() {
+  if (!g_directional_light_view_dirty) return;
+
+  for (size_t i = 0; i < g_wasm_d3d9_state.lights.size(); ++i) {
+    const D3DXVECTOR3 view_dir =
+        Normalize3(TransformDirectionToView(g_wasm_d3d9_state.lights[i].Direction));
+    g_directional_to_light_view[i] =
+        Normalize3(D3DXVECTOR3(-view_dir.x, -view_dir.y, -view_dir.z));
+  }
+  g_directional_light_view_dirty = false;
+}
+
 void AccumulateLight(
     const D3DLIGHT9& light,
     const D3DXVECTOR3& cam_pos,
-    const D3DXVECTOR3& cam_nrm,
+    const D3DXVECTOR3& unit_cam_nrm,
+    const D3DXVECTOR3* directional_to_light,
     const D3DCOLORVALUE& material_diffuse,
     const D3DCOLORVALUE& material_ambient,
     const D3DCOLORVALUE& material_specular,
@@ -6556,8 +7354,7 @@ void AccumulateLight(
   float saved_distance = 0.0f;
 
   if (light.Type == D3DLIGHT_DIRECTIONAL) {
-    D3DXVECTOR3 view_dir = Normalize3(TransformDirectionToView(light.Direction));
-    to_light = Normalize3(D3DXVECTOR3(-view_dir.x, -view_dir.y, -view_dir.z));
+    to_light = directional_to_light ? *directional_to_light : D3DXVECTOR3(0.0f, 0.0f, 1.0f);
     g_directional_lighted_vertices += 1;
   } else {
     D3DXVECTOR3 view_pos = TransformPositionToView(light.Position);
@@ -6597,8 +7394,7 @@ void AccumulateLight(
     }
   }
 
-  const D3DXVECTOR3 unit_nrm = Normalize3(cam_nrm);
-  const float ndotl = std::max(0.0f, Dot3(unit_nrm, to_light));
+  const float ndotl = std::max(0.0f, Dot3(unit_cam_nrm, to_light));
   *out_r += material_diffuse.r * light.Diffuse.r * ndotl * attenuation;
   *out_g += material_diffuse.g * light.Diffuse.g * ndotl * attenuation;
   *out_b += material_diffuse.b * light.Diffuse.b * ndotl * attenuation;
@@ -6616,7 +7412,7 @@ void AccumulateLight(
         to_light.y + view_dir.y,
         to_light.z + view_dir.z);
     half_vec = Normalize3(half_vec);
-    const float ndoth = std::max(0.0f, Dot3(unit_nrm, half_vec));
+    const float ndoth = std::max(0.0f, Dot3(unit_cam_nrm, half_vec));
     const float spec = std::pow(ndoth, material_power);
     *out_r += material_specular.r * light.Specular.r * spec * attenuation;
     *out_g += material_specular.g * light.Specular.g * spec * attenuation;
@@ -6663,11 +7459,17 @@ void ApplyLegacyLightingToVertex(
   float r = material_emissive.r + material_ambient.r * global_ambient.r;
   float g = material_emissive.g + material_ambient.g * global_ambient.g;
   float b = material_emissive.b + material_ambient.b * global_ambient.b;
+  const D3DXVECTOR3 unit_cam_nrm = Normalize3(cam_nrm);
+  UpdateDirectionalLightViewCache();
 
   for (size_t i = 0; i < g_wasm_d3d9_state.lights.size(); ++i) {
     if (!g_wasm_d3d9_state.light_enabled[i]) continue;
-    AccumulateLight(g_wasm_d3d9_state.lights[i], cam_pos, cam_nrm, material_diffuse, material_ambient,
-                    material_specular, material.Power, specular_enable, local_viewer, &r, &g, &b);
+    const D3DLIGHT9& light = g_wasm_d3d9_state.lights[i];
+    const D3DXVECTOR3* directional_to_light =
+        light.Type == D3DLIGHT_DIRECTIONAL ? &g_directional_to_light_view[i] : nullptr;
+    AccumulateLight(light, cam_pos, unit_cam_nrm, directional_to_light, material_diffuse,
+                    material_ambient, material_specular, material.Power, specular_enable,
+                    local_viewer, &r, &g, &b);
   }
 
   const float alpha = (material_diffuse.a > 0.0f) ? material_diffuse.a : ColorValueFromVertex(*out_vertex).a;
@@ -7497,8 +8299,9 @@ GLint D3DFilterToGLMin(DWORD min_filter, DWORD mip_filter, bool mipmaps_availabl
   return mip_filter == D3DTEXF_POINT ? GL_LINEAR_MIPMAP_NEAREST : GL_LINEAR_MIPMAP_LINEAR;
 }
 
-void ApplyTextureSamplerState(DWORD stage, const DummyDirect3DTexture9* tex) {
+void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   if (stage >= kMaxTextureStages) return;
+  if (!tex) return;
 
   const DWORD addr_u = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSU];
   const DWORD addr_v = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSV];
@@ -7506,14 +8309,29 @@ void ApplyTextureSamplerState(DWORD stage, const DummyDirect3DTexture9* tex) {
       tex && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
   const GLint wrap_u = can_repeat ? D3DAddressToGL(addr_u) : GL_CLAMP_TO_EDGE;
   const GLint wrap_v = can_repeat ? D3DAddressToGL(addr_v) : GL_CLAMP_TO_EDGE;
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_u);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_v);
 
   const DWORD min_filter = g_ffp_state.sampler[stage][D3DSAMP_MINFILTER];
   const DWORD mag_filter = g_ffp_state.sampler[stage][D3DSAMP_MAGFILTER];
   const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, D3DFilterToGLMin(min_filter, mip_filter, can_repeat));
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, D3DFilterToGLMag(mag_filter));
+  const GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, can_repeat);
+  const GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
+
+  if (tex->gl_wrap_s != wrap_u) {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_u);
+    tex->gl_wrap_s = wrap_u;
+  }
+  if (tex->gl_wrap_t != wrap_v) {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_v);
+    tex->gl_wrap_t = wrap_v;
+  }
+  if (tex->gl_min_filter != gl_min_filter) {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_min_filter);
+    tex->gl_min_filter = gl_min_filter;
+  }
+  if (tex->gl_mag_filter != gl_mag_filter) {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_mag_filter);
+    tex->gl_mag_filter = gl_mag_filter;
+  }
 }
 
 bool BindTextureStage(DWORD stage) {
@@ -7563,15 +8381,8 @@ DWORD StageStateValue(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD default_
 }
 
 float NormalizeAlphaRefValue(DWORD ref_raw) {
-  if (ref_raw <= 0xFu) {
-    const uint8_t n = static_cast<uint8_t>(ref_raw & 0x0Fu);
-    return static_cast<float>((n << 4) | n) / 255.0f;
-  }
-  if (ref_raw <= 0xFFu) return static_cast<float>(ref_raw) / 255.0f;
-  const uint8_t hi8 = static_cast<uint8_t>((ref_raw >> 24) & 0xFFu);
-  if (hi8 != 0) return static_cast<float>(hi8) / 255.0f;
-  const uint8_t hi4 = static_cast<uint8_t>((ref_raw >> 12) & 0x0Fu);
-  if (hi4 != 0) return static_cast<float>((hi4 << 4) | hi4) / 255.0f;
+  // D3DRS_ALPHAREF always consumes the low eight bits, independently of the
+  // render-target or texture format.
   return static_cast<float>(ref_raw & 0xFFu) / 255.0f;
 }
 
@@ -7616,14 +8427,10 @@ void UploadTexTransformUniforms(
     GLint uni_flags) {
   const DWORD ttf = StageStateValue(stage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
   const GLint flags_uniform = static_cast<GLint>(ttf & 0x1FFu);
-  if (uni_flags >= 0) glUniform1i(uni_flags, flags_uniform);
-  if (uni_matrix >= 0) {
-    glUniformMatrix4fv(
-        uni_matrix,
-        1,
-        GL_FALSE,
-        reinterpret_cast<const GLfloat*>(&g_ffp_state.tex[stage]));
-  }
+  SetUniform1iCached(uni_flags, flags_uniform);
+  SetUniformMatrix4Cached(
+      uni_matrix,
+      reinterpret_cast<const GLfloat*>(&g_ffp_state.tex[stage]));
 }
 
 bool ApplyStageUniforms(
@@ -7668,13 +8475,13 @@ bool ApplyStageUniforms(
   // passes through unchanged (D3D9 spec).  The shader already handles this
   // by skipping the alpha operation when uAlphaOp == 1.
 
-  if (uni_use_texture >= 0) glUniform1i(uni_use_texture, has_texture ? 1 : 0);
-  if (uni_color_op >= 0) glUniform1i(uni_color_op, static_cast<GLint>(color_op));
-  if (uni_color_arg1 >= 0) glUniform1i(uni_color_arg1, static_cast<GLint>(color_arg1));
-  if (uni_color_arg2 >= 0) glUniform1i(uni_color_arg2, static_cast<GLint>(color_arg2));
-  if (uni_alpha_op >= 0) glUniform1i(uni_alpha_op, static_cast<GLint>(alpha_op));
-  if (uni_alpha_arg1 >= 0) glUniform1i(uni_alpha_arg1, static_cast<GLint>(alpha_arg1));
-  if (uni_alpha_arg2 >= 0) glUniform1i(uni_alpha_arg2, static_cast<GLint>(alpha_arg2));
+  SetUniform1iCached(uni_use_texture, has_texture ? 1 : 0);
+  SetUniform1iCached(uni_color_op, static_cast<GLint>(color_op));
+  SetUniform1iCached(uni_color_arg1, static_cast<GLint>(color_arg1));
+  SetUniform1iCached(uni_color_arg2, static_cast<GLint>(color_arg2));
+  SetUniform1iCached(uni_alpha_op, static_cast<GLint>(alpha_op));
+  SetUniform1iCached(uni_alpha_arg1, static_cast<GLint>(alpha_arg1));
+  SetUniform1iCached(uni_alpha_arg2, static_cast<GLint>(alpha_arg2));
   return color_op != D3DTOP_DISABLE;
 }
 
@@ -7706,10 +8513,10 @@ void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
 
   const StageTexCoordBinding stage0_bind = ResolveStageTexCoordBinding(0, 0u);
   const StageTexCoordBinding stage1_bind = ResolveStageTexCoordBinding(1, 1u);
-  if (g_ffp_program.uni_stage0_texcoord_set >= 0) glUniform1i(g_ffp_program.uni_stage0_texcoord_set, stage0_bind.set_index);
-  if (g_ffp_program.uni_stage1_texcoord_set >= 0) glUniform1i(g_ffp_program.uni_stage1_texcoord_set, stage1_bind.set_index);
-  if (g_ffp_program.uni_stage0_tci_mode >= 0) glUniform1i(g_ffp_program.uni_stage0_tci_mode, stage0_bind.tci_mode);
-  if (g_ffp_program.uni_stage1_tci_mode >= 0) glUniform1i(g_ffp_program.uni_stage1_tci_mode, stage1_bind.tci_mode);
+  SetUniform1iCached(g_ffp_program.uni_stage0_texcoord_set, stage0_bind.set_index);
+  SetUniform1iCached(g_ffp_program.uni_stage1_texcoord_set, stage1_bind.set_index);
+  SetUniform1iCached(g_ffp_program.uni_stage0_tci_mode, stage0_bind.tci_mode);
+  SetUniform1iCached(g_ffp_program.uni_stage1_tci_mode, stage1_bind.tci_mode);
 
   if (stage1_bind.tci_mode != 0) g_stage1_generated_tci_draws += 1;
   if (stage1_bind.set_index == 0) g_stage1_tci0_draws += 1;
@@ -7723,36 +8530,33 @@ void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
 
   float tf_r = 1.0f, tf_g = 1.0f, tf_b = 1.0f, tf_a = 1.0f;
   DecodeD3DColor(g_wasm_d3d9_state.texture_factor, &tf_r, &tf_g, &tf_b, &tf_a);
-  if (g_ffp_program.uni_texture_factor >= 0) glUniform4f(g_ffp_program.uni_texture_factor, tf_r, tf_g, tf_b, tf_a);
+  SetUniform4fCached(g_ffp_program.uni_texture_factor, tf_r, tf_g, tf_b, tf_a);
 
   float amb_r = 1.0f, amb_g = 1.0f, amb_b = 1.0f, amb_a = 1.0f;
   DecodeD3DColor(g_wasm_d3d9_state.ambient, &amb_r, &amb_g, &amb_b, &amb_a);
-  if (g_ffp_program.uni_ambient >= 0) glUniform4f(g_ffp_program.uni_ambient, amb_r, amb_g, amb_b, amb_a);
-  if (g_ffp_program.uni_lighting_enable >= 0) {
-    glUniform1i(g_ffp_program.uni_lighting_enable, g_wasm_d3d9_state.lighting_enable ? 1 : 0);
-  }
-
-  if (g_ffp_program.uni_blend_enable >= 0) {
-    glUniform1i(g_ffp_program.uni_blend_enable, g_wasm_d3d9_state.blend_enabled ? 1 : 0);
-  }
+  SetUniform4fCached(g_ffp_program.uni_ambient, amb_r, amb_g, amb_b, amb_a);
+  SetUniform1iCached(
+      g_ffp_program.uni_lighting_enable,
+      g_wasm_d3d9_state.lighting_enable ? 1 : 0);
+  SetUniform1iCached(
+      g_ffp_program.uni_blend_enable,
+      g_wasm_d3d9_state.blend_enabled ? 1 : 0);
 
   const bool alpha_test_active =
       ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
       (g_wasm_d3d9_state.alpha_test_enable != 0) &&
       (g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS);
-  if (g_ffp_program.uni_alpha_test_enable >= 0) {
-    glUniform1i(g_ffp_program.uni_alpha_test_enable, alpha_test_active ? 1 : 0);
-  }
-  if (g_ffp_program.uni_alpha_ref >= 0) {
-    glUniform1f(g_ffp_program.uni_alpha_ref, NormalizeAlphaRefValue(g_wasm_d3d9_state.alpha_ref));
-  }
-  if (g_ffp_program.uni_alpha_func >= 0) {
-    glUniform1i(g_ffp_program.uni_alpha_func, static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
-  }
-  if (g_ffp_program.uni_debug_flags >= 0) {
-    const uint32_t shader_debug_flags = g_debug_ffp_flags & kDebugForceOpaqueTextureAlpha;
-    glUniform1i(g_ffp_program.uni_debug_flags, static_cast<GLint>(shader_debug_flags));
-  }
+  SetUniform1iCached(g_ffp_program.uni_alpha_test_enable, alpha_test_active ? 1 : 0);
+  SetUniform1fCached(
+      g_ffp_program.uni_alpha_ref,
+      NormalizeAlphaRefValue(g_wasm_d3d9_state.alpha_ref));
+  SetUniform1iCached(
+      g_ffp_program.uni_alpha_func,
+      static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
+  const uint32_t shader_debug_flags = g_debug_ffp_flags & kDebugForceOpaqueTextureAlpha;
+  SetUniform1iCached(
+      g_ffp_program.uni_debug_flags,
+      static_cast<GLint>(shader_debug_flags));
   DWORD effective_fog_vertex_mode = g_wasm_d3d9_state.fog_vertex_mode;
   float effective_fog_start = g_wasm_d3d9_state.fog_start;
   float effective_fog_end = g_wasm_d3d9_state.fog_end;
@@ -7773,33 +8577,23 @@ void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
     }
   }
 
-  if (g_ffp_program.uni_fog_color >= 0) {
-    float fog_r = 0.0f, fog_g = 0.0f, fog_b = 0.0f, fog_a = 1.0f;
-    DecodeD3DColor(g_wasm_d3d9_state.fog_color, &fog_r, &fog_g, &fog_b, &fog_a);
-    glUniform4f(g_ffp_program.uni_fog_color, fog_r, fog_g, fog_b, fog_a);
-  }
+  float fog_r = 0.0f, fog_g = 0.0f, fog_b = 0.0f, fog_a = 1.0f;
+  DecodeD3DColor(g_wasm_d3d9_state.fog_color, &fog_r, &fog_g, &fog_b, &fog_a);
+  SetUniform4fCached(g_ffp_program.uni_fog_color, fog_r, fog_g, fog_b, fog_a);
   const bool fog_active =
       ((g_debug_ffp_flags & kDebugDisableFog) == 0u) &&
       (g_wasm_d3d9_state.fog_enable != 0) &&
       (effective_fog_vertex_mode != D3DFOG_NONE);
-  if (g_ffp_program.uni_fog_enable >= 0) {
-    glUniform1i(g_ffp_program.uni_fog_enable, fog_active ? 1 : 0);
-  }
-  if (g_ffp_program.uni_fog_mode >= 0) {
-    glUniform1i(g_ffp_program.uni_fog_mode, static_cast<GLint>(effective_fog_vertex_mode));
-  }
-  if (g_ffp_program.uni_fog_start >= 0) {
-    glUniform1f(g_ffp_program.uni_fog_start, effective_fog_start);
-  }
-  if (g_ffp_program.uni_fog_end >= 0) {
-    glUniform1f(g_ffp_program.uni_fog_end, effective_fog_end);
-  }
-  if (g_ffp_program.uni_fog_density >= 0) {
-    glUniform1f(g_ffp_program.uni_fog_density, g_wasm_d3d9_state.fog_density);
-  }
-  if (g_ffp_program.uni_range_fog_enable >= 0) {
-    glUniform1i(g_ffp_program.uni_range_fog_enable, g_wasm_d3d9_state.range_fog_enable ? 1 : 0);
-  }
+  SetUniform1iCached(g_ffp_program.uni_fog_enable, fog_active ? 1 : 0);
+  SetUniform1iCached(
+      g_ffp_program.uni_fog_mode,
+      static_cast<GLint>(effective_fog_vertex_mode));
+  SetUniform1fCached(g_ffp_program.uni_fog_start, effective_fog_start);
+  SetUniform1fCached(g_ffp_program.uni_fog_end, effective_fog_end);
+  SetUniform1fCached(g_ffp_program.uni_fog_density, g_wasm_d3d9_state.fog_density);
+  SetUniform1iCached(
+      g_ffp_program.uni_range_fog_enable,
+      g_wasm_d3d9_state.range_fog_enable ? 1 : 0);
 }
 
 bool DecodeVertexFromFVF(
@@ -8123,6 +8917,28 @@ bool BuildClipWClippedTriangles(
     std::vector<uint32_t>* out_indices,
     bool force_clip_triangle_repair = false) {
   if (!out_vertices || !out_indices) return false;
+
+  const bool enable_clip_triangle_repair =
+      force_clip_triangle_repair || ((g_debug_ffp_flags & kDebugClipTriangleRepair) != 0u);
+  const size_t preflight_count = indices ? indices->size() : vertices.size();
+  bool needs_rebuild = false;
+  for (size_t i = 0; i < preflight_count; ++i) {
+    const uint32_t idx = indices ? (*indices)[i] : static_cast<uint32_t>(i);
+    if (idx >= vertices.size()) {
+      needs_rebuild = true;
+      break;
+    }
+    const bool accepted = enable_clip_triangle_repair
+        ? VertexFullyInsideClipVolume(vertices[idx])
+        : VertexHasStableClipW(vertices[idx]);
+    if (!accepted) {
+      needs_rebuild = true;
+      break;
+    }
+  }
+  if (!needs_rebuild)
+    return false;
+
   *out_vertices = vertices;
   out_indices->clear();
   bool rejected_any = false;
@@ -8132,9 +8948,6 @@ bool BuildClipWClippedTriangles(
   auto idx_at = [&](size_t i) -> uint32_t {
     return indices ? (*indices)[i] : static_cast<uint32_t>(i);
   };
-
-  const bool enable_clip_triangle_repair =
-      force_clip_triangle_repair || ((g_debug_ffp_flags & kDebugClipTriangleRepair) != 0u);
 
   auto vertex_fully_inside = [&](uint32_t idx) -> bool {
     if (idx >= vertices.size()) return false;
@@ -8477,12 +9290,72 @@ void BuildSkyScreenQuad(std::vector<FFPVertex>* out_vertices, std::vector<uint32
   out_indices->assign({0u, 1u, 2u, 0u, 2u, 3u});
 }
 
+void BindFFPProgramAndVertexInput() {
+  if (!g_ffp_program.program_bound) {
+    glUseProgram(g_ffp_program.program);
+    g_ffp_program.program_bound = true;
+  }
+  if (g_ffp_program.vertex_input_bound) return;
+
+  glBindBuffer(GL_ARRAY_BUFFER, g_ffp_program.vbo);
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_pos));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv0));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv1));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_pos));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_nrm));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_color));
+
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_pos),
+      4,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, x)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_uv0),
+      2,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, u0)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_uv1),
+      2,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, u1)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_cam_pos),
+      3,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, cam_pos_x)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_cam_nrm),
+      3,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, cam_nrm_x)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_color),
+      4,
+      GL_UNSIGNED_BYTE,
+      GL_TRUE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, r)));
+  g_ffp_program.vertex_input_bound = true;
+}
+
 bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const std::vector<uint32_t>* indices) {
   if (!EnsureWasmContext()) return false;
   if (!EnsureFFPProgram()) return false;
   if (vertices.empty()) return true;
+  BindFFPProgramAndVertexInput();
 
-  ApplyViewport();
   bool depth_test_enabled =
       g_wasm_d3d9_state.z_enable && ((g_debug_ffp_flags & kDebugDisableDepthTest) == 0u);
   bool depth_write_enabled =
@@ -8491,12 +9364,16 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   const bool marked_sky_draw = g_mark_next_draw_sky;
   g_mark_next_draw_sky = false;
   const bool current_sky_texture_draw = marked_sky_draw || CurrentDrawUsesSkyTexture();
-  const uint64_t draw_order_serial = ++g_draw_order_serial;
-  TrackDrawOrder(draw_order_serial, active_fvf, current_sky_texture_draw);
-  TrackFvf322ClassDraw(active_fvf);
-  TrackSkinSuspiciousTexture(active_fvf, draw_order_serial);
-  if (!g_draw_trace_scope.empty() && g_draw_trace_scope.find("TMObject") != std::string::npos) {
-    g_static_object_draws += 1;
+  const bool detailed_telemetry = CollectDetailedTelemetry();
+  uint64_t draw_order_serial = 0;
+  if (detailed_telemetry) {
+    draw_order_serial = ++g_draw_order_serial;
+    TrackDrawOrder(draw_order_serial, active_fvf, current_sky_texture_draw);
+    TrackFvf322ClassDraw(active_fvf);
+    TrackSkinSuspiciousTexture(active_fvf, draw_order_serial);
+    if (!g_draw_trace_scope.empty() && g_draw_trace_scope.find("TMObject") != std::string::npos) {
+      g_static_object_draws += 1;
+    }
   }
 
   if (active_fvf == 594u && ((g_debug_ffp_flags & kDebugTerrainDepthTestOff) != 0u)) {
@@ -8519,7 +9396,22 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   }
   if (active_fvf == 322u) {
     const uint32_t fvf322_class = ClassifyFvf322Draw();
-    depth_write_enabled = false;
+    const size_t class_index =
+        std::min<size_t>(static_cast<size_t>(fvf322_class), g_fvf322_requested_depth_write_enabled_by_class.size() - 1u);
+    if (detailed_telemetry) {
+      if (depth_write_enabled) {
+        g_fvf322_requested_depth_write_enabled += 1;
+        g_fvf322_requested_depth_write_enabled_by_class[class_index] += 1;
+      } else {
+        g_fvf322_requested_depth_write_disabled += 1;
+        g_fvf322_requested_depth_write_disabled_by_class[class_index] += 1;
+      }
+    }
+    if (depth_write_enabled &&
+        ((g_debug_ffp_flags & kDebugForceFvf322DepthWriteOff) != 0u)) {
+      depth_write_enabled = false;
+      g_fvf322_forced_depth_write_disabled += 1;
+    }
     if (fvf322_class == kFvf322ClassSky) {
       depth_test_enabled = false;
     }
@@ -8527,7 +9419,7 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   if (active_fvf == 324u && !depth_write_enabled) {
     depth_test_enabled = false;
   }
-  TrackDepthWriteFVF(active_fvf, depth_write_enabled);
+  if (detailed_telemetry) TrackDepthWriteFVF(active_fvf, depth_write_enabled);
   if (current_sky_texture_draw && ((g_debug_ffp_flags & kDebugSkipSkyDraw) != 0u)) {
     TrackSkyClipStats(gl_mode, vertices, indices);
     return true;
@@ -8536,21 +9428,20 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
       current_sky_texture_draw &&
       active_fvf == 322u &&
       ((g_debug_ffp_flags & kDebugEnableSkyScreenQuad) != 0u);
-  if (depth_test_enabled && !replace_sky_with_screen_quad) glEnable(GL_DEPTH_TEST);
-  else glDisable(GL_DEPTH_TEST);
-  glDepthMask((depth_write_enabled && !replace_sky_with_screen_quad) ? GL_TRUE : GL_FALSE);
+  SetCapabilityCached(GL_DEPTH_TEST, depth_test_enabled && !replace_sky_with_screen_quad);
+  SetDepthMaskCached((depth_write_enabled && !replace_sky_with_screen_quad) ? GL_TRUE : GL_FALSE);
   const bool blend_enabled =
       g_wasm_d3d9_state.blend_enabled && ((g_debug_ffp_flags & kDebugDisableBlend) == 0u);
   const bool effective_depth_test_enabled = depth_test_enabled && !replace_sky_with_screen_quad;
   const bool effective_depth_write_enabled = depth_write_enabled && !replace_sky_with_screen_quad;
   const bool effective_blend_enabled = blend_enabled && !marked_sky_draw && !replace_sky_with_screen_quad;
   if (marked_sky_draw || replace_sky_with_screen_quad) {
-    glDisable(GL_BLEND);
+    SetCapabilityCached(GL_BLEND, false);
   } else if (blend_enabled) {
-    glEnable(GL_BLEND);
+    SetCapabilityCached(GL_BLEND, true);
     ApplyBlendState();
   } else {
-    glDisable(GL_BLEND);
+    SetCapabilityCached(GL_BLEND, false);
   }
   D3DMATRIX world_view{};
   D3DXMatrixMultiply(
@@ -8567,7 +9458,6 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
     g_cull_mirror_worldview_draws += 1;
     if (cull_active) g_cull_frontface_flipped_draws += 1;
   }
-  glUseProgram(g_ffp_program.program);
   if (marked_sky_draw || replace_sky_with_screen_quad) glDisable(GL_CULL_FACE);
   else ApplyCullState(mirrored_world_view);
 
@@ -8610,13 +9500,13 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
       g_stage0_colorop8_last_path_len = 0;
     }
   }
-  TrackSpecialTextureDraws(active_fvf);
+  if (detailed_telemetry) TrackSpecialTextureDraws(active_fvf);
   if (active_fvf == 530u) {
     const bool collect_fvf530_stats =
         ((g_debug_ffp_flags & kDebugCollectFVF530Stats) != 0u) ||
         ((g_debug_ffp_flags & kDebugEnableFVF530LargeBoundsSkip) != 0u);
     if (collect_fvf530_stats) TrackFVF530DrawStats(vertices, indices);
-    else TrackFVF530DrawSummary(vertices, indices);
+    else if (detailed_telemetry) TrackFVF530DrawSummary(vertices, indices);
     if (collect_fvf530_stats && ShouldSkipFVF530LargeBoundsDraw()) {
       g_fvf530_large_bounds_skip_draws += 1;
       RecordDrawTrace(
@@ -8633,14 +9523,14 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
       return true;
     }
   }
-  if (current_sky_texture_draw) TrackSkyClipStats(gl_mode, vertices, indices);
+  if (detailed_telemetry && current_sky_texture_draw) TrackSkyClipStats(gl_mode, vertices, indices);
   if (marked_sky_draw) g_texture_draws_sky += 1;
-  if (active_fvf == 322u) {
+  if (detailed_telemetry && active_fvf == 322u) {
     if (has_stage0_texture) g_fvf322_with_stage0_texture += 1;
     else g_fvf322_without_stage0_texture += 1;
   }
-  if (g_ffp_program.uni_sampler0 >= 0) glUniform1i(g_ffp_program.uni_sampler0, 0);
-  if (g_ffp_program.uni_sampler1 >= 0) glUniform1i(g_ffp_program.uni_sampler1, 1);
+  SetUniform1iCached(g_ffp_program.uni_sampler0, 0);
+  SetUniform1iCached(g_ffp_program.uni_sampler1, 1);
   ApplyFFPUniforms(has_stage0_texture, has_stage1_texture);
   if (marked_sky_draw) {
     g_ffp_state.tex_stage[0][D3DTSS_COLOROP] = saved_stage0_color_op;
@@ -8705,7 +9595,7 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
     }
   }
 
-  TrackFieldVisualDraw(active_fvf, current_sky_texture_draw);
+  if (detailed_telemetry) TrackFieldVisualDraw(active_fvf, current_sky_texture_draw);
 
   if (active_fvf == 578u) {
     const DWORD stage1_color_op = StageStateValue(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
@@ -8718,58 +9608,6 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
     if (!depth_write_enabled) g_draw_water_depth_write_disabled += 1;
     if (g_wasm_d3d9_state.fog_enable == 0) g_draw_water_fog_disabled += 1;
   }
-
-  glBindBuffer(GL_ARRAY_BUFFER, g_ffp_program.vbo);
-
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_pos));
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv0));
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv1));
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_pos));
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_nrm));
-  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_color));
-
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_pos),
-      4,
-      GL_FLOAT,
-      GL_FALSE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, x)));
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_uv0),
-      2,
-      GL_FLOAT,
-      GL_FALSE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, u0)));
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_uv1),
-      2,
-      GL_FLOAT,
-      GL_FALSE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, u1)));
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_cam_pos),
-      3,
-      GL_FLOAT,
-      GL_FALSE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, cam_pos_x)));
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_cam_nrm),
-      3,
-      GL_FLOAT,
-      GL_FALSE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, cam_nrm_x)));
-  glVertexAttribPointer(
-      static_cast<GLuint>(g_ffp_program.attr_color),
-      4,
-      GL_UNSIGNED_BYTE,
-      GL_TRUE,
-      sizeof(FFPVertex),
-      reinterpret_cast<const void*>(offsetof(FFPVertex, r)));
 
   GLenum draw_mode = gl_mode;
   const std::vector<uint32_t>* draw_indices = indices;
@@ -8824,7 +9662,7 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
         if (active_fvf == 594u) g_fvf594_auto_clipw_reject_draws += 1;
       }
       if (clip_w_indices.empty() || clip_w_vertices.empty()) {
-        TrackClipWEmptySignature(active_fvf);
+        if (detailed_telemetry) TrackClipWEmptySignature(active_fvf);
         RecordDrawTrace(
             draw_mode,
             *draw_vertices,
@@ -8864,11 +9702,16 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
 
   if (!draw_indices || draw_indices->empty()) {
     glDrawArrays(draw_mode, 0, static_cast<GLsizei>(draw_vertices->size()));
-    TrackGLErrorsPostDraw();
+    if ((g_debug_ffp_flags & kDebugTrackGlErrorsPerDraw) != 0u) {
+      TrackGLErrorsPostDraw();
+    }
     return true;
   }
 
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ffp_program.ibo);
+  if (!g_ffp_program.index_buffer_bound) {
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ffp_program.ibo);
+    g_ffp_program.index_buffer_bound = true;
+  }
   if (g_wasm_d3d9_state.webgl2) {
     glBufferData(
         GL_ELEMENT_ARRAY_BUFFER,
@@ -8887,7 +9730,9 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
         GL_STREAM_DRAW);
     glDrawElements(draw_mode, static_cast<GLsizei>(short_indices.size()), GL_UNSIGNED_SHORT, nullptr);
   }
-  TrackGLErrorsPostDraw();
+  if ((g_debug_ffp_flags & kDebugTrackGlErrorsPerDraw) != 0u) {
+    TrackGLErrorsPostDraw();
+  }
 
   return true;
 }
@@ -9253,6 +10098,7 @@ HRESULT WydD3D9Device_SetTransform(IDirect3DDevice9*, D3DTRANSFORMSTATETYPE stat
 
   if (state == D3DTS_VIEW) {
     g_ffp_state.view = *mat;
+    g_directional_light_view_dirty = true;
     return S_OK;
   }
   if (state == D3DTS_PROJECTION) {
@@ -9492,13 +10338,16 @@ HRESULT WydD3D9Device_DrawPrimitiveUP(
   if (vertex_count == 0 || !vertex_stream_zero_data || vertex_stream_zero_stride == 0) return D3DERR_INVALIDCALL;
 
   const DWORD fvf = g_ffp_state.current_fvf;
-  TrackDrawFVF(fvf);
-  TrackFVF322Path(fvf, 0);
+  if (CollectDetailedTelemetry()) {
+    TrackDrawFVF(fvf);
+    TrackFVF322Path(fvf, 0);
+  }
   if (ShouldSkipFVFDraw(fvf)) return S_OK;
   const UINT stride = EffectiveStride(fvf, vertex_stream_zero_stride);
   if (stride == 0) return D3DERR_INVALIDCALL;
 
-  std::vector<FFPVertex> vertices;
+  std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
+  vertices.clear();
   HRESULT hr = BuildVerticesFromLinearStream(
       static_cast<const uint8_t*>(vertex_stream_zero_data),
       vertex_count,
@@ -9556,13 +10405,16 @@ HRESULT WydD3D9Device_DrawIndexedPrimitiveUP(
   if (!index_data || !vertex_stream_zero_data || num_vertices == 0) return D3DERR_INVALIDCALL;
 
   const DWORD fvf = g_ffp_state.current_fvf;
-  TrackDrawFVF(fvf);
-  TrackFVF322Path(fvf, 1);
+  if (CollectDetailedTelemetry()) {
+    TrackDrawFVF(fvf);
+    TrackFVF322Path(fvf, 1);
+  }
   if (ShouldSkipFVFDraw(fvf)) return S_OK;
   const UINT stride = EffectiveStride(fvf, vertex_stream_zero_stride);
   if (stride == 0) return D3DERR_INVALIDCALL;
 
-  std::vector<FFPVertex> vertices;
+  std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
+  vertices.clear();
   HRESULT hr = BuildVerticesFromLinearStream(
       static_cast<const uint8_t*>(vertex_stream_zero_data) + static_cast<size_t>(min_vertex_index) * stride,
       num_vertices,
@@ -9576,7 +10428,8 @@ HRESULT WydD3D9Device_DrawIndexedPrimitiveUP(
 
   const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
   if (index_count == 0) return D3DERR_INVALIDCALL;
-  std::vector<uint32_t> indices;
+  std::vector<uint32_t>& indices = g_draw_scratch.decoded_indices;
+  indices.clear();
   indices.reserve(index_count);
 
   if (index_data_format == D3DFMT_INDEX16) {
@@ -9673,7 +10526,8 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
 
     const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
     if (index_count == 0) return D3DERR_INVALIDCALL;
-    std::vector<uint32_t> indices;
+    std::vector<uint32_t>& indices = g_draw_scratch.decoded_indices;
+    indices.clear();
     uint32_t min_index_used = 0;
     uint32_t max_index_used = 0;
     bool invalid_index = false;
@@ -9690,7 +10544,8 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
     if (FAILED(hr)) return hr;
     if (invalid_index) return S_OK;
 
-    std::vector<FFPVertex> vertices;
+    std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
+    vertices.clear();
     UINT compact_vertex_count = 0;
     if (ShouldUseIndexedCompactRange(
             indices,
@@ -9738,8 +10593,10 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
   }
 
   const DWORD fvf = g_ffp_state.current_fvf ? g_ffp_state.current_fvf : vb->fvf;
-  TrackDrawFVF(fvf);
-  TrackFVF322Path(fvf, 2);
+  if (CollectDetailedTelemetry()) {
+    TrackDrawFVF(fvf);
+    TrackFVF322Path(fvf, 2);
+  }
   if (ShouldSkipFVFDraw(fvf)) return S_OK;
   const UINT stride = EffectiveStride(fvf, g_ffp_state.stream0_stride);
   if (stride == 0) return D3DERR_INVALIDCALL;
@@ -9751,7 +10608,8 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
 
   const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
   if (index_count == 0) return D3DERR_INVALIDCALL;
-  std::vector<uint32_t> indices;
+  std::vector<uint32_t>& indices = g_draw_scratch.decoded_indices;
+  indices.clear();
   uint32_t min_index_used = 0;
   uint32_t max_index_used = 0;
   bool invalid_index = false;
@@ -9768,7 +10626,8 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
   if (FAILED(hr)) return hr;
   if (invalid_index) return S_OK;
 
-  std::vector<FFPVertex> vertices;
+  std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
+  vertices.clear();
   UINT compact_vertex_count = 0;
   if (ShouldUseIndexedCompactRange(
           indices,
@@ -10742,6 +11601,28 @@ extern "C" uint32_t wyd_d3d9_fvf322_screenlike_replay_suppressed() {
   return static_cast<uint32_t>(g_fvf322_screenlike_replay_suppressed);
 }
 
+extern "C" uint32_t wyd_d3d9_fvf322_requested_depth_write_enabled() {
+  return static_cast<uint32_t>(g_fvf322_requested_depth_write_enabled);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_requested_depth_write_disabled() {
+  return static_cast<uint32_t>(g_fvf322_requested_depth_write_disabled);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_forced_depth_write_disabled() {
+  return static_cast<uint32_t>(g_fvf322_forced_depth_write_disabled);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_requested_depth_write_enabled_class(uint32_t class_id) {
+  if (class_id >= g_fvf322_requested_depth_write_enabled_by_class.size()) return 0u;
+  return static_cast<uint32_t>(g_fvf322_requested_depth_write_enabled_by_class[class_id]);
+}
+
+extern "C" uint32_t wyd_d3d9_fvf322_requested_depth_write_disabled_class(uint32_t class_id) {
+  if (class_id >= g_fvf322_requested_depth_write_disabled_by_class.size()) return 0u;
+  return static_cast<uint32_t>(g_fvf322_requested_depth_write_disabled_by_class[class_id]);
+}
+
 extern "C" uint32_t wyd_d3d9_texture_draws_sky() {
   return static_cast<uint32_t>(g_texture_draws_sky);
 }
@@ -11129,6 +12010,14 @@ extern "C" uint32_t wyd_d3d9_get_debug_flags() {
   return g_debug_ffp_flags;
 }
 
+extern "C" void wyd_d3d9_set_detailed_telemetry(int enabled) {
+  g_debug_collect_detailed_telemetry = enabled != 0;
+}
+
+extern "C" int wyd_d3d9_get_detailed_telemetry() {
+  return g_debug_collect_detailed_telemetry ? 1 : 0;
+}
+
 extern "C" void wyd_d3d9_set_debug_skip_fvf(uint32_t fvf) {
   g_debug_skip_fvf = fvf;
 }
@@ -11329,6 +12218,74 @@ extern "C" uint32_t wyd_field_visual_fvf_bucket_size() {
   return static_cast<uint32_t>(g_field_visual_fvf_export_cache.size());
 }
 
+extern "C" int wyd_audio_resume() {
+  return WydWebAudioResume();
+}
+
+extern "C" uint32_t wyd_audio_buffers_created() {
+  return g_wydAudioBuffersCreated.load();
+}
+
+extern "C" uint32_t wyd_audio_uploads() {
+  return g_wydAudioUploads.load();
+}
+
+extern "C" uint32_t wyd_audio_play_calls() {
+  return g_wydAudioPlayCalls.load();
+}
+
+extern "C" uint32_t wyd_audio_stop_calls() {
+  return g_wydAudioStopCalls.load();
+}
+
+extern "C" int wyd_audio_play_music_file(const char* path, int volume) {
+  if (!path || !*path) return 0;
+  auto resolved = ResolveCaseInsensitivePath(path);
+  std::ifstream input(resolved, std::ios::binary);
+  if (!input) {
+    input.open(NormalizeWinPath(path), std::ios::binary);
+  }
+  TrackAssetFileOpen(path, input.good());
+  if (!input) return 0;
+
+  std::vector<unsigned char> bytes(
+      (std::istreambuf_iterator<char>(input)),
+      std::istreambuf_iterator<char>());
+  if (bytes.empty()) return 0;
+
+  g_wydMusicVolume = volume;
+  ++g_wydMusicPlayCalls;
+  return WydWebMusicPlay(bytes.data(), static_cast<int>(bytes.size()), volume);
+}
+
+extern "C" int wyd_audio_stop_music() {
+  ++g_wydMusicStopCalls;
+  WydWebMusicStop();
+  return 1;
+}
+
+extern "C" int wyd_audio_set_music_volume(int volume) {
+  g_wydMusicVolume = volume;
+  WydWebMusicSetVolume(volume);
+  return 1;
+}
+
+extern "C" int wyd_audio_get_music_volume() {
+  return g_wydMusicVolume.load();
+}
+
+extern "C" uint32_t wyd_audio_music_play_calls() {
+  return g_wydMusicPlayCalls.load();
+}
+
+extern "C" uint32_t wyd_audio_music_stop_calls() {
+  return g_wydMusicStopCalls.load();
+}
+
+extern "C" int wyd_audio_music_state() {
+  return WydWebMusicState();
+}
+
 extern "C" void wyd_d3d9_reset_debug_counters() {
   g_tex_decode_success = 0;
   g_tex_decode_fail = 0;
@@ -11418,6 +12375,11 @@ extern "C" void wyd_d3d9_reset_debug_counters() {
   g_fvf322_screenlike_draws = 0;
   g_fvf322_screenlike_replay_draws = 0;
   g_fvf322_screenlike_replay_suppressed = 0;
+  g_fvf322_requested_depth_write_enabled = 0;
+  g_fvf322_requested_depth_write_disabled = 0;
+  g_fvf322_forced_depth_write_disabled = 0;
+  g_fvf322_requested_depth_write_enabled_by_class.fill(0);
+  g_fvf322_requested_depth_write_disabled_by_class.fill(0);
   g_fvf322_auto_clipw_draws = 0;
   g_fvf322_auto_clipw_reject_draws = 0;
   g_fvf530_auto_clipw_draws = 0;

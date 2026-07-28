@@ -19,6 +19,7 @@ from typing import Sequence
 NS = {"msb": "http://schemas.microsoft.com/developer/msbuild/2003"}
 
 FIRST_ERROR_RE = re.compile(r"error: (.*)")
+VALID_OPT_LEVELS = {"O0", "O1", "O2", "O3", "Os", "Oz"}
 
 
 @dataclass
@@ -61,6 +62,7 @@ def run_compile(
     obj_root: Path,
     logs_dir: Path,
     extra_defines: Sequence[str],
+    optimization_flag: str,
 ) -> CompileResult:
     rel = src.relative_to(repo_root).as_posix()
     obj_rel = rel.replace(".cpp", ".o")
@@ -70,6 +72,7 @@ def run_compile(
     cmd = [
         "em++",
         "-std=c++17",
+        optimization_flag,
         "-c",
         "-fms-extensions",
         "-Wno-microsoft-cast",
@@ -157,6 +160,13 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
+    opt_level = os.environ.get("OPENWYD_WASM_OPT_LEVEL", "O2")
+    if opt_level not in VALID_OPT_LEVELS:
+        parser.error(
+            "OPENWYD_WASM_OPT_LEVEL must be one of: "
+            + ", ".join(sorted(VALID_OPT_LEVELS))
+        )
+    optimization_flag = f"-{opt_level}"
     vcxproj = (repo_root / args.vcxproj).resolve()
     obj_root = (repo_root / args.obj_root).resolve()
     report_json = (repo_root / args.report_json).resolve()
@@ -183,7 +193,7 @@ def main() -> int:
     ]
 
     print(f"[obj] vcxproj={vcxproj}")
-    print(f"[obj] tus={len(sources)} jobs={args.jobs}")
+    print(f"[obj] tus={len(sources)} jobs={args.jobs} optimization={optimization_flag}")
 
     started = time.perf_counter()
     results: list[CompileResult] = []
@@ -201,6 +211,7 @@ def main() -> int:
                 obj_root,
                 logs_dir,
                 defines,
+                optimization_flag,
             ): src
             for src in sources
         }
@@ -224,6 +235,7 @@ def main() -> int:
     report = {
         "vcxproj": str(vcxproj.relative_to(repo_root)),
         "jobs": args.jobs,
+        "optimization": optimization_flag,
         "elapsed_ms": elapsed_ms,
         "summary": {"total": len(results), "ok": ok_count, "failed": fail_count},
         "top_first_errors": first_errors.most_common(50),

@@ -367,6 +367,290 @@ SControlContainer* TMScene::GetCtrlContainer()
 	return m_pControlContainer;
 }
 
+#if defined(__EMSCRIPTEN__)
+namespace
+{
+struct WydLegacyBinPanel
+{
+	int nID;
+	int nParentID;
+	int nTextureSetIndex;
+	int nStartX;
+	int nStartY;
+	int nWidth;
+	int nHeight;
+	int nColor;
+	int nFillType;
+};
+
+struct WydLegacyBinButton
+{
+	int nID;
+	int nParentID;
+	int nTextureSetIndex;
+	int nStartX;
+	int nStartY;
+	int nWidth;
+	int nHeight;
+	int nColor;
+	int nSound;
+	char szString[128];
+};
+
+struct WydLegacyBinText
+{
+	int nID;
+	int nParentID;
+	int nTextureSetIndex;
+	int nStartX;
+	int nStartY;
+	int nWidth;
+	int nHeight;
+	int nFontColor;
+	int nBorder;
+	int nBorderColor;
+	int nTextType;
+	int nAlignType;
+	char szString[128];
+};
+
+bool WydIsRCControlType(int nType)
+{
+	switch (static_cast<CONTROL_TYPE>(nType))
+	{
+	case CONTROL_TYPE::CTRL_TYPE_PANEL:
+	case CONTROL_TYPE::CTRL_TYPE_BUTTON:
+	case CONTROL_TYPE::CTRL_TYPE_CHECKBOX:
+	case CONTROL_TYPE::CTRL_TYPE_LISTBOX:
+	case CONTROL_TYPE::CTRL_TYPE_PROGRESSBAR:
+	case CONTROL_TYPE::CTRL_TYPE_TEXT:
+	case CONTROL_TYPE::CTRL_TYPE_EDITABLETEXT:
+	case CONTROL_TYPE::CTRL_TYPE_3DOBJ:
+	case CONTROL_TYPE::CTRL_TYPE_GRID:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool WydRCRecordBoundaryIsValid(FILE* fp, long nOffset, long nFileSize)
+{
+	if (nOffset == nFileSize)
+		return true;
+	if (nOffset < 0 || nOffset + static_cast<long>(sizeof(int)) > nFileSize)
+		return false;
+
+	const long nSaved = ftell(fp);
+	fseek(fp, nOffset, SEEK_SET);
+	int nType = 0;
+	const bool bRead = fread(&nType, sizeof(nType), 1, fp) == 1;
+	fseek(fp, nSaved, SEEK_SET);
+	return bRead && WydIsRCControlType(nType);
+}
+
+bool WydIsLegacyRCBin(FILE* fp)
+{
+	if (!fp)
+		return false;
+
+	const long nSaved = ftell(fp);
+	fseek(fp, 0, SEEK_END);
+	const long nFileSize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	int nType = 0;
+	if (fread(&nType, sizeof(nType), 1, fp) != 1)
+	{
+		fseek(fp, nSaved, SEEK_SET);
+		return false;
+	}
+
+	size_t nCurrentSize = 0;
+	size_t nLegacySize = 0;
+	switch (static_cast<CONTROL_TYPE>(nType))
+	{
+	case CONTROL_TYPE::CTRL_TYPE_PANEL:
+		nCurrentSize = sizeof(BinPanel);
+		nLegacySize = sizeof(WydLegacyBinPanel);
+		break;
+	case CONTROL_TYPE::CTRL_TYPE_BUTTON:
+		nCurrentSize = sizeof(BinButton);
+		nLegacySize = sizeof(WydLegacyBinButton);
+		break;
+	case CONTROL_TYPE::CTRL_TYPE_TEXT:
+		nCurrentSize = sizeof(BinText);
+		nLegacySize = sizeof(WydLegacyBinText);
+		break;
+	default:
+		fseek(fp, nSaved, SEEK_SET);
+		return false;
+	}
+
+	const long nCurrentBoundary = static_cast<long>(sizeof(int) + nCurrentSize);
+	const long nLegacyBoundary = static_cast<long>(sizeof(int) + nLegacySize);
+	const bool bCurrentValid = WydRCRecordBoundaryIsValid(fp, nCurrentBoundary, nFileSize);
+	const bool bLegacyValid = WydRCRecordBoundaryIsValid(fp, nLegacyBoundary, nFileSize);
+	fseek(fp, nSaved, SEEK_SET);
+	return bLegacyValid && !bCurrentValid;
+}
+
+void WydAttachLegacyControl(SControlContainer* pContainer, SControl* pControl, int nParentID)
+{
+	if (!pContainer || !pControl)
+		return;
+
+	if (nParentID)
+	{
+		auto pParent = pContainer->FindControl(nParentID);
+		if (pParent)
+		{
+			pParent->AddChild(static_cast<TreeNode*>(pControl));
+			return;
+		}
+	}
+	pContainer->AddItem(pControl);
+}
+
+int WydReadLegacyRCBin(TMScene* pScene, FILE* fpBinary)
+{
+	if (!pScene || !fpBinary || !pScene->m_pControlContainer)
+		return 0;
+
+	rewind(fpBinary);
+	CONTROL_TYPE nControlType{};
+	while (fread(&nControlType, sizeof(nControlType), 1, fpBinary) == 1)
+	{
+		switch (nControlType)
+		{
+		case CONTROL_TYPE::CTRL_TYPE_PANEL:
+		{
+			WydLegacyBinPanel data{};
+			if (fread(&data, sizeof(data), 1, fpBinary) != 1)
+				return 0;
+
+			auto pPanel = new SPanel(
+				data.nTextureSetIndex,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight),
+				data.nColor,
+				static_cast<RENDERCTRLTYPE>(data.nFillType));
+			if (!pPanel)
+				return 0;
+			pPanel->SetControlID(data.nID);
+			pPanel->SetCenterPos(
+				data.nID,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight));
+			WydAttachLegacyControl(pScene->m_pControlContainer, pPanel, data.nParentID);
+		}
+		break;
+		case CONTROL_TYPE::CTRL_TYPE_BUTTON:
+		{
+			WydLegacyBinButton data{};
+			if (fread(&data, sizeof(data), 1, fpBinary) != 1)
+				return 0;
+			data.szString[sizeof(data.szString) - 1] = 0;
+
+			auto pButton = new SButton(
+				data.nTextureSetIndex,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight),
+				data.nColor,
+				data.nSound,
+				data.szString);
+			if (!pButton)
+				return 0;
+			pButton->SetControlID(data.nID);
+			pButton->SetCenterPos(
+				data.nID,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight));
+			pButton->SetEventListener(static_cast<IEventListener*>(pScene->m_pControlContainer));
+			WydAttachLegacyControl(pScene->m_pControlContainer, pButton, data.nParentID);
+		}
+		break;
+		case CONTROL_TYPE::CTRL_TYPE_TEXT:
+		{
+			WydLegacyBinText data{};
+			if (fread(&data, sizeof(data), 1, fpBinary) != 1)
+				return 0;
+			data.szString[sizeof(data.szString) - 1] = 0;
+
+			auto pText = new SText(
+				data.nTextureSetIndex,
+				data.szString,
+				data.nFontColor,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight),
+				data.nBorder,
+				data.nBorderColor,
+				data.nTextType,
+				data.nAlignType);
+			if (!pText)
+				return 0;
+			pText->SetControlID(data.nID);
+			pText->SetCenterPos(
+				data.nID,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight));
+			WydAttachLegacyControl(pScene->m_pControlContainer, pText, data.nParentID);
+		}
+		break;
+		case CONTROL_TYPE::CTRL_TYPE_EDITABLETEXT:
+		{
+			BinEdit data{};
+			if (fread(&data, sizeof(data), 1, fpBinary) != 1)
+				return 0;
+			data.szString[sizeof(data.szString) - 1] = 0;
+
+			auto pEdit = new SEditableText(
+				data.nTextureSetIndex,
+				data.szString,
+				data.nMaxStringLength,
+				data.nPassword,
+				data.nFontColor,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight),
+				data.nBorder,
+				data.nBorderColor,
+				data.nTextType,
+				data.nAlignType);
+			if (!pEdit)
+				return 0;
+			pEdit->SetControlID(data.nID);
+			pEdit->SetCenterPos(
+				data.nID,
+				static_cast<float>(data.nStartX),
+				static_cast<float>(data.nStartY),
+				static_cast<float>(data.nWidth),
+				static_cast<float>(data.nHeight));
+			pEdit->SetEventListener(static_cast<IEventListener*>(pScene->m_pControlContainer));
+			WydAttachLegacyControl(pScene->m_pControlContainer, pEdit, data.nParentID);
+		}
+		break;
+		default:
+			return 0;
+		}
+	}
+	return 1;
+}
+}
+#endif
+
 int TMScene::LoadRC(const char* szFileName)
 {
 	if (!m_pControlContainer)
@@ -399,6 +683,15 @@ int TMScene::ReadRCBin(char* szBinFileName)
 
 	if (!fpBinary)
 		return 0;
+
+#if defined(__EMSCRIPTEN__)
+	if (WydIsLegacyRCBin(fpBinary))
+	{
+		const int nResult = WydReadLegacyRCBin(this, fpBinary);
+		fclose(fpBinary);
+		return nResult;
+	}
+#endif
 
 	CONTROL_TYPE nControlType{};
 

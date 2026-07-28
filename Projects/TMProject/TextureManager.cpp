@@ -261,6 +261,42 @@ int TextureManager::InitUITextureList()
 	fread(m_stUITextureList, sizeof(m_stUITextureList), 1, fpBin);
 	fclose(fpBin);
 
+#if defined(__EMSCRIPTEN__)
+	struct WydLegacyUITextureInfo
+	{
+		char szFileName[255];
+		char cAlpha;
+		unsigned int dwLastUsedTime;
+		unsigned int dwShowTime;
+	};
+
+	FILE* fpLegacy = fopen("Mesh/UITextureList.bin", "rb");
+	if (fpLegacy)
+	{
+		for (int nIndex = 0; nIndex < MAX_UI_TEXTURE; ++nIndex)
+		{
+			WydLegacyUITextureInfo legacy{};
+			if (fread(&legacy, sizeof(legacy), 1, fpLegacy) != 1)
+				break;
+
+			legacy.szFileName[sizeof(legacy.szFileName) - 1] = 0;
+			if (m_stUITextureList[nIndex].szFileName[0] == 0 &&
+				legacy.szFileName[0] != 0 &&
+				static_cast<unsigned char>(legacy.szFileName[0]) != 0xCD)
+			{
+				std::snprintf(
+					m_stUITextureList[nIndex].szFileName,
+					sizeof(m_stUITextureList[nIndex].szFileName),
+					"%s",
+					legacy.szFileName);
+				m_stUITextureList[nIndex].szFilePart[0] = 0;
+				m_stUITextureList[nIndex].cAlpha = legacy.cAlpha;
+			}
+		}
+		fclose(fpLegacy);
+	}
+#endif
+
 	return 1;
 }
 
@@ -503,6 +539,52 @@ int TextureManager::InitUITextureSetList()
 	}
 
 	fclose(fp);
+
+#if defined(__EMSCRIPTEN__)
+	FILE* fpLegacy = fopen("Mesh/UITextureSetList.txt", "rt");
+	if (fpLegacy)
+	{
+		while (fscanf(fpLegacy, "%127s\r\nSetIndex: %d\r\nItemCount: %d\r\n",
+			szSetName, &nSetIndex, &nItemCount) != -1)
+		{
+			const bool bStore =
+				nSetIndex >= 0 &&
+				nSetIndex < MAX_UI_TEXTURE_SET_LIST &&
+				nItemCount > 0 &&
+				m_UITextureSetList[nSetIndex].pTextureCoord == nullptr;
+
+			ControlTextureCoord* pCoords =
+				bStore ? new ControlTextureCoord[nItemCount] : nullptr;
+			for (int nCount = 0; nCount < nItemCount; ++nCount)
+			{
+				ControlTextureCoord coord{};
+				if (fscanf(fpLegacy, "%d,%d,%d,%d,%d,%d,%d\r\n",
+					&coord.nTextureIndex,
+					&coord.nStartX,
+					&coord.nStartY,
+					&coord.nWidth,
+					&coord.nHeight,
+					&coord.nDestX,
+					&coord.nDestY) != 7)
+				{
+					SAFE_DELETE_ARRAY(pCoords);
+					fclose(fpLegacy);
+					return 1;
+				}
+				if (pCoords)
+					pCoords[nCount] = coord;
+			}
+
+			if (pCoords)
+			{
+				m_UITextureSetList[nSetIndex].nCount = nItemCount;
+				m_UITextureSetList[nSetIndex].pTextureCoord = pCoords;
+			}
+		}
+		fclose(fpLegacy);
+	}
+#endif
+
 	return 1;
 }
 

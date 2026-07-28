@@ -416,11 +416,12 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 		for (int nX = 0; nX < RenderDevice::m_nFontTextureSize; ++nX)
 		{
 #if defined(__EMSCRIPTEN__)
-			// Canvas 2D produces alpha-based anti-aliasing (constant RGB,
-			// varying alpha).  GDI ClearType varies RGB channels.  Read
-			// the actual alpha byte (>>24 on little-endian uint32).
-			unsigned int pixel = g_pDevice->m_pBitmapBits[nX + nY * RenderDevice::m_nFontTextureSize];
-			char bAlpha = static_cast<char>((pixel >> 24) & 0xFF) >> 4;
+			// The WASM GDI replacement stores glyph coverage in the alpha
+			// byte (>>24 on little-endian uint32).
+			const unsigned int pixel =
+				g_pDevice->m_pBitmapBits[nX + nY * RenderDevice::m_nFontTextureSize];
+			const unsigned char bAlpha =
+				static_cast<unsigned char>((pixel >> 24) & 0xFFu) >> 4;
 #else
 			char bAlpha = (g_pDevice->m_pBitmapBits[nX + nY * RenderDevice::m_nFontTextureSize] & 0xFF) >> 4;
 #endif
