@@ -1,0 +1,2 @@
+# Game data files are byte-exact inputs. Never apply line-ending conversion.
+*.bin -text
