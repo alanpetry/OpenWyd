@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 from collections import Counter
 from pathlib import Path
@@ -69,6 +70,17 @@ def parse_undefined(stderr_text: str) -> Counter[str]:
         if m:
             counter[m.group(1).strip()] += 1
     return counter
+
+
+def write_response_file(path: Path, args: list[str]) -> None:
+    """Write arguments in the format consumed by Emscripten response files.
+
+    Emscripten expands response files with ``shlex.split`` on every host.
+    ``shlex.join`` therefore gives us a reversible representation while keeping
+    the CreateProcess command line short enough for Windows.
+    """
+
+    path.write_text(shlex.join(args) + "\n", encoding="utf-8")
 
 
 def read_preload_entries(repo_root: Path, manifest_path: Path) -> list[str]:
@@ -235,7 +247,10 @@ def main() -> int:
 
     all_objs = [*tm_objs, entry_obj, stubs_obj]
     rsp_path = link_dir / "startup-objects.rsp"
-    rsp_path.write_text("\n".join(str(p.relative_to(repo_root)) for p in all_objs) + "\n", encoding="utf-8")
+    write_response_file(
+        rsp_path,
+        [p.relative_to(repo_root).as_posix() for p in all_objs],
+    )
 
     out_js = link_dir / "tmproject_startup.js"
     stdout_path = link_dir / "startup-strict-all.stdout.txt"
@@ -638,8 +653,15 @@ def main() -> int:
             link_cmd[index] = arg[:-1] + "," + ",".join(repr(name) for name in extra_exports) + "]"
             break
 
+    link_rsp_path = link_dir / "startup-link.rsp.utf-8"
+    write_response_file(link_rsp_path, link_cmd[1:])
+    invoke_cmd = [
+        link_cmd[0],
+        f"@{link_rsp_path.relative_to(repo_root)}",
+    ]
+
     print("[startup-link] linking strict artifact")
-    proc = subprocess.run(link_cmd, cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(invoke_cmd, cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     stdout_path.write_text(proc.stdout or "", encoding="utf-8")
     stderr_path.write_text(proc.stderr or "", encoding="utf-8")
