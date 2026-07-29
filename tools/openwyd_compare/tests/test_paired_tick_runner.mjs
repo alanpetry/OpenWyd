@@ -52,6 +52,201 @@ function fakePresentStateExports(readLatch) {
     _wyd_d3d9_gl_error_total() {
       return 0;
     },
+    _wyd_input_mouse_x() {
+      return 453;
+    },
+    _wyd_input_mouse_y() {
+      return 325;
+    },
+    _wyd_input_mouse_left_down() {
+      return 1;
+    },
+    _wyd_input_mouse_right_down() {
+      return 0;
+    },
+    _wyd_input_mouse_middle_down() {
+      return 0;
+    },
+    _wyd_input_mouse_event_count() {
+      return 17;
+    },
+    _wyd_input_mouse_last_msg() {
+      return 0x0201;
+    },
+    _wyd_input_mouse_last_wparam() {
+      return 1;
+    },
+    _wyd_control_last_mouse_processed_id() {
+      return 66446;
+    },
+    _wyd_control_last_mouse_processed_flags() {
+      return 0x0201;
+    },
+    _wyd_control_last_mouse_processed_type() {
+      return 4;
+    },
+    _wyd_control_last_mouse_processed_x() {
+      return 453;
+    },
+    _wyd_control_last_mouse_processed_y() {
+      return 325;
+    },
+    _wyd_get_field_mode() {
+      return 1;
+    },
+    _wyd_field_debug_fixture_used() {
+      return 0;
+    },
+    _wyd_field_initialized() {
+      return 1;
+    },
+    _wyd_field_has_ground() {
+      return 1;
+    },
+    _wyd_field_has_my_human() {
+      return 1;
+    },
+    _wyd_field_critical_error() {
+      return 0;
+    },
+    _wyd_field_map_x() {
+      return 2101;
+    },
+    _wyd_field_map_y() {
+      return 2101;
+    },
+    _wyd_field_myhuman_x() {
+      return 2101.5;
+    },
+    _wyd_field_myhuman_y() {
+      return 2101.5;
+    },
+    _wyd_field_myhuman_motion() {
+      return 0;
+    },
+    _wyd_field_myhuman_sent_motion() {
+      return 0;
+    },
+    _wyd_field_myhuman_moving() {
+      return 0;
+    },
+    _wyd_field_myhuman_progress_rate() {
+      return 0;
+    },
+    _wyd_field_myhuman_last_route_index() {
+      return 0;
+    },
+    _wyd_field_myhuman_max_route_index() {
+      return 0;
+    },
+    _wyd_field_myhuman_target_x() {
+      return 2101;
+    },
+    _wyd_field_myhuman_target_y() {
+      return 2101;
+    },
+    _wyd_field_myhuman_move_to_x() {
+      return 2101.5;
+    },
+    _wyd_field_myhuman_move_to_y() {
+      return 2101.5;
+    },
+    _wyd_field_myhuman_height() {
+      return 4.25;
+    },
+    _wyd_field_myhuman_want_height() {
+      return 4.25;
+    },
+    _wyd_field_ground_height_under_player() {
+      return 4.25;
+    },
+    _wyd_field_myhuman_height_delta() {
+      return 0;
+    },
+    _wyd_field_ground_mask_under_player() {
+      return 1;
+    },
+    _wyd_field_ground_normal_under_player_x() {
+      return 0;
+    },
+    _wyd_field_ground_normal_under_player_y() {
+      return 1;
+    },
+    _wyd_field_ground_normal_under_player_z() {
+      return 0;
+    },
+    _wyd_field_weather_active() {
+      return 0;
+    },
+    _wyd_field_rain_visible() {
+      return 0;
+    },
+    _wyd_field_snow_visible() {
+      return 0;
+    },
+    _wyd_field_snow2_visible() {
+      return 0;
+    },
+    _wyd_field_object_count() {
+      return 117;
+    },
+    _wyd_field_object_failed() {
+      return 0;
+    },
+    _wyd_field_object_checksum_failed() {
+      return 0;
+    },
+    _wyd_field_object_sea_count() {
+      return 1;
+    },
+    _wyd_field_object_tree_count() {
+      return 5;
+    },
+    _wyd_field_object_house_count() {
+      return 11;
+    },
+    _wyd_field_object_light_count() {
+      return 3;
+    },
+    _wyd_field_object_generic_count() {
+      return 97;
+    },
+    _wyd_field_object_last_mask_index() {
+      return 17;
+    },
+    _wyd_field_static_object_draws() {
+      return 83;
+    },
+    _wyd_field_visual_total_draws() {
+      return 236;
+    },
+    _wyd_field_visual_terrain_draws() {
+      return 64;
+    },
+    _wyd_field_visual_ground_draws() {
+      return 1;
+    },
+    _wyd_field_visual_water_draws() {
+      return 2;
+    },
+    _wyd_field_visual_sky_draws() {
+      return 1;
+    },
+    _wyd_field_visual_human_draws() {
+      return 2;
+    },
+    _wyd_field_visual_object_draws() {
+      return 83;
+    },
+    _wyd_field_visual_effect_draws() {
+      return 12;
+    },
+    _wyd_field_visual_hud_draws() {
+      return 71;
+    },
+    _wyd_field_visual_hud_art_draws() {
+      return 42;
+    },
   };
 }
 
@@ -1053,6 +1248,87 @@ test("WASM pumps RunTick until exactly one Present and emits common snapshot", a
       sequence_after: 22,
       sequence_delta: 1,
     });
+    assert.deepEqual(result.snapshot.extensions.wasm.input_observation, {
+      mouse: {
+        x: 453,
+        y: 325,
+        left_down: 1,
+        right_down: 0,
+        middle_down: 0,
+        event_count: 17,
+        last_message: 0x0201,
+        last_wparam: 1,
+      },
+      control: {
+        id: 66446,
+        flags: 0x0201,
+        type: 4,
+        local_x: 453,
+        local_y: 325,
+      },
+    });
+    assert.deepEqual(
+      result.snapshot.extensions.wasm.field_observation,
+      {
+        mode: 1,
+        debug_fixture_used: 0,
+        initialized: 1,
+        has_ground: 1,
+        has_my_human: 1,
+        critical_error: 0,
+        map: { x: 2101, y: 2101 },
+        player: {
+          x: 2101.5,
+          y: 2101.5,
+          motion: 0,
+          sent_motion: 0,
+          moving: 0,
+          progress_rate: 0,
+          last_route_index: 0,
+          max_route_index: 0,
+          target_x: 2101,
+          target_y: 2101,
+          move_to_x: 2101.5,
+          move_to_y: 2101.5,
+          height: 4.25,
+          want_height: 4.25,
+          ground_height: 4.25,
+          height_delta: 0,
+          ground_mask: 1,
+          ground_normal: { x: 0, y: 1, z: 0 },
+        },
+        weather: {
+          active: 0,
+          rain_visible: 0,
+          snow_visible: 0,
+          snow2_visible: 0,
+        },
+        objects: {
+          count: 117,
+          failed: 0,
+          checksum_failed: 0,
+          sea: 1,
+          tree: 5,
+          house: 11,
+          light: 3,
+          generic: 97,
+          last_mask_index: 17,
+          static_draws: 83,
+        },
+        visuals: {
+          total_draws: 236,
+          terrain_draws: 64,
+          ground_draws: 1,
+          water_draws: 2,
+          sky_draws: 1,
+          human_draws: 2,
+          object_draws: 83,
+          effect_draws: 12,
+          hud_draws: 71,
+          hud_art_draws: 42,
+        },
+      },
+    );
   } finally {
     globalThis.Module = priorModule;
     globalThis.document = priorDocument;
