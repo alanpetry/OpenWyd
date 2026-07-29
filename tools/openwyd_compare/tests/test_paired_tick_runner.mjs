@@ -33,7 +33,50 @@ import {
 } from "../paired_tick_runner.mjs";
 
 function fakePresentStateExports(readLatch) {
+  const matrixHeap = new Float32Array(64);
+  matrixHeap.set(
+    [
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+      2, 3, 5, 7,
+      11, 13, 17, 19,
+      23, 29, 31, 37,
+      41, 43, 47, 53,
+      59, 61, 67, 71,
+      73, 79, 83, 89,
+      97, 101, 103, 107,
+      109, 113, 127, 131,
+    ],
+    4,
+  );
+  const visibleHumans = [
+    {
+      id: 13001,
+      x: 2101.5,
+      y: 2101.5,
+      hp: 280,
+      maxHp: 312,
+      motion: 0,
+      classId: 0,
+      titleProgressVisible: 0,
+    },
+    {
+      id: 13002,
+      x: 2103.5,
+      y: 2100.5,
+      hp: 140,
+      maxHp: 220,
+      motion: 4,
+      classId: 1,
+      titleProgressVisible: 1,
+    },
+  ];
   return {
+    UTF8ToString(pointer) {
+      return pointer === 9001 ? "TKNATIVE" : "";
+    },
     _wyd_compare_present_state_sequence() {
       return readLatch().sequence;
     },
@@ -48,6 +91,24 @@ function fakePresentStateExports(readLatch) {
     },
     _wyd_compare_present_scene_type() {
       return readLatch().scene;
+    },
+    _wyd_compare_3d_state_sequence() {
+      return readLatch().threeDSequence ?? readLatch().sequence;
+    },
+    _wyd_compare_3d_state_valid() {
+      return readLatch().threeDValid ?? 1;
+    },
+    _wyd_compare_3d_state_frame_serial() {
+      return readLatch().threeDFrameSerial ?? 73;
+    },
+    _wyd_compare_3d_state_draw_serial() {
+      return readLatch().threeDDrawSerial ?? 219;
+    },
+    _wyd_compare_3d_state_matrices() {
+      return 4 * Float32Array.BYTES_PER_ELEMENT;
+    },
+    _wyd_compare_3d_state_matrix_value(index) {
+      return matrixHeap[4 + index];
     },
     _wyd_d3d9_gl_error_total() {
       return 0;
@@ -120,6 +181,63 @@ function fakePresentStateExports(readLatch) {
     },
     _wyd_field_myhuman_y() {
       return 2101.5;
+    },
+    _wyd_field_myhuman_id() {
+      return 13001;
+    },
+    _wyd_field_myhuman_name() {
+      return 9001;
+    },
+    _wyd_field_myhuman_hp() {
+      return 280;
+    },
+    _wyd_field_myhuman_max_hp() {
+      return 312;
+    },
+    _wyd_field_myhuman_class_id() {
+      return 0;
+    },
+    _wyd_field_myhuman_attack_dest_id() {
+      return 13002;
+    },
+    _wyd_field_myhuman_title_progress_visible() {
+      return 0;
+    },
+    _wyd_field_mouse_over_human_id() {
+      return 13002;
+    },
+    _wyd_field_visible_human_count() {
+      return visibleHumans.length;
+    },
+    _wyd_field_visible_human_total() {
+      return visibleHumans.length;
+    },
+    _wyd_field_visible_human_limit() {
+      return 64;
+    },
+    _wyd_field_visible_human_id(index) {
+      return visibleHumans[index]?.id ?? 0;
+    },
+    _wyd_field_visible_human_x(index) {
+      return visibleHumans[index]?.x ?? 0;
+    },
+    _wyd_field_visible_human_y(index) {
+      return visibleHumans[index]?.y ?? 0;
+    },
+    _wyd_field_visible_human_hp(index) {
+      return visibleHumans[index]?.hp ?? 0;
+    },
+    _wyd_field_visible_human_max_hp(index) {
+      return visibleHumans[index]?.maxHp ?? 0;
+    },
+    _wyd_field_visible_human_motion(index) {
+      return visibleHumans[index]?.motion ?? -1;
+    },
+    _wyd_field_visible_human_class_id(index) {
+      return visibleHumans[index]?.classId ?? -1;
+    },
+    _wyd_field_visible_human_title_progress_visible(index) {
+      return visibleHumans[index]?.titleProgressVisible ?? 0;
     },
     _wyd_field_myhuman_motion() {
       return 0;
@@ -1242,8 +1360,42 @@ test("WASM pumps RunTick until exactly one Present and emits common snapshot", a
     assert.equal(result.snapshot.ticks.wasm_pump_limit, 8);
     assert.equal(result.snapshot.extensions.wasm.run_tick_pumps, 3);
     assert.equal(result.snapshot.extensions.wasm.direct_state_navigation, false);
+    assert.deepEqual(result.snapshot.matrices.world, [
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    ]);
+    assert.deepEqual(result.snapshot.matrices.view, [
+      2, 3, 5, 7,
+      11, 13, 17, 19,
+      23, 29, 31, 37,
+      41, 43, 47, 53,
+    ]);
+    assert.deepEqual(result.snapshot.matrices.projection, [
+      59, 61, 67, 71,
+      73, 79, 83, 89,
+      97, 101, 103, 107,
+      109, 113, 127, 131,
+    ]);
+    assert.deepEqual(result.snapshot.render.three_d_state, {
+      capture_point: "before_SetMatrixForUI",
+      attempted: true,
+      valid: true,
+      sequence: 22,
+      frame_serial: 11,
+      source_frame_serial: 73,
+      draw_serial: 219,
+      draw_serial_available: true,
+    });
     assert.deepEqual(result.snapshot.extensions.wasm.present_state_latch, {
       capture_point: "after_EndScene_before_Present",
+      sequence_before: 21,
+      sequence_after: 22,
+      sequence_delta: 1,
+    });
+    assert.deepEqual(result.snapshot.extensions.wasm.three_d_state_latch, {
+      capture_point: "before_SetMatrixForUI",
       sequence_before: 21,
       sequence_after: 22,
       sequence_delta: 1,
@@ -1278,6 +1430,13 @@ test("WASM pumps RunTick until exactly one Present and emits common snapshot", a
         critical_error: 0,
         map: { x: 2101, y: 2101 },
         player: {
+          id: 13001,
+          name: "TKNATIVE",
+          hp: 280,
+          max_hp: 312,
+          class_id: 0,
+          attack_dest_id: 13002,
+          title_progress_visible: 0,
           x: 2101.5,
           y: 2101.5,
           motion: 0,
@@ -1296,6 +1455,34 @@ test("WASM pumps RunTick until exactly one Present and emits common snapshot", a
           height_delta: 0,
           ground_mask: 1,
           ground_normal: { x: 0, y: 1, z: 0 },
+        },
+        mouse_over_human_id: 13002,
+        visible_humans: {
+          limit: 64,
+          total: 2,
+          captured: 2,
+          entries: [
+            {
+              id: 13001,
+              x: 2101.5,
+              y: 2101.5,
+              hp: 280,
+              max_hp: 312,
+              motion: 0,
+              class_id: 0,
+              title_progress_visible: 0,
+            },
+            {
+              id: 13002,
+              x: 2103.5,
+              y: 2100.5,
+              hp: 140,
+              max_hp: 220,
+              motion: 4,
+              class_id: 1,
+              title_progress_visible: 1,
+            },
+          ],
         },
         weather: {
           active: 0,
@@ -1328,6 +1515,124 @@ test("WASM pumps RunTick until exactly one Present and emits common snapshot", a
           hud_art_draws: 42,
         },
       },
+    );
+  } finally {
+    globalThis.Module = priorModule;
+    globalThis.document = priorDocument;
+  }
+});
+
+test("WASM snapshot records an intentionally absent pre-UI 3D latch", async () => {
+  const priorModule = globalThis.Module;
+  const priorDocument = globalThis.document;
+  let presents = 0;
+  const presentState = {
+    sequence: 4,
+    gameValid: 1,
+    game: 1,
+    sceneValid: 1,
+    scene: 30001,
+    threeDSequence: 9,
+    threeDValid: 0,
+    threeDFrameSerial: 0,
+  };
+  globalThis.Module = {
+    ...fakePresentStateExports(() => presentState),
+    ...fakeClockExports(),
+    _wyd_d3d9_present_calls() {
+      return presents;
+    },
+    _wyd_tick_client() {
+      presentState.sequence += 1;
+      presents += 1;
+      return 1;
+    },
+  };
+  globalThis.document = {
+    querySelector() {
+      return {
+        width: 800,
+        height: 600,
+        toDataURL() {
+          return "data:image/png;base64,AA==";
+        },
+      };
+    },
+  };
+  try {
+    const result = await executeWasmTick({
+      frameId: 8,
+      maxPumps: 2,
+      selector: "#canvas",
+      timeMs: 100,
+    });
+    assert.deepEqual(result.snapshot.matrices, {
+      world: null,
+      view: null,
+      projection: null,
+    });
+    assert.deepEqual(result.snapshot.render.three_d_state, {
+      capture_point: "before_SetMatrixForUI",
+      attempted: false,
+      valid: false,
+      sequence: 9,
+      frame_serial: 8,
+      source_frame_serial: 0,
+      draw_serial: null,
+      draw_serial_available: false,
+    });
+  } finally {
+    globalThis.Module = priorModule;
+    globalThis.document = priorDocument;
+  }
+});
+
+test("WASM snapshot rejects a non-finite pre-UI 3D matrix value", async () => {
+  const priorModule = globalThis.Module;
+  const priorDocument = globalThis.document;
+  let presents = 0;
+  const presentState = {
+    sequence: 1,
+    gameValid: 1,
+    game: 7,
+    sceneValid: 1,
+    scene: 30004,
+  };
+  globalThis.Module = {
+    ...fakePresentStateExports(() => presentState),
+    ...fakeClockExports(),
+    _wyd_compare_3d_state_matrix_value(index) {
+      return index === 47 ? Number.NaN : 0;
+    },
+    _wyd_d3d9_present_calls() {
+      return presents;
+    },
+    _wyd_tick_client() {
+      presentState.sequence += 1;
+      presents += 1;
+      return 1;
+    },
+  };
+  globalThis.document = {
+    querySelector() {
+      return {
+        width: 800,
+        height: 600,
+        toDataURL() {
+          throw new Error("PNG capture must not run after matrix failure");
+        },
+      };
+    },
+  };
+  try {
+    await assert.rejects(
+      executeWasmTick({
+        frameId: 1,
+        maxPumps: 2,
+        selector: "#canvas",
+        timeMs: 0,
+      }),
+      /matrices contain a non-finite value/u,
     );
   } finally {
     globalThis.Module = priorModule;

@@ -42,8 +42,151 @@ float g_wasmLastFieldPickY = -10000.0f;
 float g_wasmLastFieldPickZ = 0.0f;
 int g_wasmLastFieldPickValid = 0;
 
+constexpr int kWasmFieldVisibleHumanLimit = 64;
+
+struct WasmFieldHumanObservation
+{
+	unsigned int id = 0;
+	float x = 0.0f;
+	float y = 0.0f;
+	int hp = 0;
+	int maxHp = 0;
+	int motion = -1;
+	int classId = -1;
+	int titleProgressVisible = 0;
+};
+
+WasmFieldHumanObservation
+	g_wasmFieldVisibleHumans[kWasmFieldVisibleHumanLimit]{};
+int g_wasmFieldVisibleHumanCount = 0;
+int g_wasmFieldVisibleHumanTotal = 0;
+
 void WasmEnsureFieldDebugMobData(ObjectManager* objectManager);
 void WasmEnsureDirectSelectCharData(ObjectManager* objectManager);
+
+TMHuman* WasmFieldMyHuman()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ?
+		g_pCurrentScene->m_pMyHuman :
+		nullptr;
+}
+
+int WasmObservedHumanHp(const TMHuman* human)
+{
+	if (!human)
+		return 0;
+	return human->m_MaxBigHp ?
+		static_cast<int>(human->m_BigHp) :
+		human->m_stScore.Hp;
+}
+
+int WasmObservedHumanMaxHp(const TMHuman* human)
+{
+	if (!human)
+		return 0;
+	return human->m_MaxBigHp ?
+		static_cast<int>(human->m_MaxBigHp) :
+		human->m_stScore.MaxHp;
+}
+
+int WasmTitleProgressVisible(const TMHuman* human)
+{
+	return human && human->m_pTitleProgressBar &&
+		human->m_pTitleProgressBar->IsVisible() ? 1 : 0;
+}
+
+bool WasmFieldHumanLess(
+	const WasmFieldHumanObservation& left,
+	const WasmFieldHumanObservation& right)
+{
+	if (left.id != right.id)
+		return left.id < right.id;
+	if (left.x != right.x)
+		return left.x < right.x;
+	if (left.y != right.y)
+		return left.y < right.y;
+	if (left.classId != right.classId)
+		return left.classId < right.classId;
+	if (left.motion != right.motion)
+		return left.motion < right.motion;
+	if (left.hp != right.hp)
+		return left.hp < right.hp;
+	return left.maxHp < right.maxHp;
+}
+
+void WasmInsertVisibleHuman(const WasmFieldHumanObservation& observation)
+{
+	int insertAt = 0;
+	while (insertAt < g_wasmFieldVisibleHumanCount &&
+		WasmFieldHumanLess(
+			g_wasmFieldVisibleHumans[insertAt],
+			observation))
+	{
+		++insertAt;
+	}
+
+	if (g_wasmFieldVisibleHumanCount < kWasmFieldVisibleHumanLimit)
+	{
+		for (int index = g_wasmFieldVisibleHumanCount;
+			index > insertAt;
+			--index)
+		{
+			g_wasmFieldVisibleHumans[index] =
+				g_wasmFieldVisibleHumans[index - 1];
+		}
+		g_wasmFieldVisibleHumans[insertAt] = observation;
+		++g_wasmFieldVisibleHumanCount;
+		return;
+	}
+
+	if (insertAt >= kWasmFieldVisibleHumanLimit)
+		return;
+	for (int index = kWasmFieldVisibleHumanLimit - 1;
+		index > insertAt;
+		--index)
+	{
+		g_wasmFieldVisibleHumans[index] =
+			g_wasmFieldVisibleHumans[index - 1];
+	}
+	g_wasmFieldVisibleHumans[insertAt] = observation;
+}
+
+void WasmRefreshVisibleHumans()
+{
+	g_wasmFieldVisibleHumanCount = 0;
+	g_wasmFieldVisibleHumanTotal = 0;
+	if (!g_pCurrentScene ||
+		g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
+	{
+		return;
+	}
+
+	unsigned int visited = 0;
+	for (TreeNode* node = g_pCurrentScene->m_pHumanContainer ?
+			g_pCurrentScene->m_pHumanContainer->m_pDown :
+			nullptr;
+		node && visited < 100000u;
+		node = node->m_pNextLink, ++visited)
+	{
+		TMHuman* human = static_cast<TMHuman*>(node);
+		if (human->m_cDeleted || !human->m_bVisible)
+			continue;
+
+		++g_wasmFieldVisibleHumanTotal;
+		WasmFieldHumanObservation observation;
+		observation.id = human->m_dwID;
+		observation.x = human->m_vecPosition.x;
+		observation.y = human->m_vecPosition.y;
+		observation.hp = WasmObservedHumanHp(human);
+		observation.maxHp = WasmObservedHumanMaxHp(human);
+		observation.motion = static_cast<int>(human->m_eMotion);
+		observation.classId = human->m_nClass;
+		observation.titleProgressVisible =
+			WasmTitleProgressVisible(human);
+		WasmInsertVisibleHuman(observation);
+	}
+}
 
 void WasmStateLog(const char* msg)
 {
@@ -590,6 +733,126 @@ extern "C" float wyd_field_myhuman_y()
 	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
 		? g_pCurrentScene->m_pMyHuman->m_vecPosition.y
 		: 0.0f;
+}
+
+extern "C" unsigned int wyd_field_myhuman_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_dwID : 0;
+}
+
+extern "C" const char* wyd_field_myhuman_name()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_szName : "";
+}
+
+extern "C" int wyd_field_myhuman_hp()
+{
+	return WasmObservedHumanHp(WasmFieldMyHuman());
+}
+
+extern "C" int wyd_field_myhuman_max_hp()
+{
+	return WasmObservedHumanMaxHp(WasmFieldMyHuman());
+}
+
+extern "C" int wyd_field_myhuman_class_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_nClass : -1;
+}
+
+extern "C" unsigned int wyd_field_myhuman_attack_dest_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_nAttackDestID : 0;
+}
+
+extern "C" int wyd_field_myhuman_title_progress_visible()
+{
+	return WasmTitleProgressVisible(WasmFieldMyHuman());
+}
+
+extern "C" unsigned int wyd_field_mouse_over_human_id()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMouseOverHuman ?
+		g_pCurrentScene->m_pMouseOverHuman->m_dwID :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_count()
+{
+	WasmRefreshVisibleHumans();
+	return g_wasmFieldVisibleHumanCount;
+}
+
+extern "C" int wyd_field_visible_human_total()
+{
+	return g_wasmFieldVisibleHumanTotal;
+}
+
+extern "C" int wyd_field_visible_human_limit()
+{
+	return kWasmFieldVisibleHumanLimit;
+}
+
+extern "C" unsigned int wyd_field_visible_human_id(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].id :
+		0;
+}
+
+extern "C" float wyd_field_visible_human_x(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].x :
+		0.0f;
+}
+
+extern "C" float wyd_field_visible_human_y(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].y :
+		0.0f;
+}
+
+extern "C" int wyd_field_visible_human_hp(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].hp :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_max_hp(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].maxHp :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_motion(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].motion :
+		-1;
+}
+
+extern "C" int wyd_field_visible_human_class_id(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].classId :
+		-1;
+}
+
+extern "C" int wyd_field_visible_human_title_progress_visible(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].titleProgressVisible :
+		0;
 }
 
 extern "C" int wyd_field_myhuman_motion()

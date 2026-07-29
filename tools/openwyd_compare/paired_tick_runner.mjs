@@ -981,7 +981,21 @@ export async function executeWasmTick({
       `WASM pre-Present state latch export ${missingPresentStateExport} is unavailable`,
     );
   }
-
+  const compare3DStateExports = [
+    "_wyd_compare_3d_state_sequence",
+    "_wyd_compare_3d_state_valid",
+    "_wyd_compare_3d_state_frame_serial",
+    "_wyd_compare_3d_state_draw_serial",
+    "_wyd_compare_3d_state_matrix_value",
+  ];
+  const missingCompare3DStateExport = compare3DStateExports.find(
+    (name) => typeof module[name] !== "function",
+  );
+  if (missingCompare3DStateExport) {
+    throw new Error(
+      `WASM pre-UI 3D state latch export ${missingCompare3DStateExport} is unavailable`,
+    );
+  }
   const canvas = globalThis.document?.querySelector(selector);
   if (
     !canvas ||
@@ -999,8 +1013,8 @@ export async function executeWasmTick({
     if (!pointer || typeof module.UTF8ToString !== "function") return null;
     return module.UTF8ToString(pointer);
   };
-  const readUint32 = (name) => {
-    const value = invoke(name);
+  const readUint32 = (name, ...args) => {
+    const value = invoke(name, ...args);
     return value === null ? null : value >>> 0;
   };
 
@@ -1053,6 +1067,8 @@ export async function executeWasmTick({
   const presentBefore = module._wyd_d3d9_present_calls() >>> 0;
   const presentStateSequenceBefore =
     module._wyd_compare_present_state_sequence() >>> 0;
+  const compare3DStateSequenceBefore =
+    module._wyd_compare_3d_state_sequence() >>> 0;
 
   let releaseAcknowledgment = null;
   if (release !== null) {
@@ -1146,6 +1162,48 @@ export async function executeWasmTick({
     module._wyd_compare_present_scene_type_valid() === 1
       ? module._wyd_compare_present_scene_type()
       : null;
+  const compare3DStateSequenceAfter =
+    module._wyd_compare_3d_state_sequence() >>> 0;
+  const compare3DStateSequenceDelta =
+    (compare3DStateSequenceAfter - compare3DStateSequenceBefore) >>> 0;
+  const compare3DStateValidRaw = module._wyd_compare_3d_state_valid();
+  if (
+    compare3DStateValidRaw !== 0 &&
+    compare3DStateValidRaw !== 1
+  ) {
+    throw new Error(
+      `WASM pre-UI 3D state valid flag must be 0 or 1, received ${compare3DStateValidRaw}`,
+    );
+  }
+  const compare3DStateValid = compare3DStateValidRaw === 1;
+  if (
+    (compare3DStateValid && compare3DStateSequenceDelta !== 1) ||
+    (!compare3DStateValid && compare3DStateSequenceDelta !== 0)
+  ) {
+    throw new Error(
+      `WASM frame latched pre-UI 3D state ${compare3DStateSequenceDelta} times with valid=${compare3DStateValidRaw}; expected exactly ${compare3DStateValid ? 1 : 0}`,
+    );
+  }
+
+  let compare3DMatrices = {
+    world: null,
+    view: null,
+    projection: null,
+  };
+  if (compare3DStateValid) {
+    const values = Array.from(
+      { length: 48 },
+      (_, index) => module._wyd_compare_3d_state_matrix_value(index),
+    );
+    if (values.some((value) => !Number.isFinite(value))) {
+      throw new Error("WASM pre-UI 3D matrices contain a non-finite value");
+    }
+    compare3DMatrices = {
+      world: values.slice(0, 16),
+      view: values.slice(16, 32),
+      projection: values.slice(32, 48),
+    };
+  }
 
   const glErrorTotal = invoke("_wyd_d3d9_gl_error_total");
   if (!Number.isInteger(glErrorTotal)) {
@@ -1157,6 +1215,40 @@ export async function executeWasmTick({
     throw new Error(
       `WASM frame has gl_error_total=${glErrorTotal}; expected exactly 0`,
     );
+  }
+
+  const visibleHumanCapturedRaw = invoke(
+    "_wyd_field_visible_human_count",
+  );
+  const visibleHumanTotalRaw = invoke("_wyd_field_visible_human_total");
+  const visibleHumanLimitRaw = invoke("_wyd_field_visible_human_limit");
+  const visibleHumanLimit =
+    Number.isInteger(visibleHumanLimitRaw) &&
+    visibleHumanLimitRaw >= 0 &&
+    visibleHumanLimitRaw <= 1024
+      ? visibleHumanLimitRaw
+      : null;
+  const visibleHumanCaptured =
+    Number.isInteger(visibleHumanCapturedRaw) &&
+    visibleHumanCapturedRaw >= 0 &&
+    visibleHumanCapturedRaw <= (visibleHumanLimit ?? 1024)
+      ? visibleHumanCapturedRaw
+      : 0;
+  const visibleHumans = [];
+  for (let index = 0; index < visibleHumanCaptured; index += 1) {
+    visibleHumans.push({
+      id: readUint32("_wyd_field_visible_human_id", index),
+      x: invoke("_wyd_field_visible_human_x", index),
+      y: invoke("_wyd_field_visible_human_y", index),
+      hp: invoke("_wyd_field_visible_human_hp", index),
+      max_hp: invoke("_wyd_field_visible_human_max_hp", index),
+      motion: invoke("_wyd_field_visible_human_motion", index),
+      class_id: invoke("_wyd_field_visible_human_class_id", index),
+      title_progress_visible: invoke(
+        "_wyd_field_visible_human_title_progress_visible",
+        index,
+      ),
+    });
   }
 
   const dataUrl = canvas.toDataURL("image/png");
@@ -1197,7 +1289,7 @@ export async function executeWasmTick({
         horizon_angle: invoke("_wyd_debug_camera_h"),
         vertical_angle: invoke("_wyd_debug_camera_v"),
       },
-      matrices: {},
+      matrices: compare3DMatrices,
       draws: [],
       render: {
         capture_point: "synchronous_after_wyd_tick_client",
@@ -1210,6 +1302,20 @@ export async function executeWasmTick({
         begin_scene_calls: invoke("_wyd_d3d9_begin_scene_calls"),
         end_scene_calls: invoke("_wyd_d3d9_end_scene_calls"),
         gl_error_total: glErrorTotal,
+        three_d_state: {
+          capture_point: "before_SetMatrixForUI",
+          attempted: compare3DStateSequenceDelta !== 0,
+          valid: compare3DStateValid,
+          sequence: compare3DStateSequenceAfter,
+          frame_serial: frameId,
+          source_frame_serial: readUint32(
+            "_wyd_compare_3d_state_frame_serial",
+          ),
+          draw_serial: compare3DStateValid
+            ? readUint32("_wyd_compare_3d_state_draw_serial")
+            : null,
+          draw_serial_available: compare3DStateValid,
+        },
       },
       network: {
         host: readPointer("_wyd_socket_last_host"),
@@ -1244,6 +1350,12 @@ export async function executeWasmTick({
             sequence_after: presentStateSequenceAfter,
             sequence_delta: presentStateSequenceDelta,
           },
+          three_d_state_latch: {
+            capture_point: "before_SetMatrixForUI",
+            sequence_before: compare3DStateSequenceBefore,
+            sequence_after: compare3DStateSequenceAfter,
+            sequence_delta: compare3DStateSequenceDelta,
+          },
           input_observation: {
             mouse: {
               x: invoke("_wyd_input_mouse_x"),
@@ -1275,6 +1387,17 @@ export async function executeWasmTick({
               y: invoke("_wyd_field_map_y"),
             },
             player: {
+              id: readUint32("_wyd_field_myhuman_id"),
+              name: readPointer("_wyd_field_myhuman_name"),
+              hp: invoke("_wyd_field_myhuman_hp"),
+              max_hp: invoke("_wyd_field_myhuman_max_hp"),
+              class_id: invoke("_wyd_field_myhuman_class_id"),
+              attack_dest_id: readUint32(
+                "_wyd_field_myhuman_attack_dest_id",
+              ),
+              title_progress_visible: invoke(
+                "_wyd_field_myhuman_title_progress_visible",
+              ),
               x: invoke("_wyd_field_myhuman_x"),
               y: invoke("_wyd_field_myhuman_y"),
               motion: invoke("_wyd_field_myhuman_motion"),
@@ -1299,6 +1422,19 @@ export async function executeWasmTick({
                 y: invoke("_wyd_field_ground_normal_under_player_y"),
                 z: invoke("_wyd_field_ground_normal_under_player_z"),
               },
+            },
+            mouse_over_human_id: readUint32(
+              "_wyd_field_mouse_over_human_id",
+            ),
+            visible_humans: {
+              limit: visibleHumanLimit,
+              total:
+                Number.isInteger(visibleHumanTotalRaw) &&
+                visibleHumanTotalRaw >= 0
+                  ? visibleHumanTotalRaw
+                  : null,
+              captured: visibleHumanCaptured,
+              entries: visibleHumans,
             },
             weather: {
               active: invoke("_wyd_field_weather_active"),

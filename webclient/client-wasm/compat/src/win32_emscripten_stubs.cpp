@@ -721,6 +721,7 @@ bool CollectDetailedTelemetry() {
 
 bool DrawTraceIsEnabled();
 void ResetDrawOrderFrame();
+void BeginCompare3DStateFrame();
 
 void* NewOpaqueHandle() {
   uintptr_t v = g_handle_seed.fetch_add(0x10);
@@ -5120,6 +5121,7 @@ HRESULT WydD3D9Device_Present(IDirect3DDevice9*, const RECT*, const RECT*, HWND,
 HRESULT WydD3D9Device_BeginScene(IDirect3DDevice9*) {
   if (!EnsureWasmContext()) return E_FAIL;
   g_debug_begin_scene_calls += 1;
+  BeginCompare3DStateFrame();
   ResetDrawOrderFrame();
   g_wasm_d3d9_state.scene_active = true;
   return S_OK;
@@ -5537,8 +5539,19 @@ struct WasmFixedFunctionState {
   uint64_t shader_draw_skipped = 0;
 };
 
+struct Compare3DState {
+  bool armed = false;
+  bool valid = false;
+  uint32_t sequence = 0;
+  uint32_t frame_serial = 0;
+  uint32_t draw_serial = 0;
+  uint64_t begin_draw_calls = 0;
+  std::array<D3DMATRIX, 3> matrices{};
+};
+
 WasmFFPProgram g_ffp_program;
 WasmFixedFunctionState g_ffp_state;
+Compare3DState g_compare_3d_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
 DummyDirect3DSurface9* g_default_depth_surface = nullptr;
 bool g_ffp_state_initialized = false;
@@ -5696,6 +5709,16 @@ void EnsureFFPStateInitialized() {
   g_ffp_state.tex_stage[0][D3DTSS_ALPHAARG1] = D3DTA_TEXTURE;
   g_ffp_state.tex_stage[0][D3DTSS_ALPHAARG2] = D3DTA_DIFFUSE;
   g_ffp_state_initialized = true;
+}
+
+void BeginCompare3DStateFrame() {
+  EnsureFFPStateInitialized();
+  g_compare_3d_state.armed = true;
+  g_compare_3d_state.valid = false;
+  g_compare_3d_state.frame_serial =
+      static_cast<uint32_t>(g_debug_begin_scene_calls);
+  g_compare_3d_state.draw_serial = 0;
+  g_compare_3d_state.begin_draw_calls = g_ffp_state.draw_calls;
 }
 
 void DummyD3DXSprite::SaveDeviceState() {
@@ -10217,6 +10240,49 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib) {
   if (!buffer) return D3DERR_INVALIDCALL;
   buffer->locked = false;
   return S_OK;
+}
+
+extern "C" void wyd_compare_latch_3d_state() {
+  EnsureFFPStateInitialized();
+  if (!g_compare_3d_state.armed) return;
+
+  g_compare_3d_state.matrices[0] = g_ffp_state.world[0];
+  g_compare_3d_state.matrices[1] = g_ffp_state.view;
+  g_compare_3d_state.matrices[2] = g_ffp_state.proj;
+  g_compare_3d_state.draw_serial = static_cast<uint32_t>(
+      g_ffp_state.draw_calls - g_compare_3d_state.begin_draw_calls);
+  g_compare_3d_state.sequence += 1;
+  g_compare_3d_state.valid = true;
+  g_compare_3d_state.armed = false;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_sequence() {
+  return g_compare_3d_state.sequence;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_valid() {
+  return g_compare_3d_state.valid ? 1u : 0u;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_frame_serial() {
+  return g_compare_3d_state.frame_serial;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_draw_serial() {
+  return g_compare_3d_state.draw_serial;
+}
+
+extern "C" const float* wyd_compare_3d_state_matrices() {
+  static_assert(
+      sizeof(D3DMATRIX) == sizeof(float) * 16u,
+      "D3DMATRIX must contain exactly sixteen contiguous floats");
+  return &g_compare_3d_state.matrices[0]._11;
+}
+
+extern "C" float wyd_compare_3d_state_matrix_value(uint32_t index) {
+  if (index >= 48u) return 0.0f;
+  const float* values = &g_compare_3d_state.matrices[0]._11;
+  return values[index];
 }
 
 HRESULT WydD3D9Device_SetTransform(IDirect3DDevice9*, D3DTRANSFORMSTATETYPE state, const D3DMATRIX* mat) {
