@@ -32,6 +32,7 @@ bool OpenWydCompareTakeInjectedKeyMessage(
 	WPARAM wParam,
 	LPARAM* lParam);
 bool OpenWydCompareInjectedKeyIsDown(unsigned int virtualKey);
+void OpenWydCompareCapture3DState(IDirect3DDevice9* device);
 void OpenWydCompareOnBeforePresent(IDirect3DDevice9* device);
 void OpenWydCompareOnAfterPresent(HRESULT presentResult);
 void OpenWydCompareOnFrameTickComplete();

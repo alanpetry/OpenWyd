@@ -129,10 +129,56 @@ class NativePipeProtocolTests(unittest.TestCase):
                 "native": {
                     "draw_capture_available": False,
                     "packet_opcode_hash_available": False,
+                    "field_observation": {
+                        "player": {
+                            "id": 13001,
+                            "name": "TKNATIVE",
+                            "hp": 280,
+                            "max_hp": 312,
+                            "class_id": 0,
+                            "attack_dest_id": 13002,
+                            "title_progress_visible": 0,
+                        },
+                        "mouse_over_human_id": 13002,
+                        "visible_humans": {
+                            "limit": 64,
+                            "total": 2,
+                            "captured": 2,
+                            "entries": [
+                                {
+                                    "id": 13001,
+                                    "x": 2101.5,
+                                    "y": 2101.5,
+                                    "hp": 280,
+                                    "max_hp": 312,
+                                    "motion": 0,
+                                    "class_id": 0,
+                                    "title_progress_visible": 0,
+                                },
+                                {
+                                    "id": 13002,
+                                    "x": 2103.5,
+                                    "y": 2100.5,
+                                    "hp": 140,
+                                    "max_hp": 220,
+                                    "motion": 4,
+                                    "class_id": 1,
+                                    "title_progress_visible": 1,
+                                },
+                            ],
+                        },
+                    },
                 }
             },
         )
         validate_frame_record(record)
+        field = record["extensions"]["native"]["field_observation"]
+        self.assertEqual(field["player"]["attack_dest_id"], 13002)
+        self.assertEqual(field["mouse_over_human_id"], 13002)
+        self.assertEqual(
+            [entry["id"] for entry in field["visible_humans"]["entries"]],
+            [13001, 13002],
+        )
 
     def test_source_guard_and_pre_present_order_are_structural(self) -> None:
         guard = (
@@ -170,6 +216,16 @@ class NativePipeProtocolTests(unittest.TestCase):
         self.assertIn("D3DXSaveSurfaceToFileA", implementation)
         self.assertIn("INPUT_QUEUED", implementation)
         self.assertIn("PostMessageA(g_compare.window", implementation)
+        close_command = implementation[
+            implementation.index('if (command == "CLOSE")') :
+            implementation.index(
+                "if (g_compare.fatalProtocolError)",
+                implementation.index('if (command == "CLOSE")'),
+            )
+        ]
+        self.assertIn("SendMessageTimeoutA(", close_command)
+        self.assertIn("g_dwStartQuitGameTime -= 3000u", close_command)
+        self.assertEqual(close_command.count("WM_CLOSE"), 3)
         self.assertIn("step_input_frame_mismatch", implementation)
         self.assertIn("OpenWydCompareTakeInjectedMouseMessage", implementation)
         queue_start = implementation.index("bool QueueInputMessage")

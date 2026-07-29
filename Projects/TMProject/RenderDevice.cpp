@@ -17,6 +17,7 @@
 
 #if defined(__EMSCRIPTEN__)
 extern "C" void wyd_compare_latch_present_state();
+extern "C" void wyd_compare_latch_3d_state();
 #endif
 
 int RenderDevice::m_nBright = 50;
@@ -1885,6 +1886,13 @@ HRESULT RenderDevice::SetProjectionMatrix()
 
 int RenderDevice::SetMatrixForUI()
 {
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydCompareCapture3DState(m_pd3dDevice);
+#endif
+#if defined(__EMSCRIPTEN__)
+	wyd_compare_latch_3d_state();
+#endif
+
 	D3DXMATRIX matUIProjection;
 	D3DXMatrixPerspectiveFovLH(&matUIProjection, 0.1f, (float)((float)m_d3dsdBackBuffer.Width / (float)m_d3dsdBackBuffer.Height) * 0.94f, 10.0f, 100.0f);
 

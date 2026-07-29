@@ -12,9 +12,17 @@
 #include "OpenWydCompare.h"
 #include "TMGlobal.h"
 #include "TMCamera.h"
+#include "TMFieldScene.h"
+#include "TMGround.h"
+#include "TMHuman.h"
+#include "TMObjectContainer.h"
+#include "TMRain.h"
+#include "TMSnow.h"
+#include "SControl.h"
 
 #include <ShlObj.h>
 #include <wincodec.h>
+#include <algorithm>
 #include <cerrno>
 #include <cctype>
 #include <climits>
@@ -95,6 +103,15 @@ namespace
 		bool presentCapturePending = false;
 		HRESULT pendingCaptureResult = S_OK;
 		bool pendingSnapshotWritten = false;
+		bool capture3DAttempted = false;
+		bool capture3DWorldValid = false;
+		bool capture3DViewValid = false;
+		bool capture3DProjectionValid = false;
+		unsigned long long capture3DFrameId = 0;
+		unsigned long long capture3DSequence = 0;
+		D3DXMATRIX capture3DWorld{};
+		D3DXMATRIX capture3DView{};
+		D3DXMATRIX capture3DProjection{};
 		DWORD mouseButtonMask = 0;
 		bool keyDown[256]{};
 		bool injectedKeyDown[256]{};
@@ -505,8 +522,38 @@ namespace
 			}
 
 			SendLine("CLOSING\n");
-			if (g_compare.window)
-				PostMessageA(g_compare.window, WM_CLOSE, 0, 0);
+			HWND window = g_compare.window;
+			if (!window || !IsWindow(window))
+				return;
+
+			const bool fieldClose =
+				g_pCurrentScene &&
+				g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_FIELD;
+			DWORD_PTR closeResult = 0;
+			if (!SendMessageTimeoutA(
+				window,
+				WM_CLOSE,
+				0,
+				0,
+				SMTO_ABORTIFHUNG | SMTO_BLOCK,
+				5000,
+				&closeResult))
+			{
+				PostMessageA(window, WM_CLOSE, 0, 0);
+				return;
+			}
+
+			if (fieldClose && IsWindow(window))
+			{
+				// The official Field close path first sends opcode 942 and then
+				// waits three server-time seconds. A paired run deliberately
+				// freezes that clock after its last Present, so make only that
+				// shutdown wait elapsed after the official request was sent.
+				g_dwStartQuitGameTime -= 3000u;
+				if (g_dwStartQuitGameTime == 0)
+					g_dwStartQuitGameTime = UINT_MAX;
+				PostMessageA(window, WM_CLOSE, 0, 0);
+			}
 			return;
 		}
 
@@ -865,18 +912,6 @@ namespace
 		json << "]";
 	}
 
-	void AppendTransform(
-		std::ostringstream& json,
-		IDirect3DDevice9* device,
-		D3DTRANSFORMSTATETYPE transform)
-	{
-		D3DXMATRIX matrix{};
-		if (device && SUCCEEDED(device->GetTransform(transform, &matrix)))
-			AppendMatrix(json, matrix);
-		else
-			json << "null";
-	}
-
 	void AppendRenderState(
 		std::ostringstream& json,
 		IDirect3DDevice9* device,
@@ -887,6 +922,473 @@ namespace
 			json << value;
 		else
 			json << "null";
+	}
+
+	bool IsTreeObjectType(unsigned int objectType)
+	{
+		return (objectType >= 331 && objectType <= 342) ||
+			(objectType >= 351 && objectType <= 378);
+	}
+
+	bool IsHouseObjectType(unsigned int objectType)
+	{
+		if (objectType >= 251 && objectType <= 254)
+			return true;
+
+		switch (objectType)
+		{
+		case 195:
+		case 273:
+		case 274:
+		case 292:
+		case 474:
+		case 490:
+		case 607:
+		case 610:
+		case 614:
+		case 697:
+		case 699:
+		case 1520:
+		case 1526:
+		case 1535:
+		case 1665:
+		case 1695:
+		case 1696:
+		case 1711:
+		case 1739:
+		case 1750:
+		case 1855:
+		case 1993:
+		case 2005:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	unsigned int CountActiveChildren(const TreeNode* container)
+	{
+		unsigned int count = 0;
+		unsigned int visited = 0;
+		for (const TreeNode* node = container ? container->m_pDown : nullptr;
+			node && visited < 100000u;
+			node = node->m_pNextLink, ++visited)
+		{
+			if (!node->m_cDeleted)
+				++count;
+		}
+		return count;
+	}
+
+	constexpr size_t kFieldVisibleHumanLimit = 64u;
+
+	int ObservedHumanHp(const TMHuman* human)
+	{
+		if (!human)
+			return 0;
+		return human->m_MaxBigHp ?
+			static_cast<int>(human->m_BigHp) :
+			human->m_stScore.Hp;
+	}
+
+	int ObservedHumanMaxHp(const TMHuman* human)
+	{
+		if (!human)
+			return 0;
+		return human->m_MaxBigHp ?
+			static_cast<int>(human->m_MaxBigHp) :
+			human->m_stScore.MaxHp;
+	}
+
+	int IsTitleProgressVisible(const TMHuman* human)
+	{
+		return human && human->m_pTitleProgressBar &&
+			human->m_pTitleProgressBar->IsVisible() ? 1 : 0;
+	}
+
+	struct NativeVisibleHumanObservation
+	{
+		unsigned int id = 0;
+		float x = 0.0f;
+		float y = 0.0f;
+		int hp = 0;
+		int maxHp = 0;
+		int motion = -1;
+		int classId = -1;
+		int titleProgressVisible = 0;
+	};
+
+	bool VisibleHumanObservationLess(
+		const NativeVisibleHumanObservation& left,
+		const NativeVisibleHumanObservation& right)
+	{
+		if (left.id != right.id)
+			return left.id < right.id;
+		if (left.x != right.x)
+			return left.x < right.x;
+		if (left.y != right.y)
+			return left.y < right.y;
+		if (left.classId != right.classId)
+			return left.classId < right.classId;
+		if (left.motion != right.motion)
+			return left.motion < right.motion;
+		if (left.hp != right.hp)
+			return left.hp < right.hp;
+		return left.maxHp < right.maxHp;
+	}
+
+	struct NativeVisibleHumanList
+	{
+		unsigned int total = 0;
+		std::vector<NativeVisibleHumanObservation> entries;
+	};
+
+	NativeVisibleHumanList ObserveVisibleHumans(const TreeNode* container)
+	{
+		NativeVisibleHumanList result;
+		result.entries.reserve(kFieldVisibleHumanLimit);
+
+		unsigned int visited = 0;
+		for (const TreeNode* node = container ? container->m_pDown : nullptr;
+			node && visited < 100000u;
+			node = node->m_pNextLink, ++visited)
+		{
+			const TMHuman* human = static_cast<const TMHuman*>(node);
+			if (human->m_cDeleted || !human->m_bVisible)
+				continue;
+
+			++result.total;
+			NativeVisibleHumanObservation observation;
+			observation.id = human->m_dwID;
+			observation.x = human->m_vecPosition.x;
+			observation.y = human->m_vecPosition.y;
+			observation.hp = ObservedHumanHp(human);
+			observation.maxHp = ObservedHumanMaxHp(human);
+			observation.motion = static_cast<int>(human->m_eMotion);
+			observation.classId = human->m_nClass;
+			observation.titleProgressVisible =
+				IsTitleProgressVisible(human);
+
+			const auto insertAt = std::lower_bound(
+				result.entries.begin(),
+				result.entries.end(),
+				observation,
+				VisibleHumanObservationLess);
+			if (result.entries.size() < kFieldVisibleHumanLimit)
+			{
+				result.entries.insert(insertAt, observation);
+			}
+			else if (insertAt != result.entries.end())
+			{
+				result.entries.insert(insertAt, observation);
+				result.entries.pop_back();
+			}
+		}
+		return result;
+	}
+
+	struct NativeFieldObjectObservation
+	{
+		int count = 0;
+		int active = 0;
+		int totalCount = 0;
+		int totalActive = 0;
+		int loadedContainers = 0;
+		int sea = 0;
+		int tree = 0;
+		int house = 0;
+		int light = 0;
+		int generic = 0;
+		int lastObjectMaskIndex = 0;
+		bool hasLastObjectMaskIndex = false;
+	};
+
+	void ObserveObjectContainer(
+		const TMObjectContainer* container,
+		bool primary,
+		NativeFieldObjectObservation& observation)
+	{
+		if (!container)
+			return;
+
+		++observation.loadedContainers;
+		const int objectCount =
+			container->m_nObjectIndex < 0 ? 0 :
+			(container->m_nObjectIndex > MAX_OBJECT_LIST ?
+				MAX_OBJECT_LIST :
+				container->m_nObjectIndex);
+		int activeCount = 0;
+		int treeCount = 0;
+		int houseCount = 0;
+		int genericCount = 0;
+		int lastObjectMaskIndex = 0;
+		bool hasLastObjectMaskIndex = false;
+
+		for (int index = 0; index < objectCount; ++index)
+		{
+			const TMObject* object = container->m_pObjectList[index];
+			if (!object)
+				continue;
+
+			if (!object->m_cDeleted)
+				++activeCount;
+
+			if (IsTreeObjectType(object->m_dwObjType))
+				++treeCount;
+			else if (IsHouseObjectType(object->m_dwObjType))
+				++houseCount;
+			else
+				++genericCount;
+
+			lastObjectMaskIndex = object->m_nMaskIndex;
+			hasLastObjectMaskIndex = true;
+		}
+
+		observation.totalCount += objectCount;
+		observation.totalActive += activeCount;
+		if (!primary)
+			return;
+
+		observation.count = objectCount;
+		observation.active = activeCount;
+		observation.tree = treeCount;
+		observation.house = houseCount;
+		observation.generic = genericCount;
+		observation.light =
+			container->m_nLightIndex < 0 ? 0 :
+			(container->m_nLightIndex > MAX_LIGHT_CONTAINER ?
+				MAX_LIGHT_CONTAINER :
+				container->m_nLightIndex);
+		observation.sea =
+			container->m_pGround && container->m_pGround->m_nSeaIndex > 0 ?
+			container->m_pGround->m_nSeaIndex :
+			0;
+		observation.lastObjectMaskIndex = lastObjectMaskIndex;
+		observation.hasLastObjectMaskIndex = hasLastObjectMaskIndex;
+	}
+
+	void AppendNativeFieldObservation(
+		std::ostringstream& json,
+		ObjectManager* objectManager)
+	{
+		TMScene* scene = g_pCurrentScene;
+		const bool initialized =
+			scene && scene->m_eSceneType == ESCENE_TYPE::ESCENE_FIELD;
+		TMFieldScene* fieldScene =
+			initialized ? static_cast<TMFieldScene*>(scene) : nullptr;
+		TMGround* ground = initialized ? scene->m_pGround : nullptr;
+		TMHuman* human = initialized ? scene->m_pMyHuman : nullptr;
+
+		float groundHeight = -9999.0f;
+		float heightDelta = -9999.0f;
+		int groundMask = -9999;
+		TMVector3 groundNormal(-9999.0f, -9999.0f, -9999.0f);
+		if (ground && human)
+		{
+			const TMVector2 position(
+				human->m_vecPosition.x,
+				human->m_vecPosition.y);
+			groundHeight = scene->GroundGetHeight(position);
+			groundMask = scene->GroundGetMask(position);
+			if (groundHeight > -9000.0f)
+				heightDelta = human->m_fHeight - groundHeight;
+
+			const int tileX = static_cast<int>(
+				(human->m_vecPosition.x - ground->m_vecOffset.x) / 2.0f);
+			const int tileY = static_cast<int>(
+				(human->m_vecPosition.y - ground->m_vecOffset.y) / 2.0f);
+			if (tileX >= 0 && tileX <= 63 && tileY >= 0 && tileY <= 63)
+				groundNormal = ground->GetNormalInGround(tileX, tileY);
+		}
+
+		NativeFieldObjectObservation objectObservation;
+		const NativeVisibleHumanList visibleHumans =
+			ObserveVisibleHumans(
+				initialized ? scene->m_pHumanContainer : nullptr);
+		int primaryContainerIndex = -1;
+		if (initialized)
+		{
+			if (scene->m_nCurrentGroundIndex >= 0 &&
+				scene->m_nCurrentGroundIndex < 2 &&
+				scene->m_pObjectContainerList[scene->m_nCurrentGroundIndex])
+			{
+				primaryContainerIndex = scene->m_nCurrentGroundIndex;
+			}
+			else
+			{
+				for (int index = 0; index < 2; ++index)
+				{
+					if (scene->m_pObjectContainerList[index])
+					{
+						primaryContainerIndex = index;
+						break;
+					}
+				}
+			}
+
+			for (int index = 0; index < 2; ++index)
+			{
+				ObserveObjectContainer(
+					scene->m_pObjectContainerList[index],
+					index == primaryContainerIndex,
+					objectObservation);
+			}
+		}
+
+		json << "\"field_observation\":{"
+			<< "\"mode\":1"
+			<< ",\"debug_fixture_used\":0"
+			<< ",\"initialized\":" << (initialized ? 1 : 0)
+			<< ",\"has_ground\":" << (ground ? 1 : 0)
+			<< ",\"has_my_human\":" << (human ? 1 : 0)
+			<< ",\"critical_error\":"
+			<< (initialized ? scene->m_bCriticalError : 0)
+			<< ",\"map\":{\"x\":";
+		if (objectManager)
+			json << (static_cast<int>(objectManager->m_stMobData.HomeTownX) >> 7);
+		else
+			json << -1;
+		json << ",\"y\":";
+		if (objectManager)
+			json << (static_cast<int>(objectManager->m_stMobData.HomeTownY) >> 7);
+		else
+			json << -1;
+		json << "},\"player\":{\"id\":"
+			<< (human ? human->m_dwID : 0)
+			<< ",\"name\":";
+		AppendJsonString(json, human ? human->m_szName : "");
+		json << ",\"hp\":" << ObservedHumanHp(human)
+			<< ",\"max_hp\":" << ObservedHumanMaxHp(human)
+			<< ",\"class_id\":" << (human ? human->m_nClass : -1)
+			<< ",\"attack_dest_id\":"
+			<< (human ? human->m_nAttackDestID : 0)
+			<< ",\"title_progress_visible\":"
+			<< IsTitleProgressVisible(human)
+			<< ",\"x\":";
+		AppendFloat(json, human ? human->m_vecPosition.x : 0.0f);
+		json << ",\"y\":";
+		AppendFloat(json, human ? human->m_vecPosition.y : 0.0f);
+		json << ",\"motion\":"
+			<< (human ? static_cast<int>(human->m_eMotion) : -1)
+			<< ",\"sent_motion\":"
+			<< (human ? static_cast<int>(human->m_SendeMotion) : -1)
+			<< ",\"moving\":"
+			<< (human && fieldScene &&
+				(fieldScene->m_bMoveing || human->m_bMoveing) ? 1 : 0)
+			<< ",\"progress_rate\":";
+		AppendFloat(json, human ? human->m_fProgressRate : 0.0f);
+		json << ",\"last_route_index\":"
+			<< (human ? human->m_nLastRouteIndex : -1)
+			<< ",\"max_route_index\":"
+			<< (human ? human->m_nMaxRouteIndex : -1)
+			<< ",\"target_x\":"
+			<< (human ? human->m_vecTargetPos.x : 0)
+			<< ",\"target_y\":"
+			<< (human ? human->m_vecTargetPos.y : 0)
+			<< ",\"move_to_x\":";
+		AppendFloat(json, human ? human->m_vecMoveToPos.x : 0.0f);
+		json << ",\"move_to_y\":";
+		AppendFloat(json, human ? human->m_vecMoveToPos.y : 0.0f);
+		json << ",\"height\":";
+		AppendFloat(json, human ? human->m_fHeight : -9999.0f);
+		json << ",\"want_height\":";
+		AppendFloat(json, human ? human->m_fWantHeight : -9999.0f);
+		json << ",\"ground_height\":";
+		AppendFloat(json, groundHeight);
+		json << ",\"height_delta\":";
+		AppendFloat(json, heightDelta);
+		json << ",\"ground_mask\":" << groundMask
+			<< ",\"ground_normal\":{\"x\":";
+		AppendFloat(json, groundNormal.x);
+		json << ",\"y\":";
+		AppendFloat(json, groundNormal.y);
+		json << ",\"z\":";
+		AppendFloat(json, groundNormal.z);
+		json << "}},\"mouse_over_human_id\":"
+			<< (initialized && scene->m_pMouseOverHuman ?
+				scene->m_pMouseOverHuman->m_dwID :
+				0)
+			<< ",\"visible_humans\":{\"limit\":"
+			<< kFieldVisibleHumanLimit
+			<< ",\"total\":" << visibleHumans.total
+			<< ",\"captured\":" << visibleHumans.entries.size()
+			<< ",\"entries\":[";
+		for (size_t index = 0;
+			index < visibleHumans.entries.size();
+			++index)
+		{
+			if (index != 0)
+				json << ",";
+			const NativeVisibleHumanObservation& entry =
+				visibleHumans.entries[index];
+			json << "{\"id\":" << entry.id << ",\"x\":";
+			AppendFloat(json, entry.x);
+			json << ",\"y\":";
+			AppendFloat(json, entry.y);
+			json << ",\"hp\":" << entry.hp
+				<< ",\"max_hp\":" << entry.maxHp
+				<< ",\"motion\":" << entry.motion
+				<< ",\"class_id\":" << entry.classId
+				<< ",\"title_progress_visible\":"
+				<< entry.titleProgressVisible
+				<< "}";
+		}
+		json << "]},\"weather\":{\"active\":"
+			<< (initialized ? g_nWeather : -1)
+			<< ",\"rain_visible\":"
+			<< (fieldScene && fieldScene->m_pRain &&
+				fieldScene->m_pRain->m_bVisible ? 1 : 0)
+			<< ",\"snow_visible\":"
+			<< (fieldScene && fieldScene->m_pSnow &&
+				fieldScene->m_pSnow->m_bVisible ? 1 : 0)
+			<< ",\"snow2_visible\":"
+			<< (fieldScene && fieldScene->m_pSnow2 &&
+				fieldScene->m_pSnow2->m_bVisible ? 1 : 0)
+			<< "},\"objects\":{"
+			<< "\"count\":" << objectObservation.count
+			<< ",\"failed\":null"
+			<< ",\"checksum_failed\":null"
+			<< ",\"sea\":" << objectObservation.sea
+			<< ",\"tree\":" << objectObservation.tree
+			<< ",\"house\":" << objectObservation.house
+			<< ",\"light\":" << objectObservation.light
+			<< ",\"generic\":" << objectObservation.generic
+			<< ",\"last_mask_index\":null"
+			<< ",\"static_draws\":null"
+			<< ",\"active\":" << objectObservation.active
+			<< ",\"total_loaded\":"
+			<< objectObservation.totalCount
+			<< ",\"total_active\":"
+			<< objectObservation.totalActive
+			<< ",\"loaded_containers\":"
+			<< objectObservation.loadedContainers
+			<< ",\"primary_container_index\":"
+			<< primaryContainerIndex
+			<< ",\"last_object_mask_index\":";
+		if (objectObservation.hasLastObjectMaskIndex)
+			json << objectObservation.lastObjectMaskIndex;
+		else
+			json << "null";
+		json << ",\"humans\":"
+			<< CountActiveChildren(initialized ? scene->m_pHumanContainer : nullptr)
+			<< ",\"items\":"
+			<< CountActiveChildren(initialized ? scene->m_pItemContainer : nullptr)
+			<< ",\"effects\":"
+			<< CountActiveChildren(initialized ? scene->m_pEffectContainer : nullptr)
+			<< ",\"extras\":"
+			<< CountActiveChildren(initialized ? scene->m_pExtraContainer : nullptr)
+			<< "},\"visuals\":{"
+			<< "\"total_draws\":null"
+			<< ",\"terrain_draws\":null"
+			<< ",\"ground_draws\":null"
+			<< ",\"water_draws\":null"
+			<< ",\"sky_draws\":null"
+			<< ",\"human_draws\":null"
+			<< ",\"object_draws\":null"
+			<< ",\"effect_draws\":null"
+			<< ",\"hud_draws\":null"
+			<< ",\"hud_art_draws\":null"
+			<< "}}";
 	}
 
 	template <typename Interface>
@@ -1237,15 +1739,37 @@ namespace
 		json << "},\n"
 			<< "  \"matrices\":{"
 			<< "\"world\":";
-		AppendTransform(json, device, D3DTS_WORLD);
+		if (g_compare.capture3DWorldValid)
+			AppendMatrix(json, g_compare.capture3DWorld);
+		else
+			json << "null";
 		json << ",\"view\":";
-		AppendTransform(json, device, D3DTS_VIEW);
+		if (g_compare.capture3DViewValid)
+			AppendMatrix(json, g_compare.capture3DView);
+		else
+			json << "null";
 		json << ",\"projection\":";
-		AppendTransform(json, device, D3DTS_PROJECTION);
+		if (g_compare.capture3DProjectionValid)
+			AppendMatrix(json, g_compare.capture3DProjection);
+		else
+			json << "null";
 		json << "},\n"
 			<< "  \"draws\":[],\n"
 			<< "  \"render\":{"
 			<< "\"capture_point\":\"after_EndScene_before_Present\""
+			<< ",\"three_d_state\":{"
+			<< "\"capture_point\":\"before_SetMatrixForUI\""
+			<< ",\"attempted\":"
+			<< (g_compare.capture3DAttempted ? "true" : "false")
+			<< ",\"valid\":"
+			<< ((g_compare.capture3DWorldValid &&
+				g_compare.capture3DViewValid &&
+				g_compare.capture3DProjectionValid) ? "true" : "false")
+			<< ",\"sequence\":" << g_compare.capture3DSequence
+			<< ",\"frame_serial\":" << g_compare.capture3DFrameId
+			<< ",\"draw_serial\":null"
+			<< ",\"draw_serial_available\":false"
+			<< "}"
 			<< ",\"width\":" << backbuffer.Width
 			<< ",\"height\":" << backbuffer.Height
 			<< ",\"format\":" << static_cast<unsigned int>(backbuffer.Format)
@@ -1366,7 +1890,9 @@ namespace
 			<< ((g_compare.injectedKeyDown[VK_SHIFT] ||
 				g_compare.injectedKeyDown[VK_LSHIFT] ||
 				g_compare.injectedKeyDown[VK_RSHIFT]) ? "true" : "false")
-			<< "}"
+			<< "},";
+		AppendNativeFieldObservation(json, g_pObjectManager);
+		json
 			<< ",\"random\":{"
 			<< "\"armed\":"
 			<< (OpenWydCompareRandomIsArmed() ? "true" : "false")
@@ -1542,6 +2068,11 @@ bool OpenWydCompareTryBeginFrame()
 
 	g_compare.activeFrameId = g_compare.pendingFrameId;
 	g_compare.activeTimeMs = g_compare.pendingTimeMs;
+	g_compare.capture3DAttempted = false;
+	g_compare.capture3DWorldValid = false;
+	g_compare.capture3DViewValid = false;
+	g_compare.capture3DProjectionValid = false;
+	g_compare.capture3DFrameId = g_compare.pendingFrameId;
 	g_compare.stepPending = false;
 	g_compare.frameActive = true;
 	return true;
@@ -1754,6 +2285,35 @@ bool OpenWydCompareInjectedKeyIsDown(unsigned int virtualKey)
 	return OpenWydCompareIsEnabled() &&
 		virtualKey < sizeof(g_compare.injectedKeyDown) &&
 		g_compare.injectedKeyDown[virtualKey];
+}
+
+void OpenWydCompareCapture3DState(IDirect3DDevice9* device)
+{
+	if (!OpenWydCompareIsEnabled() ||
+		!g_compare.frameActive ||
+		g_compare.capture3DAttempted)
+	{
+		return;
+	}
+
+	g_compare.capture3DAttempted = true;
+	g_compare.capture3DFrameId = g_compare.activeFrameId;
+	++g_compare.capture3DSequence;
+	g_compare.capture3DWorldValid =
+		device &&
+		SUCCEEDED(device->GetTransform(
+			D3DTS_WORLD,
+			&g_compare.capture3DWorld));
+	g_compare.capture3DViewValid =
+		device &&
+		SUCCEEDED(device->GetTransform(
+			D3DTS_VIEW,
+			&g_compare.capture3DView));
+	g_compare.capture3DProjectionValid =
+		device &&
+		SUCCEEDED(device->GetTransform(
+			D3DTS_PROJECTION,
+			&g_compare.capture3DProjection));
 }
 
 void OpenWydCompareOnBeforePresent(IDirect3DDevice9* device)
