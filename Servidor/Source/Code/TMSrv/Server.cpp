@@ -4580,13 +4580,17 @@ void GenerateMob(int index, int PosX, int PosY)
 		}
 		memset(pMob[tempmob].Affect, 0, sizeof(pMob[tempmob].Affect));
 
+		int formation = Formation;
+		if (formation < 0 || formation >= 5)
+			formation = 0;
+
 		for (int j = 0; j < MAX_SEGMENT; j++)
 		{
 			if (mNPCGen.pList[index].SegmentRange[j])
 			{
-				pMob[tempmob].SegmentListX[j] = g_pFormation[i][j][Formation] + pMob[tmob].SegmentListX[j];
+				pMob[tempmob].SegmentListX[j] = g_pFormation[formation][i][0] + pMob[tmob].SegmentListX[j];
 
-				pMob[tempmob].SegmentListY[j] = g_pFormation[i][j][Formation] + pMob[tmob].SegmentListY[j];
+				pMob[tempmob].SegmentListY[j] = g_pFormation[formation][i][1] + pMob[tmob].SegmentListY[j];
 
 
 				pMob[tempmob].SegmentWait[j] = mNPCGen.pList[index].SegmentWait[j];
@@ -10449,6 +10453,9 @@ BOOL SetAffect(int conn, int skillnum, int time, int Level)
 BOOL SetTick(int mob, int skillnum, int Delay, int Level)
 {
 	if (pMob[mob].MOB.Merchant == 1 && mob > MAX_USER)
+		return FALSE;
+
+	if (skillnum < 0 || skillnum >= MAX_SKILLINDEX)
 		return FALSE;
 
 	int sTickType = g_pSpell[skillnum].TickType;
