@@ -383,3 +383,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local cross-builds, Docker packaging checks, and smoke artifacts.
+/build/
