@@ -78,8 +78,8 @@ services:
     depends_on:
       wsproxy:
         condition: service_started
-    ports:
-      - "${OPENWYD_WEB_PORT:-8080}:80"
+    expose:
+      - "80"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
       interval: 5s

@@ -23,6 +23,12 @@ Abra `http://localhost:8080`. Para trocar a porta publicada:
 OPENWYD_WEB_PORT=8088 docker compose up --build -d
 ```
 
+O Docker Compose carrega `compose.override.yaml` automaticamente no
+desenvolvimento local. Esse arquivo é o único que publica uma porta no host.
+Em plataformas como Coolify, selecione apenas `compose.yaml`: o serviço `web`
+fica acessível ao proxy interno pela porta 80, sem reservar uma porta do host
+compartilhado.
+
 A conta inicial é:
 
 ```text
