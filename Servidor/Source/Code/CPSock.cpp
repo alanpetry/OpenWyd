@@ -354,7 +354,7 @@ BOOL CPSock::Receive()
 	int Rest = RECV_BUFFER_SIZE - nRecvPosition;
 	int tReceiveSize = recv(Sock, (char*)(pRecvBuffer + nRecvPosition), Rest, 0);
 
-	if (tReceiveSize == SOCKET_ERROR || tReceiveSize == Rest)
+	if (tReceiveSize <= 0 || tReceiveSize == Rest)
 		return FALSE;
 
 	nRecvPosition = nRecvPosition + tReceiveSize;
