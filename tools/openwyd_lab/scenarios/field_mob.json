@@ -1,0 +1,35 @@
+{
+  "mode": "field",
+  "seed": 769,
+  "start_time_ms": 10000,
+  "tick_ms": 50,
+  "actors": [
+    {
+      "id": 1,
+      "name": "OpenWYD",
+      "x": 2096,
+      "y": 2092,
+      "equip": [6, 1417, 1230, 1230, 1230, 1230, 3605, 0]
+    },
+    {
+      "id": 10000,
+      "name": "LabMob",
+      "x": 2099,
+      "y": 2092,
+      "equip": [6, 0, 0, 0, 0, 0, 0, 0],
+      "score": {
+        "level": 1,
+        "ac": 5,
+        "damage": 8,
+        "max_hp": 200,
+        "max_mp": 0,
+        "hp": 200,
+        "mp": 0,
+        "str": 10,
+        "int": 5,
+        "dex": 8,
+        "con": 10
+      }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "mode": "field",
+  "seed": 769,
+  "start_time_ms": 10000,
+  "tick_ms": 50,
+  "actors": [
+    {
+      "id": 1,
+      "name": "OpenWYD",
+      "x": 2096,
+      "y": 2092,
+      "equip": [6, 1417, 1230, 1230, 1230, 1230, 3605, 0]
+    }
+  ],
+  "timeline": [
+    {
+      "frame": 2,
+      "kind": "teleport",
+      "actor": 0,
+      "x": 1046,
+      "y": 1726
+    }
+  ]
+}
