@@ -18,6 +18,7 @@ services:
         OPENWYD_SANITIZE: "${OPENWYD_SANITIZE:-OFF}"
     environment:
       <<: *server-environment
+      OPENWYD_PUBLIC_DEMO: "${OPENWYD_PUBLIC_DEMO:-1}"
     working_dir: /opt/openwyd/Server/DBSRV/Run
     command: ["/opt/openwyd/bin/server-entrypoint", "/opt/openwyd/bin/dbsrv"]
     volumes:

@@ -15,6 +15,10 @@
 #include "../Basedef.h"
 #include "../ConfigIni.h"
 
+#ifdef OPENWYD_HEADLESS
+#include "openwyd_env.h"
+#endif
+
 using ConfigIni::nConfig;
 
 /*revisado*/
@@ -32,6 +36,29 @@ extern STRUCT_MOB g_pBaseSet[MAX_CLASS]; // Server.cpp
 
 extern int  ChargedGuildList[MAX_SERVER][MAX_GUILDZONE];
 extern STRUCT_ITEMLOG ItemDayLog[MAX_ITEMLIST];
+
+static BOOL IsOpenWydPublicDemoAccount(const char* account)
+{
+#ifdef OPENWYD_HEADLESS
+	if (openwyd_env_int("OPENWYD_PUBLIC_DEMO", 0) == 0 || account == nullptr)
+		return FALSE;
+
+	if (account[0] != 'D' || account[1] != 'E' || account[2] != 'M' || account[3] != 'O')
+		return FALSE;
+
+	int length = 4;
+	for (; length < ACCOUNTNAME_LENGTH && account[length]; ++length)
+	{
+		const char value = account[length];
+		if (!((value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9')))
+			return FALSE;
+	}
+
+	return length >= 8 && length < ACCOUNTNAME_LENGTH;
+#else
+	return FALSE;
+#endif
+}
 
 unsigned short	g_pGuildWar[65536] = {0,};
 unsigned short	g_pGuildAlly[65536] = {0,};
@@ -619,6 +646,20 @@ int CFileDB::ProcessMessage(char *Msg, int conn)
 			memcpy(&file.Info.AccountName, m->AccountName, ACCOUNTNAME_LENGTH);
 
 			int ret = DBReadAccount(&file);
+
+			if(ret == 0 && IsOpenWydPublicDemoAccount(m->AccountName))
+			{
+				char first[128];
+				char directory[160];
+				char empty[1] = { 0 };
+
+				BASE_GetFirstKey(m->AccountName, first);
+				sprintf(directory, "./account/%s", first);
+				_mkdir(directory);
+
+				AddAccount(m->AccountName, m->AccountPassword, empty, 0, 0, empty, empty, empty, 0);
+				ret = DBReadAccount(&file);
+			}
 
 			if(ret == 0)
 			{
