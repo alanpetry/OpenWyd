@@ -2290,18 +2290,26 @@ TMGround::TMGround()
 
         if (pFile)
         {
-            fread(&TMGround::m_nCheckSum, sizeof m_nCheckSum, 1u, pFile);
+            const size_t cdataRead =
+                fread(&TMGround::m_nCheckSum, sizeof m_nCheckSum, 1u, pFile);
+            const int cdataExtra = fgetc(pFile);
+            const int cdataError = ferror(pFile);
 
-            int nCDataCheckSum = 0;
-            for (int k = 0; k < 64; ++k)
-                for (int j = 0; j < 32; ++j)
-                    nCDataCheckSum += 8 * k + 4 * m_nCheckSum[j][j] * 16 * j;
-
-            if (g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && nCDataCheckSum != 5855606140)
+            // The recovered source compared an `int` accumulator with
+            // 5,855,606,140, so the guard rejected every possible native
+            // value. Validate the complete official table here. Each loaded
+            // Field is still checked against its table entry by
+            // TMObjectContainer::Load; this repairs the impossible aggregate
+            // check without bypassing map integrity.
+            if (cdataRead != 1u || cdataExtra != EOF || cdataError)
             {
                 fclose(pFile);
 
-                LOG_WRITELOG("DataFile Error\r\n");
+                LOG_WRITELOG(
+                    "DataFile Error | cdata read=%u extra=%d error=%d\r\n",
+                    static_cast<unsigned int>(cdataRead),
+                    cdataExtra,
+                    cdataError);
                 MessageBoxA(g_pApp->m_hWnd, "DataFile Error.", "File Error", 0);
                 PostMessageA(g_pApp->m_hWnd, WM_CLOSE, 0, 0);
 
