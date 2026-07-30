@@ -579,6 +579,7 @@ int ReadBaseMob() {
 
 #pragma endregion
 
+	return TRUE;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) // Last Updated 19/01/2013
