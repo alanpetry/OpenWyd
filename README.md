@@ -12,14 +12,16 @@ only the platform layer required to run it in modern environments.
 
 ### Try the current build
 
-The public build starts directly in the real local Field scene:
+The public ARM64 test build creates an anonymous demo account in the browser
+and connects it to the real Linux TMSrv/DBSrv stack. No login or password is
+requested; the account is kept in this browser and opens at character
+selection:
 
-<https://alanpetry.github.io/OpenWyd/>
+<http://lqlwog0msgaa8hrmnzvuhi59.37.27.16.244.sslip.io/>
 
-The first load is intentionally large because this first public preview uses
-the complete currently required client data bundle. It is a graphics/runtime
-preview only: it does not connect to a game server and must not be used for
-accounts, passwords, or sensitive data.
+The first load is intentionally large because the preview includes the
+complete currently required client asset bundle. This is a temporary public
+test environment and its server state may be reset during development.
 
 ### Current progress
 
@@ -46,14 +48,10 @@ claim of complete visual or behavioral parity with the Windows client.
   beside the Web/WASM build. A debug coordinator will capture and compare
   runtime state and rendering tick by tick, making behavioral and visual
   regressions materially easier to identify during the port.
-- Complete browser-compatible networking and validate the original login and
-  multiplayer flows against a compatible server.
-- Audit and port the original `TMSrv` and `DBSrv` sources when they are added
-  to this repository. The current checkout contains server data only, not
-  those server source bases.
-- Make the server stack cross-platform, migrate Microsoft SQL Server data to
-  PostgreSQL, and provide Docker images and Docker Compose for client
-  services, game services, and database deployment.
+- Validate the remaining multiplayer gameplay flows against the Linux server,
+  including character creation, movement, combat, teleport, and persistence.
+- Finish amd64/arm64 packaging, sanitizer coverage, deployment automation, and
+  later storage migration work for the headless TMSrv/DBSrv stack.
 - Ship a desktop distribution based on Electron or a similar host. It will
   keep the WASM client and web-delivered assets, while adding a native bridge
   for background work and capabilities that browsers intentionally do not
@@ -106,14 +104,17 @@ modernos.
 
 ### Teste a versão atual
 
-A versão pública inicia diretamente no Field local real:
+A versão pública ARM64 cria uma conta de demonstração anônima no navegador e
+conecta ao TMSrv/DBSrv real executando em Linux. Não é solicitado login ou
+senha; a conta fica guardada neste navegador e abre diretamente na seleção de
+personagens:
 
-<https://alanpetry.github.io/OpenWyd/>
+<http://lqlwog0msgaa8hrmnzvuhi59.37.27.16.244.sslip.io/>
 
-O primeiro carregamento é propositalmente grande porque esta primeira prévia
-pública usa o bundle completo de dados do cliente requerido hoje. Ela é apenas
-uma demonstração gráfica/de runtime: não conecta a um servidor de jogo e não
-deve ser usada com contas, senhas ou dados sensíveis.
+O primeiro carregamento é propositalmente grande porque a prévia inclui o
+bundle completo de assets do cliente requerido hoje. Este é um ambiente
+público temporário de testes e o estado do servidor pode ser restaurado durante
+o desenvolvimento.
 
 ### O que já foi feito
 
@@ -142,14 +143,11 @@ esteja completa.
   deverá capturar e comparar estado de runtime e renderização tick a tick,
   acelerando a identificação de divergências visuais e comportamentais durante
   a migração.
-- Concluir a rede compatível com navegador e validar login e multiplayer do
-  fluxo original contra um servidor compatível.
-- Auditar e portar os fontes originais de `TMSrv` e `DBSrv` quando forem
-  adicionados ao repositório. O checkout atual contém apenas dados do servidor,
-  não essas bases de código.
-- Tornar a pilha de servidor multiplataforma, migrar os dados de Microsoft SQL
-  Server para PostgreSQL e fornecer imagens Docker/Docker Compose para cliente,
-  serviços de jogo e banco de dados.
+- Validar os fluxos multiplayer restantes contra o servidor Linux, incluindo
+  criação de personagem, movimento, combate, teleporte e persistência.
+- Concluir o empacotamento amd64/arm64, cobertura com sanitizers, automação de
+  deploy e, posteriormente, a migração de armazenamento da pilha headless de
+  TMSrv/DBSrv.
 - Distribuir uma versão desktop com Electron ou equivalente. Ela manterá o
   cliente WASM e os assets entregues pela web, adicionando uma ponte nativa
   para tarefas em segundo plano e capacidades que o navegador não oferece.
