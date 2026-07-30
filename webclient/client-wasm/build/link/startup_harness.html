@@ -101,16 +101,17 @@
       align-items: center;
       justify-content: center;
       min-height: 100%;
-      padding: 24px;
+      padding: 0;
     }
     body.play .panel {
       display: none;
     }
     body.play .canvas-wrap {
-      width: min(800px, 100%);
-      height: auto;
-      aspect-ratio: 4 / 3;
-      flex: 0 1 800px;
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      border-radius: 0;
+      flex: 0 0 auto;
     }
     #canvas {
       width: 800px;
@@ -121,6 +122,41 @@
       background: #000;
       image-rendering: pixelated;
       cursor: none;
+    }
+    .display-controls {
+      display: none;
+    }
+    body.play .display-controls {
+      position: fixed;
+      z-index: 20;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 8px;
+      padding: 7px 9px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      background: rgba(8, 8, 8, 0.72);
+      color: #eee;
+      font: 12px/1.2 system-ui, sans-serif;
+      opacity: 0.72;
+      transition: opacity 120ms ease;
+    }
+    body.play .display-controls:hover,
+    body.play .display-controls:focus-within {
+      opacity: 1;
+    }
+    .display-controls label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .display-controls select {
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 3px;
+      background: #202020;
+      font: inherit;
     }
     #wyd-text-input {
       position: fixed;
@@ -147,6 +183,7 @@
       font-size: 14px;
       text-align: center;
       line-height: 1.5;
+      z-index: 10;
     }
     body.play.loading .loading-overlay {
       display: flex;
@@ -157,6 +194,23 @@
   </style>
 </head>
 <body>
+  <div id="display-controls" class="display-controls" aria-label="Opções de exibição">
+    <label>Resolução
+      <select id="display-resolution">
+        <option value="640x480">640×480</option>
+        <option value="800x600">800×600</option>
+        <option value="1024x768">1024×768</option>
+        <option value="1280x1024">1280×1024</option>
+        <option value="1600x1200">1600×1200</option>
+      </select>
+    </label>
+    <label>Exibição
+      <select id="display-fit">
+        <option value="actual">Tamanho original</option>
+        <option value="contain">Ampliar mantendo proporção</option>
+      </select>
+    </label>
+  </div>
   <div class="layout">
     <div class="panel">
       <h3>TMProject Startup Harness (_wyd_start_client)</h3>
@@ -217,6 +271,9 @@
     const canvasEl = document.getElementById('canvas');
     const textInputEl = document.getElementById('wyd-text-input');
     const loadingOverlayEl = document.getElementById('loading-overlay');
+    const displayControlsEl = document.getElementById('display-controls');
+    const displayResolutionEl = document.getElementById('display-resolution');
+    const displayFitEl = document.getElementById('display-fit');
     const bootBtn = document.getElementById('boot-btn');
     const tickBtn = document.getElementById('tick-btn');
     const tick120Btn = document.getElementById('tick120-btn');
@@ -240,6 +297,11 @@
     const publicDemoMode = query.get('demo') === '1';
     const LAST_STATE_STORAGE_KEY = 'openwyd.lastState';
     const DEMO_ACCOUNT_STORAGE_KEY = 'openwyd.publicDemoAccount.v1';
+    const DISPLAY_RESOLUTION_STORAGE_KEY = 'openwyd.displayResolution.v1';
+    const DISPLAY_FIT_STORAGE_KEY = 'openwyd.displayFit.v1';
+    const DISPLAY_RESOLUTIONS = new Set([
+      '640x480', '800x600', '1024x768', '1280x1024', '1600x1200'
+    ]);
     const DEMO_TOKEN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const randomDemoToken = (length) => {
       const bytes = new Uint8Array(length);
@@ -328,6 +390,33 @@
       if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
       return { width, height };
     };
+    const readDisplayPreference = (key) => {
+      try {
+        return window.localStorage?.getItem(key) || '';
+      } catch {
+        return '';
+      }
+    };
+    const writeDisplayPreference = (key, value) => {
+      try {
+        window.localStorage?.setItem(key, value);
+      } catch {
+        // Display preferences are optional in private browsing contexts.
+      }
+    };
+    const requestedLogicalSize = parseSize(query.get('logical')) || parseSize(query.get('canvas'));
+    const requestedResolution = requestedLogicalSize
+      ? `${requestedLogicalSize.width}x${requestedLogicalSize.height}`
+      : '';
+    const publicResolution = DISPLAY_RESOLUTIONS.has(requestedResolution)
+      ? requestedResolution
+      : (DISPLAY_RESOLUTIONS.has(readDisplayPreference(DISPLAY_RESOLUTION_STORAGE_KEY))
+          ? readDisplayPreference(DISPLAY_RESOLUTION_STORAGE_KEY)
+          : '800x600');
+    const requestedFit = query.get('fit') || '';
+    const publicFit = requestedFit === 'actual' || requestedFit === 'contain'
+      ? requestedFit
+      : (readDisplayPreference(DISPLAY_FIT_STORAGE_KEY) === 'contain' ? 'contain' : 'actual');
     const defaultSocketProxyUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     const autoConfig = {
       state: resolveInitialState(),
@@ -341,9 +430,11 @@
       autostart: query.get('autostart') !== '0',
       quiet: query.get('quiet') === '1',
       layout: query.get('layout') || 'panel',
-      fit: query.get('fit') || 'actual',
+      fit: publicPlayMode ? publicFit : (query.get('fit') || 'actual'),
       fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
-      logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 800, height: 600 },
+      logicalSize: publicPlayMode
+        ? parseSize(publicResolution)
+        : (requestedLogicalSize || { width: 800, height: 600 }),
       socketProxyUrl: query.get('socketProxy') || defaultSocketProxyUrl,
       debugHost: query.get('host') || (demoCredentials ? 'tmsrv' : ''),
       debugAccount: demoCredentials?.account || query.get('account') || 'ADMIN',
@@ -354,6 +445,8 @@
     debugHostInput.value = autoConfig.debugHost;
     debugAccountInput.value = autoConfig.debugAccount;
     debugPasswordInput.value = autoConfig.debugPassword;
+    displayResolutionEl.value = `${autoConfig.logicalSize.width}x${autoConfig.logicalSize.height}`;
+    displayFitEl.value = autoConfig.fit;
     if (publicPlayMode) {
       document.body.classList.add('play', 'loading');
       document.title = publicDemoMode ? 'OpenWyd Demo' : 'OpenWyd Field Preview';
@@ -379,7 +472,9 @@
       }
 
       const wrap = canvasEl.parentElement;
-      const rect = wrap ? wrap.getBoundingClientRect() : { width: logical.width, height: logical.height };
+      const rect = publicPlayMode
+        ? { width: window.innerWidth, height: window.innerHeight }
+        : (wrap ? wrap.getBoundingClientRect() : { width: logical.width, height: logical.height });
       const maxWidth = Math.max(1, rect.width);
       const maxHeight = Math.max(1, rect.height);
       const aspect = logical.width / logical.height;
@@ -401,6 +496,31 @@
     };
 
     window.addEventListener('resize', syncCanvasSize);
+
+    displayResolutionEl.addEventListener('change', () => {
+      const resolution = displayResolutionEl.value;
+      if (!DISPLAY_RESOLUTIONS.has(resolution)) return;
+      writeDisplayPreference(DISPLAY_RESOLUTION_STORAGE_KEY, resolution);
+      const target = new URL(window.location.href);
+      target.searchParams.set('logical', resolution);
+      target.searchParams.set('v', '3');
+      window.location.replace(target.toString());
+    });
+
+    displayFitEl.addEventListener('change', () => {
+      const fit = displayFitEl.value === 'contain' ? 'contain' : 'actual';
+      autoConfig.fit = fit;
+      writeDisplayPreference(DISPLAY_FIT_STORAGE_KEY, fit);
+      const target = new URL(window.location.href);
+      target.searchParams.set('fit', fit);
+      window.history.replaceState(null, '', target.toString());
+      window.__wydHarnessConfig.fit = fit;
+      syncCanvasSize();
+      canvasEl.focus({ preventScroll: true });
+    });
+
+    displayControlsEl.addEventListener('pointerdown', event => event.stopPropagation());
+    displayControlsEl.addEventListener('mousedown', event => event.stopPropagation());
 
     const setStatus = (msg) => {
       statusEl.textContent = `status: ${msg}`;
@@ -602,7 +722,7 @@
       }
     };
     const routeKeyboardToClient = () =>
-      publicPlayMode ||
+      (publicPlayMode && !displayControlsEl.contains(document.activeElement)) ||
       document.activeElement === canvasEl ||
       document.activeElement === textInputEl ||
       document.activeElement === document.body;
