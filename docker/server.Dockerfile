@@ -36,6 +36,7 @@ RUN apt-get update \
 
 COPY --from=build /build/Servidor/dbsrv /opt/openwyd/bin/dbsrv
 COPY --from=build /build/Servidor/tmsrv /opt/openwyd/bin/tmsrv
+COPY --chmod=755 docker/server-entrypoint.sh /opt/openwyd/bin/server-entrypoint
 COPY --chown=openwyd:openwyd Servidor/Data/Common /opt/openwyd/Server/Common
 COPY --chown=openwyd:openwyd Servidor/Data/DBSrv /opt/openwyd/Server/DBSRV/Run
 COPY --chown=openwyd:openwyd Servidor/Data/TMSrv /opt/openwyd/Server/TMSRV/Run

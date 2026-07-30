@@ -5,6 +5,7 @@ x-server-environment: &server-environment
   OPENWYD_BIND_ADDRESS: 0.0.0.0
   OPENWYD_SERVER_GROUP: "0"
   OPENWYD_SERVER_INDEX: "0"
+  OPENWYD_HOLD_ON_EXIT: "${OPENWYD_HOLD_ON_EXIT:-0}"
 
 services:
   dbsrv:
@@ -17,7 +18,7 @@ services:
     environment:
       <<: *server-environment
     working_dir: /opt/openwyd/Server/DBSRV/Run
-    command: ["/opt/openwyd/bin/dbsrv"]
+    command: ["/opt/openwyd/bin/server-entrypoint", "/opt/openwyd/bin/dbsrv"]
     volumes:
       - dbsrv-data:/opt/openwyd/Server/DBSRV/Run
       - common-data:/opt/openwyd/Server/Common
@@ -37,7 +38,7 @@ services:
       OPENWYD_DB_HOST: dbsrv
       OPENWYD_DB_PORT: "7514"
     working_dir: /opt/openwyd/Server/TMSRV/Run
-    command: ["/opt/openwyd/bin/tmsrv"]
+    command: ["/opt/openwyd/bin/server-entrypoint", "/opt/openwyd/bin/tmsrv"]
     volumes:
       - tmsrv-data:/opt/openwyd/Server/TMSRV/Run
       - common-data:/opt/openwyd/Server/Common
