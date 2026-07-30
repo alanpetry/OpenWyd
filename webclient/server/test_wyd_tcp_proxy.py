@@ -9,7 +9,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wyd_tcp_proxy import TransportTrace, pick_target, pipe_ws_to_tcp
+from wyd_tcp_proxy import (
+    TransportTrace,
+    pick_target,
+    pipe_tcp_to_ws,
+    pipe_ws_to_tcp,
+    read_ws_frame,
+)
 
 
 class MemoryWriter:
@@ -93,6 +99,30 @@ class TransportTraceTests(unittest.TestCase):
             return bytes(writer.data)
 
         self.assertEqual(asyncio.run(exercise()), payload)
+
+    def test_tcp_payload_reaches_websocket_byte_exact(self) -> None:
+        payload = bytes(range(255, -1, -1)) * 3
+
+        async def exercise() -> tuple[int, bytes]:
+            tcp_reader = asyncio.StreamReader()
+            tcp_reader.feed_data(payload)
+            tcp_reader.feed_eof()
+            ws_writer = MemoryWriter()
+            await pipe_tcp_to_ws(
+                tcp_reader,
+                ws_writer,  # type: ignore[arg-type]
+                "test-peer",
+                connection_id=1,
+                trace=None,
+            )
+            ws_reader = asyncio.StreamReader()
+            ws_reader.feed_data(bytes(ws_writer.data))
+            ws_reader.feed_eof()
+            return await read_ws_frame(ws_reader)
+
+        opcode, received = asyncio.run(exercise())
+        self.assertEqual(opcode, 0x2)
+        self.assertEqual(received, payload)
 
 
 if __name__ == "__main__":

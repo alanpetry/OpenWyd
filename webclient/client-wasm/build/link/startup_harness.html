@@ -189,7 +189,7 @@
           <input id="debug-host" value="" placeholder="official host or IP" />
         </label>
         <label>Socket proxy
-          <input id="socket-proxy" value="ws://127.0.0.1:8282/" />
+          <input id="socket-proxy" />
         </label>
         <label>Account
           <input id="debug-account" value="OPENWYD01" />
@@ -287,6 +287,7 @@
       if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
       return { width, height };
     };
+    const defaultSocketProxyUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     const autoConfig = {
       state: resolveInitialState(),
       debugFlags: Number.parseInt(query.get('debugFlags') || '0', 10) || 0,
@@ -302,10 +303,10 @@
       fit: query.get('fit') || 'actual',
       fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
       logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 800, height: 600 },
-      socketProxyUrl: query.get('socketProxy') || 'ws://127.0.0.1:8282/',
+      socketProxyUrl: query.get('socketProxy') || defaultSocketProxyUrl,
       debugHost: query.get('host') || '',
-      debugAccount: query.get('account') || 'OPENWYD01',
-      debugPassword: query.get('password') || 'TEST1234'
+      debugAccount: query.get('account') || 'ADMIN',
+      debugPassword: query.get('password') || 'admin'
     };
     screenSelect.value = String(autoConfig.state);
     socketProxyInput.value = autoConfig.socketProxyUrl;
@@ -800,9 +801,9 @@
           write('_wyd_debug_selectserver_login export unavailable', 'err');
           return 0;
         }
-        Module.wydSocketProxyUrl = socketProxyInput.value || 'ws://127.0.0.1:8282/';
-        const account = debugAccountInput.value || 'OPENWYD01';
-        const password = debugPasswordInput.value || 'TEST1234';
+        Module.wydSocketProxyUrl = socketProxyInput.value || defaultSocketProxyUrl;
+        const account = debugAccountInput.value || 'ADMIN';
+        const password = debugPasswordInput.value || 'admin';
         const host = debugHostInput.value || '';
         const ret = Module.ccall(
           'wyd_debug_selectserver_login',
@@ -1039,6 +1040,7 @@
       }
     };
   </script>
+  <script src="./openwyd_assets.js"></script>
   <script src="./tmproject_startup.js"></script>
 </body>
 </html>

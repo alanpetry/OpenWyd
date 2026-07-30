@@ -20,6 +20,30 @@ v769ClientRelease/AttributeMap.dat@/AttributeMap.dat
 v769ClientRelease/object.bin@/object.bin
 v769ClientRelease/notice.txt@/notice.txt
 v769ClientRelease/minimap.dat@/minimap.dat
+v769ClientRelease/config_settings.json@/config_settings.json
+v769ClientRelease/config_settings_origem.json@/config_settings_origem.json
+v769ClientRelease/curse.bin@/curse.bin
+v769ClientRelease/EventCoupon.bin@/EventCoupon.bin
+v769ClientRelease/extraitem.bin@/extraitem.bin
+v769ClientRelease/Graphics.ini@/Graphics.ini
+v769ClientRelease/guilds.txt@/guilds.txt
+v769ClientRelease/HeightMap.dat@/HeightMap.dat
+v769ClientRelease/InitItem.bin@/InitItem.bin
+v769ClientRelease/Lang.txt@/Lang.txt
+v769ClientRelease/MissionItens.bin@/MissionItens.bin
+v769ClientRelease/MountData.bin@/MountData.bin
+v769ClientRelease/Music.ini@/Music.ini
+v769ClientRelease/settings.txt@/settings.txt
+v769ClientRelease/shader1.bin@/shader1.bin
+v769ClientRelease/shader2.bin@/shader2.bin
+v769ClientRelease/shader3.bin@/shader3.bin
+v769ClientRelease/shader4.bin@/shader4.bin
+v769ClientRelease/shader5.bin@/shader5.bin
+v769ClientRelease/shader6.bin@/shader6.bin
+v769ClientRelease/shader7.bin@/shader7.bin
+v769ClientRelease/shader8.bin@/shader8.bin
+v769ClientRelease/skeltonmt.msa@/skeltonmt.msa
+v769ClientRelease/WNotice.ini@/WNotice.ini
 
 # UI packs and RC/data needed by scene loading.
 v769ClientRelease/UI/*.bin@/UI/
@@ -31,10 +55,13 @@ v769ClientRelease/UI/*.cur@/UI/
 v769ClientRelease/UI/*.dat@/UI/
 v769ClientRelease/UI/*.guimat@/UI/
 v769ClientRelease/UI/Tahoma.ttf@/Tahoma.ttf
+v769ClientRelease/UI/FontNanum.ttf@/UI/FontNanum.ttf
+v769ClientRelease/UI/NanumBarunGothic.ttf@/UI/NanumBarunGothic.ttf
 v769ClientRelease/UI/Image/*@/UI/Image/
 v769ClientRelease/UI/Panel/**/*@/UI/Panel/
 v769ClientRelease/UI/Potal/*@/UI/Potal/
 v769ClientRelease/NUI/*.wyt@/NUI/
+v769ClientRelease/Lang/**/*@/Lang/
 
 # Environment maps/textures (select-server map uses Env/Character.*).
 v769ClientRelease/Env/*.bin@/Env/
@@ -49,15 +76,16 @@ v769ClientRelease/Effect/*.msa@/Effect/
 v769ClientRelease/Effect/*.wys@/Effect/
 
 # Mesh catalog + geometry/anim/texture payload used by scene characters and world objects.
-v769ClientRelease/Mesh/*.bin@/Mesh/
-v769ClientRelease/Mesh/*.txt@/Mesh/
-v769ClientRelease/Mesh/*.bon@/Mesh/
-v769ClientRelease/Mesh/*.ani@/Mesh/
-v769ClientRelease/Mesh/*.msh@/Mesh/
-v769ClientRelease/Mesh/*.mshb@/Mesh/
-v769ClientRelease/Mesh/*.msa@/Mesh/
-v769ClientRelease/Mesh/*.wys@/Mesh/
-v769ClientRelease/Mesh/*.dat@/Mesh/
+v769ClientRelease/Mesh/**/*.bin@/Mesh/
+v769ClientRelease/Mesh/**/*.txt@/Mesh/
+v769ClientRelease/Mesh/**/*.bon@/Mesh/
+v769ClientRelease/Mesh/**/*.ani@/Mesh/
+v769ClientRelease/Mesh/**/*.msh@/Mesh/
+v769ClientRelease/Mesh/**/*.mshb@/Mesh/
+v769ClientRelease/Mesh/**/*.msa@/Mesh/
+v769ClientRelease/Mesh/**/*.wys@/Mesh/
+v769ClientRelease/Mesh/**/*.dat@/Mesh/
+v769ClientRelease/Mesh/KK01bon@/Mesh/KK01bon
 
 # Audio assets used by startup scenes.
 v769ClientRelease/Sound/**/*@/Sound/
