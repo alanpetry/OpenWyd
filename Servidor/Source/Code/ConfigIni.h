@@ -96,7 +96,7 @@ namespace ConfigIni {
 		static int ReadTitleSystem(string path, string file);
 		static int WriteTitSystem(string path, string file, string Name, unsigned int ativa);
 
-	static	struct GroupServer
+	struct GroupServer
 		{
 			int ServerGrup;
 			int ServerNumber;
