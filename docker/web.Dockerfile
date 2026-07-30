@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG EMSCRIPTEN_VERSION=6.0.0
+ARG OPENWYD_BUILD_JOBS=2
 
 FROM emscripten/emsdk:${EMSCRIPTEN_VERSION} AS wasm-assets
 ARG TARGETARCH
@@ -23,6 +24,7 @@ RUN --mount=type=cache,id=openwyd-emscripten-system-${TARGETARCH},target=/emsdk/
 
 FROM emscripten/emsdk:${EMSCRIPTEN_VERSION} AS wasm-build
 ARG TARGETARCH
+ARG OPENWYD_BUILD_JOBS
 WORKDIR /src
 
 COPY Projects /src/Projects
@@ -37,7 +39,7 @@ RUN --mount=type=cache,id=openwyd-wasm-objects-${TARGETARCH},target=/src/webclie
     python3 webclient/client-wasm/tools/link_tmproject_wasm_startup.py \
         --repo-root /src \
         --dev \
-        --jobs 8 \
+        --jobs "${OPENWYD_BUILD_JOBS}" \
         --link-opt-level O2 \
     && python3 webclient/client-wasm/tools/prepare_pages_site.py \
         --link-dir /src/webclient/client-wasm/build/link \

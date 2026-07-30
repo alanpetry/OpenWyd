@@ -3,6 +3,7 @@
 FROM debian:bookworm AS build
 
 ARG TARGETARCH
+ARG OPENWYD_BUILD_JOBS=2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -22,7 +23,7 @@ RUN --mount=type=cache,id=openwyd-server-ccache-${TARGETARCH},target=/root/.cach
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DOPENWYD_BUILD_SERVERS=ON \
-    && cmake --build /build --parallel
+    && cmake --build /build --parallel "${OPENWYD_BUILD_JOBS}"
 
 FROM debian:bookworm-slim AS runtime
 

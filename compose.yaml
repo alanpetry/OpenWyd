@@ -12,6 +12,8 @@ services:
     build:
       context: .
       dockerfile: docker/server.Dockerfile
+      args:
+        OPENWYD_BUILD_JOBS: "${OPENWYD_BUILD_JOBS:-2}"
     environment:
       <<: *server-environment
     working_dir: /opt/openwyd/Server/DBSRV/Run
@@ -75,6 +77,8 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
+      args:
+        OPENWYD_BUILD_JOBS: "${OPENWYD_BUILD_JOBS:-2}"
     depends_on:
       wsproxy:
         condition: service_started
