@@ -3142,7 +3142,7 @@ extern const std::string PATH_TITLE_SYSTEM;
 extern const std::string PATH_GUILD_HALL;
 extern const std::string PATH_TERRITORY;
 extern const std::string PATH_INVADE;
-extern enum eGameConfig {
+enum eGameConfig {
 		DROP_ITEM_EVENT,
 		ETC_EVENT,
 		nBILLING,
@@ -3150,7 +3150,7 @@ extern enum eGameConfig {
 		TREASURE,
 		OTHER
 };
-extern enum eEventEternal {
+enum eEventEternal {
 	VemProEternal
 };
 
@@ -3383,7 +3383,7 @@ struct STRUCT_TITLE_SYSTEM
 	unsigned int Defesa;
 };
 
-extern enum eTitleLevel {
+enum eTitleLevel {
 	tNOVATO,
 	tEXPLORADOR,
 	tPERITO,
@@ -3440,7 +3440,7 @@ extern DWORD MAX_BOX_N;
 extern DWORD MAX_BOX_M;
 extern DWORD MAX_BOX_A;
 extern std::string TypeCoin;
-extern enum eNPCBlock {
+enum eNPCBlock {
 	Uxmall,
 	Odin,
 	BlackOrackle,
@@ -3453,13 +3453,13 @@ extern enum eNPCBlock {
 	Urnammu
 };
 
-extern enum eBossCamp {
+enum eBossCamp {
 	Freak,
 	Talos,
 	Noah,
 	Kirei
 };
-extern enum eWeekDay {
+enum eWeekDay {
 	Sunday,
 	Monday,
 	Tuesday,
@@ -3468,14 +3468,14 @@ extern enum eWeekDay {
 	Friday,
 	Saturday
 };
-extern enum eWars {
+enum eWars {
 	eTower,
 	eNoatum,
 	eCity,
 	eRvR,
 };
 #define MAX_STATUS_SERVER 5
-extern enum eStatusServer {
+enum eStatusServer {
 	sOff,
 	sFree,
 	sMaintenance,
@@ -3519,7 +3519,7 @@ struct STRUCT_TERRITORY
 	BOOL Start;
 	int CooReset;
 };
-extern enum eTerritory {
+enum eTerritory {
 	Arima,
 	Barnel,
 	Campus,
@@ -3527,7 +3527,7 @@ extern enum eTerritory {
 	IceCrow
 
 };
-extern struct STRUCT_EVENT_INVADE
+struct STRUCT_EVENT_INVADE
 {
 	int nDay;
 	int nHour;
