@@ -83,6 +83,8 @@ services:
     depends_on:
       wsproxy:
         condition: service_started
+    volumes:
+      - common-data:/usr/share/nginx/html/__openwyd_diag:ro
     expose:
       - "80"
     healthcheck:
