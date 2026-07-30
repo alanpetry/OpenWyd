@@ -23,7 +23,7 @@ services:
       - dbsrv-data:/opt/openwyd/Server/DBSRV/Run
       - common-data:/opt/openwyd/Server/Common
     healthcheck:
-      test: ["CMD-SHELL", "grep -q ':1D5A ' /proc/net/tcp"]
+      test: ["CMD-SHELL", "if [ \"$${OPENWYD_HOLD_ON_EXIT:-0}\" = 1 ]; then exit 0; fi; grep -q ':1D5A ' /proc/net/tcp"]
       interval: 2s
       timeout: 1s
       retries: 30
@@ -46,7 +46,7 @@ services:
       dbsrv:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "grep -q ':2059 ' /proc/net/tcp"]
+      test: ["CMD-SHELL", "if [ \"$${OPENWYD_HOLD_ON_EXIT:-0}\" = 1 ]; then exit 0; fi; grep -q ':2059 ' /proc/net/tcp"]
       interval: 2s
       timeout: 1s
       retries: 60
