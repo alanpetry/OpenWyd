@@ -34,7 +34,10 @@
 #define _O_TRUNC O_TRUNC
 #endif
 
-inline int _open(const char* path, int flags, int mode = 0666) { return ::open(path, flags, mode); }
+int openwyd_open_compat(const char* path, int flags, int mode);
+inline int _open(const char* path, int flags, int mode = 0666) {
+    return openwyd_open_compat(path, flags, mode);
+}
 inline int _read(int fd, void* buffer, unsigned count) { return static_cast<int>(::read(fd, buffer, count)); }
 inline int _write(int fd, const void* buffer, unsigned count) { return static_cast<int>(::write(fd, buffer, count)); }
 inline int _close(int fd) { return ::close(fd); }

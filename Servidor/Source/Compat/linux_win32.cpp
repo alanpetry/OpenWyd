@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <dirent.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/timerfd.h>
@@ -143,7 +144,87 @@ void fill_find_data(const std::string& path, WIN32_FIND_DATA* data) {
     }
 }
 
+bool ascii_case_equal(const std::string& left, const std::string& right) {
+    if (left.size() != right.size())
+        return false;
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        const auto left_char = static_cast<unsigned char>(left[index]);
+        const auto right_char = static_cast<unsigned char>(right[index]);
+        if (std::tolower(left_char) != std::tolower(right_char))
+            return false;
+    }
+    return true;
+}
+
+bool resolve_case_insensitive_path(const char* path, std::string* resolved) {
+    if (!path || !*path || !resolved)
+        return false;
+
+    std::string normalized(path);
+    for (char& character : normalized) {
+        if (character == '\\')
+            character = '/';
+    }
+
+    const bool absolute = normalized.front() == '/';
+    std::string current = absolute ? "/" : ".";
+    std::size_t start = absolute ? 1 : 0;
+    while (start <= normalized.size()) {
+        const std::size_t separator = normalized.find('/', start);
+        const std::string component = normalized.substr(
+            start,
+            separator == std::string::npos ? std::string::npos : separator - start);
+        start = separator == std::string::npos ? normalized.size() + 1 : separator + 1;
+
+        if (component.empty() || component == ".")
+            continue;
+
+        const std::string candidate =
+            current == "/" ? current + component : current + "/" + component;
+        struct stat status {};
+        if (::stat(candidate.c_str(), &status) == 0) {
+            current = candidate;
+            continue;
+        }
+
+        DIR* directory = ::opendir(current.c_str());
+        if (!directory)
+            return false;
+
+        std::string actual_name;
+        while (dirent* entry = ::readdir(directory)) {
+            if (ascii_case_equal(entry->d_name, component)) {
+                actual_name = entry->d_name;
+                break;
+            }
+        }
+        ::closedir(directory);
+        if (actual_name.empty())
+            return false;
+
+        current = current == "/" ? current + actual_name : current + "/" + actual_name;
+    }
+
+    *resolved = current;
+    return true;
+}
+
 } // namespace
+
+int openwyd_open_compat(const char* path, int flags, int mode) {
+    const int descriptor = ::open(path, flags, mode);
+    if (descriptor >= 0 || errno != ENOENT)
+        return descriptor;
+
+    const int original_error = errno;
+    std::string resolved;
+    if (!resolve_case_insensitive_path(path, &resolved)) {
+        errno = original_error;
+        return -1;
+    }
+
+    return ::open(resolved.c_str(), flags, mode);
+}
 
 void openwyd_set_window_proc(WNDPROC proc) {
     g_window_proc = proc;
