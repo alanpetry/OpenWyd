@@ -28,19 +28,6 @@ file(GLOB OPENWYD_TMSRV_SOURCES CONFIGURE_DEPENDS
     "${OPENWYD_SERVER_CODE}/TMSrv/*.cpp"
 )
 
-foreach(source_name IN ITEMS
-    Basedef.cpp
-    CFileDB.cpp
-    DialogConfigExtra.cpp
-    EventTrade.cpp
-    pch.cpp
-    Source.cpp
-)
-    list(REMOVE_ITEM OPENWYD_TMSRV_SOURCES
-        "${OPENWYD_SERVER_CODE}/TMSrv/${source_name}"
-    )
-endforeach()
-
 set(OPENWYD_DBSRV_SOURCES
     "${OPENWYD_SERVER_CODE}/DBSrv/CFileDB.cpp"
     "${OPENWYD_SERVER_CODE}/DBSrv/CRanking.cpp"
