@@ -69,7 +69,9 @@ def main() -> int:
     out_dir.mkdir(parents=True)
 
     for name in sorted(runtime_files):
-        shutil.copy2(link_dir / name, out_dir / name)
+        destination = out_dir / name
+        shutil.copyfile(link_dir / name, destination)
+        destination.chmod(0o644)
     (out_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
 
