@@ -10,15 +10,23 @@
 
 TMSkillMagicArrow::TMSkillMagicArrow(TMVector3 vecStart, TMVector3 vecTarget, int nType, TMObject* pOwner)
 	: TMEffect()
+	, m_dwStartTime(0)
+	, m_vecStartPos{}
+	, m_vecTargetPos{}
+	, m_pLightMap(nullptr)
+	, m_pEffectMesh(nullptr)
+	, m_nType(nType)
+	, m_fAngle(0.0f)
+	, m_fRotAngle(0.0f)
+	, m_fProgress(0.0f)
+	, m_dwLifeTime(0)
+	, m_dwColor(0)
+	, m_dwColor2(0)
 {
-	m_vecStartPos = TMVector3{};
-	m_vecTargetPos = TMVector3{};
-
 	m_vecStartPos = vecStart;
 	m_vecPosition = vecStart;
 	m_vecTargetPos = vecTarget;
 
-	m_nType = nType;
 	m_dwStartTime = g_pTimerManager->GetServerTime();
 
 	m_dwColor = 0xFFAA88FF;

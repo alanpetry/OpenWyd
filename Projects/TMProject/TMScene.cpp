@@ -352,7 +352,6 @@ TMScene::~TMScene()
 
 	SAFE_DELETE(m_pControlContainer);
 
-	g_pObjectManager->m_pPreviousScene = nullptr;
 	g_pObjectManager->CleanUp();
 
 	m_pGround = nullptr;

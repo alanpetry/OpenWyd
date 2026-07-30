@@ -25,6 +25,15 @@ EventTranslator::EventTranslator()
 
     m_bAlt = 0;
     m_bShift = 0;
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+    m_bCtrl = 0;
+    dx = 0;
+    dy = 0;
+    wheel = 0;
+    viewchange = 0;
+    memset(button, 0, sizeof(button));
+    memset(lastButtonState, 0, sizeof(lastButtonState));
+#endif
 }
 
 EventTranslator::~EventTranslator()
@@ -192,20 +201,36 @@ void EventTranslator::Unlock()
 
 int EventTranslator::ReadInputEventData()
 {
-    if (m_pMouseDevice == nullptr)
-        return 1;
+    DIMOUSESTATE2 dims2{};
 
-    DIMOUSESTATE2 dims2;
-    memset(&dims2, 0, sizeof(dims2));
-
-    if (FAILED(m_pMouseDevice->GetDeviceState(20, &dims2)))
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+    if (OpenWydCompareIsEnabled())
     {
-        for (int hr = m_pMouseDevice->Acquire(); hr == 0x8007001E; hr = m_pMouseDevice->Acquire())
+        if (!OpenWydCompareConsumeMouseState(
+            &dims2.lX,
+            &dims2.lY,
+            &dims2.lZ,
+            dims2.rgbButtons,
+            static_cast<unsigned int>(sizeof(dims2.rgbButtons))))
         {
-            ;
+            return 1;
         }
+    }
+    else
+#endif
+    {
+        if (m_pMouseDevice == nullptr)
+            return 1;
 
-        return 1;
+        if (FAILED(m_pMouseDevice->GetDeviceState(sizeof(dims2), &dims2)))
+        {
+            for (int hr = m_pMouseDevice->Acquire(); hr == 0x8007001E; hr = m_pMouseDevice->Acquire())
+            {
+                ;
+            }
+
+            return 1;
+        }
     }
 
     if (RenderDevice::m_bCameraRot)

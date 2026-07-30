@@ -1830,7 +1830,8 @@ void TMSelectCharScene::AddvirtualKeyNum(int num)
 
 	if (paslen < 6)
 	{
-		sprintf_s(keypass, "%s%d", keypass, keybuf[num]);
+		keypass[paslen] = static_cast<char>('0' + keybuf[num]);
+		keypass[paslen + 1] = '\0';
 		strncpy(chdata, Passdata, strlen(keypass));
 		m_pAccountLockDlgTitle->SetText(chdata, 0);
 	}

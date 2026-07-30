@@ -1,0 +1,32 @@
+{
+"EVENT": {
+		"DOUBLE": {
+				"DayStart": 9,
+				"HourStart": 0,
+				"MinStart": 0,
+				"MSGStart" : "O Evento Double Exp foi ativado!!!",
+				"DayEnd": 0,
+				"HourEnd": 0,
+				"MinEnd": 0,
+				"MultEXP": 2,
+				"MSGEnd": "O Evento Double Exp foi desativado!!!"
+			   },
+		"NOTICE": {
+				"MaxNotice": 10,
+				"Days": [1,1,1,1,1,1,1],
+				"Hours": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+				"Notice": [
+							"Bem vindo ao Eternal WYD!!!",
+							"Visite nossa pagina www.eternalwyd.com.br",
+							"Participe de nossas redes sociais e concorra a premios",
+							"Reporte bugs e ou erros e seja recompensado por isso",
+							"Reporte conduta inadequada de outros jogadores e seja recompensado",
+							"Dê sua opniao sobre novos eventos em nossa pagina, e concorra a premios",
+							"Nao forneca sua senha para ninguem, voce e total responsavel pela sua account",
+							"Utilizacao de programas auxiliares serao passivos de ban permanente",
+							"Esta gostando do Eternal WYD? divulgue-nos em suas redes sociais!!",
+							"Novo por aqui? use o comando /VemProEternal e receba bonus para novatos"
+						  ]
+			  }
+	    }
+}

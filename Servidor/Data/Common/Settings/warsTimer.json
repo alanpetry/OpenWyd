@@ -1,0 +1,35 @@
+{
+
+"WAR": {
+		"Tower": {
+				"Days": [0,1,1,1,1,1,0],
+				"Hour": 22,
+				"Minute": 0,
+				"Notice": 0
+		
+				},
+		"Noatum": {
+				"Days": [1,0,0,0,0,0,0],
+				"Hour": 22,
+				"Minute": 0,
+				"Notice": 0
+		
+				},
+				
+		"City": {
+				"Days": [1,0,0,0,0,0,0],
+				"Hour": 21,
+				"Minute": 0,
+				"Notice": 0
+				},
+				
+		"RvR": {
+				"Days": [0,1,1,1,1,1,0],
+				"Hour": 23,
+				"Minute": 0,
+				"Notice": 0
+				}
+
+	   }
+	
+}

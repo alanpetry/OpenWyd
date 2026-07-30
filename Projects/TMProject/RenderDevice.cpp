@@ -11,9 +11,17 @@
 #include "TMCamera.h"
 #include "TMMesh.h"
 #include "Basedef.h"
+#if defined(OPENWYD_LAB)
+#include "OpenWydLab.h"
+#endif
 #include <io.h>
 #include <fcntl.h>
 #include <winnt.h>
+
+#if defined(__EMSCRIPTEN__)
+extern "C" void wyd_compare_latch_present_state();
+extern "C" void wyd_compare_latch_3d_state();
+#endif
 
 int RenderDevice::m_nBright = 50;
 DWORD RenderDevice::m_dwCurrScreenX = 1024;
@@ -394,7 +402,15 @@ int RenderDevice::Lock(int bClear)
 
 	if (bClear)
 	{
-		if (g_pCurrentScene != nullptr && g_pCurrentScene->m_pSky != nullptr)
+		if (
+#if defined(OPENWYD_LAB)
+			OpenWydLabIsIsolated())
+		{
+			m_dwActualClearColor = OpenWydLabClearColor();
+		}
+		else if (
+#endif
+			g_pCurrentScene != nullptr && g_pCurrentScene->m_pSky != nullptr)
 		{
 			if (RenderDevice::m_bDungeon != 0 && RenderDevice::m_bDungeon != 3 && RenderDevice::m_bDungeon != 4)
 				m_dwActualClearColor = 0;
@@ -428,6 +444,21 @@ int RenderDevice::Unlock(int bEnd)
 		static char szString[256];
 
 		static float fLastTime = 0.0f;
+#if defined(__EMSCRIPTEN__)
+		// Browser startup spends several seconds decoding and mounting assets
+		// before the first rendered frame. Do not count that non-rendering
+		// interval as one giant frame: it reports < 10 FPS for two seconds,
+		// disables TMSkinMesh interpolation and visibly snaps a character just
+		// before it stops moving. Start the sampling window at the first real
+		// frame; the official two-second average takes over afterwards.
+		if (fLastTime == 0.0f)
+		{
+			fLastTime = fTime;
+			dwFrames = 0;
+			m_fFPS = 30.0f;
+		}
+		else
+#endif
 		if ((fTime - fLastTime) > 2.0f)
 		{
 			m_fFPS = dwFrames / (fTime - fLastTime);
@@ -440,7 +471,14 @@ int RenderDevice::Unlock(int bEnd)
 		}
 
 		m_bShowEffects = 1;
-		if (g_bDebugMsg == 1)
+		if (g_bDebugMsg == 1
+#if defined(OPENWYD_LAB)
+			&& !OpenWydLabIsEnabled()
+#endif
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+			&& !OpenWydCompareIsEnabled()
+#endif
+			)
 		{
 			m_pFont->SetText(szString, 0xFFFFFFFF, 0);
 			m_pFont->Render(10, m_dwScreenHeight - 15, 0);
@@ -452,7 +490,25 @@ int RenderDevice::Unlock(int bEnd)
 
 	if (bEnd == 1)
 	{
-		if (m_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr) == D3DERR_DEVICELOST)
+#if defined(OPENWYD_LAB)
+		OpenWydLabOnBeforePresent(m_pd3dDevice);
+#endif
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		OpenWydCompareOnBeforePresent(m_pd3dDevice);
+#endif
+#if defined(__EMSCRIPTEN__)
+		wyd_compare_latch_present_state();
+#endif
+
+		const HRESULT presentResult =
+			m_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+		OpenWydCompareOnAfterPresent(presentResult);
+#endif
+#if defined(OPENWYD_LAB)
+		OpenWydLabOnAfterPresent(presentResult);
+#endif
+		if (presentResult == D3DERR_DEVICELOST)
 			m_bDeviceLost = 1;
 	}
 
@@ -1865,6 +1921,13 @@ HRESULT RenderDevice::SetProjectionMatrix()
 
 int RenderDevice::SetMatrixForUI()
 {
+#if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
+	OpenWydCompareCapture3DState(m_pd3dDevice);
+#endif
+#if defined(__EMSCRIPTEN__)
+	wyd_compare_latch_3d_state();
+#endif
+
 	D3DXMATRIX matUIProjection;
 	D3DXMatrixPerspectiveFovLH(&matUIProjection, 0.1f, (float)((float)m_d3dsdBackBuffer.Width / (float)m_d3dsdBackBuffer.Height) * 0.94f, 10.0f, 100.0f);
 

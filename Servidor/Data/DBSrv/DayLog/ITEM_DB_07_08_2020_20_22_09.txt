@@ -1,0 +1,2 @@
+[07/08/2020][20:22:09]  ItemID:4038 ItemName:Vela_do_Coveiro ItemNum:2 
+[07/08/2020][20:22:09]  ItemID:4039 ItemName:Colheita_do_Jardineiro ItemNum:1 

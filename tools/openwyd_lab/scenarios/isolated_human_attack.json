@@ -1,0 +1,47 @@
+{
+  "mode": "isolated",
+  "clear_color": "0xff000000",
+  "seed": 769,
+  "start_time_ms": 10000,
+  "tick_ms": 50,
+  "camera": {
+    "horizon": 0.78539818,
+    "vertical": -0.45,
+    "length": 4.0,
+    "height": 0.4
+  },
+  "actors": [
+    {
+      "id": 1,
+      "name": "OpenWYD",
+      "x": 2096,
+      "y": 2092,
+      "equip": [6, 1417, 1230, 1230, 1230, 1230, 3605, 0]
+    },
+    {
+      "id": 10000,
+      "name": "Target",
+      "x": 2099,
+      "y": 2092,
+      "equip": [6, 0, 0, 0, 0, 0, 0, 0],
+      "score": {
+        "max_hp": 200,
+        "max_mp": 0,
+        "hp": 200,
+        "mp": 0
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "frame": 2,
+      "kind": "attack",
+      "actor": 0,
+      "target_actor": 1,
+      "motion": 3,
+      "x": 2099,
+      "y": 2092,
+      "skill": -1
+    }
+  ]
+}

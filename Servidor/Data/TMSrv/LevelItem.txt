@@ -1,0 +1,341 @@
+# CLASSE, TYPE, LEVEL, ITEM
+# TYPE = 4 -> ENTREGA O ITEM INDEPENDENTE DA CLASSE
+# TYPE = 0 -> ENTREGA O ITEM INDEPENDENTE DOS PONTOS
+# TYPE = 1 -> TEM MAIS PONTOS EM STR
+# TYPE = 2 -> TEM MAIS PONTOS EM INT
+# TYPE = 3 -> TEM MAIS PONTOS EM DEX
+# CLASSES: 0=TK, 1=FM, 2=BM, 3=HT
+
+#CLASSE, TYPE, LEVEL, ITEM
+
+#BM DN - FORÇA
+2 1 29 1456 43 3 2 20  Luvas de Águia
+2 1 34 1459 43 3 2 20 74 12 Botas de Águia
+2 1 49 1447 43 3 4 20 Elmo de Águia
+2 1 44 1453 43 3 2 20 3 20 Calça de Águia
+2 1 50 1450 43 3 2 20 3 20 Peito de Águia
+
+2 1 84 1471 43 3 2 20  Manoplas de Osso
+2 1 89 1474 43 3 2 20 74 12 Botas de Osso
+2 1 94 1462 43 3 4 20 Elmo de Osso
+2 1 99 1468 43 3 2 20 3 20 Calça de Osso
+2 1 104 1466 43 3 2 20 3 20 Armadura de Osso
+
+2 1 119 1486 43 3 2 20  Manoplas de Aeon
+2 1 124 1489 43 3 2 20 74 12 Botas de Aeon
+2 1 129 1477 43 3 4 20 Elmo de Aeon
+2 1 135 1483 43 3 2 20 3 20 Calça de Aeon
+2 1 139 1480 43 3 2 20 3 20 Armadura de Aeon
+
+2 1 154 884 43 3 2 36  Lança Relampago
+
+2 1 159 1501 43 3 2 20  Manoplas Elemental
+2 1 169 1504 43 3 2 20 74 12 Botas Elemental
+2 1 179 1492 43 3 4 20 Elmo Elemental
+2 1 189 1498 43 3 2 20 3 20 Calça Elemental
+2 1 199 1495 43 3 2 20 3 20 Armadura Elemental
+
+2 1 254 3551 43 3 2 36 Asa Draconiana
+2 1 270 3551 43 3 2 36 Asa Draconiana
+
+
+
+#BM DN - DEXTRESA
+2 3 29 1456 43 3 2 20  Luvas de Águia
+2 3 34 1459 43 3 2 20 74 12 Botas de Águia
+2 3 49 1447 43 3 4 20 Elmo de Águia
+2 3 44 1453 43 3 2 20 3 20 Calça de Águia
+2 3 50 1450 43 3 2 20 3 20 Peito de Águia
+
+2 3 84 1471 43 3 2 20  Manoplas de Osso
+2 3 89 1474 43 3 2 20 74 12 Botas de Osso
+2 3 94 1462 43 3 4 20 Elmo de Osso
+2 3 99 1468 43 3 2 20 3 20 Calça de Osso
+2 3 104 1466 43 3 2 20 3 20 Armadura de Osso
+
+2 3 119 1486 43 3 2 20  Manoplas de Aeon
+2 3 124 1489 43 3 2 20 74 12 Botas de Aeon
+2 3 129 1477 43 3 4 20 Elmo de Aeon
+2 3 135 1483 43 3 2 20 3 20 Calça de Aeon
+2 3 139 1480 43 3 2 20 3 20 Armadura de Aeon
+
+2 3 154 884 43 3 2 36  Lança Relampago
+
+2 3 159 1501 43 3 2 20  Manoplas Elemental
+2 3 169 1504 43 3 2 20 74 12 Botas Elemental
+2 3 179 1492 43 3 4 20 Elmo Elemental
+2 3 189 1498 43 3 2 20 3 20 Calça Elemental
+2 3 199 1495 43 3 2 20 3 20 Armadura Elemental
+
+2 3 254 3576 43 3 2 36  Karikas
+
+
+#BM MG - INTELIGENCIA
+2 2 29 1456 43 3 60 6 Luvas de Águia
+2 2 34 1459 43 3 60 6 74 12 Botas de Águia
+2 2 49 1447 43 3 4 20 Elmo de Águia
+2 2 44 1453 43 3 60 6 3 20 Calça de Águia
+2 2 50 1450 43 3 60 6 3 20 Peito de Águia
+
+2 2 84 1471 43 3 60 6  Manoplas de Osso
+2 2 89 1474 43 3 60 6 74 12 Botas de Osso
+2 2 94 1462 43 3 4 20 Elmo de Osso
+2 2 99 1468 43 3 60 6 3 20 Calça de Osso
+2 2 104 1466 43 3 60 6 3 20 Armadura de Osso
+
+2 2 119 1486 43 3 60 6  Manoplas de Aeon
+2 2 124 1489 43 3 60 6 74 12 Botas de Aeon
+2 2 129 1477 43 3 4 20 Elmo de Aeon
+2 2 135 1483 43 3 60 6 3 20 Calça de Aeon
+2 2 139 1480 43 3 60 6 3 20 Armadura de Aeon
+
+2 2 154 854 43 3 60 16  Gungnir
+
+2 2 159 1501 43 3 60 6  Manoplas Elemental
+2 2 169 1504 43 3 60 6 74 12 Botas Elemental
+2 2 179 1492 43 3 4 20 Elmo Elemental
+2 2 189 1498 43 3 60 6 3 20 Calça Elemental
+2 2 199 1495 43 3 60 6 3 20 Armadura Elemental
+
+2 2 254 3566 43 3 60 16  Foice de Platinada
+
+
+#HT DN - FORÇA
+3 1 29 1606 43 3 2 20 Braçadeira de Metal
+3 1 34 1609 43 3 2 20 74 12 Botas de Metal
+3 1 49 1597 43 3 4 20 Elmo de Metal
+3 1 44 1603 43 3 2 20 3 20 Calça de Metal
+3 1 50 1600 43 3 2 20 3 20 Peito de Metal
+
+3 1 84 1621 43 3 2 20  Manoplas de Combate
+3 1 89 1624 43 3 2 20 74 12 Botas de Combate
+3 1 94 1612 43 3 4 20 Elmo de Combate
+3 1 99 1618 43 3 2 20 3 20 Calça de Combate
+3 1 104 1615 43 3 2 20 3 20 Armadura de Combate
+
+3 1 119 1636 43 3 2 20  Manoplas de Natureza
+3 1 124 1639 43 3 2 20 74 12 Botas de Natureza
+3 1 129 1627 43 3 4 20 Elmo de Natureza
+3 1 135 1633 43 3 2 20 3 20 Calça de Natureza
+3 1 139 1630 43 3 2 20 3 20 Armadura de Natureza
+
+3 1 154 839 43 3 2 36  Presas de Behemot	
+
+3 1 159 1651 43 3 2 20  Manoplas Teia
+3 1 169 1654 43 3 2 20 74 12 Botas Teia
+3 1 179 1642 43 3 4 20 Elmo Teia
+3 1 189 1648 43 3 2 20 3 20 Calça Teia
+3 1 199 1645 43 3 2 20 3 20 Armadura Teia
+
+3 1 254 3561 43 3 2 36  Dianus
+
+#HT DN - DEXTRESA
+3 3 29 1606 43 3 2 20 Braçadeira de Metal
+3 3 34 1609 43 3 2 20 74 12 Botas de Metal
+3 3 49 1597 43 3 4 20 Elmo de Metal
+3 3 44 1603 43 3 2 20 3 20 Calça de Metal
+3 3 50 1600 43 3 2 20 3 20 Peito de Metal
+
+3 3 84 1621 43 3 2 20  Manoplas de Combate
+3 3 89 1624 43 3 2 20 74 12 Botas de Combate
+3 3 94 1612 43 3 4 20 Elmo de Combate
+3 3 99 1618 43 3 2 20 3 20 Calça de Combate
+3 3 104 1615 43 3 2 20 3 20 Armadura de Combate
+
+3 3 119 1636 43 3 2 20  Manoplas de Natureza
+3 3 124 1639 43 3 2 20 74 12 Botas de Natureza
+3 3 129 1627 43 3 4 20 Elmo de Natureza
+3 3 135 1633 43 3 2 20 3 20 Calça de Natureza
+3 3 139 1630 43 3 2 20 3 20 Armadura de Natureza
+		
+3 3 154 824 43 3 2 36  Arco Élfico
+
+3 3 159 1651 43 3 2 20  Manoplas Teia
+3 3 169 1654 43 3 2 20 74 12 Botas Teia
+3 3 179 1642 43 3 4 20 Elmo Teia
+3 3 189 1648 43 3 2 20 3 20 Calça Teia
+3 3 199 1645 43 3 2 20 3 20 Armadura Teia
+
+3 3 254 3556 43 3 2 36  Arco Guardião
+
+#FM MG - INTELIGENCIA
+1 2 29 1297 43 3 60 6 Luvas de Sombrias
+1 2 34 1309 43 3 60 6 74 12 Botas de Sombrias
+1 2 49 1261 43 3 4 20 Elmo de Sombrias
+1 2 44 1285 43 3 60 6 3 20 Calça de Sombrias
+1 2 50 1273 43 3 60 6 3 20 Peito de Sombrias
+
+1 2 84 1321 43 3 60 6  Manoplas de Concha
+1 2 89 1324 43 3 60 6 74 12 Botas de Concha
+1 2 94 1312 43 3 4 20 Elmo de Concha
+1 2 99 1318 43 3 60 6 3 20 Calça de Concha
+1 2 104 1315 43 3 60 6 3 20 Armadura de Concha
+
+1 2 119 1336 43 3 60 6  Manoplas de Conjuradoras
+1 2 124 1339 43 3 60 6 74 12 Botas de Conjuradoras
+1 2 129 1327 43 3 4 20 Elmo de Conjuradoras
+1 2 135 1333 43 3 60 6 3 20 Calça de Conjuradoras
+1 2 139 1330 43 3 60 6 3 20 Armadura de Conjuradoras
+
+1 2 154 899 43 3 60 16  Olho do Carbunkle	
+
+1 2 159 1351 43 3 60 6  Manoplas Mytril
+1 2 169 1354 43 3 60 6 74 12 Botas Mytril
+1 2 179 1342 43 3 4 20 Elmo Mytril
+1 2 189 1348 43 3 60 6 3 20 Calça Mytril
+1 2 199 1345 43 3 60 6 3 20 Armadura Mytril
+
+1 2 254 3582 43 3 60 16  Cajado Caótico	
+
+#FM DN - FORÇA
+1 1 29 1297 43 3 2 20 Luvas de Sombrias
+1 1 34 1309 43 3 2 20 74 12 Botas de Sombrias
+1 1 49 1261 43 3 4 20 Elmo de Sombrias
+1 1 44 1285 43 3 2 20 3 20 Calça de Sombrias
+1 1 50 1273 43 3 2 20 3 20 Peito de Sombrias
+
+1 1 84 1321 43 3 2 20  Manoplas de Concha
+1 1 89 1324 43 3 2 20 74 12 Botas de Concha
+1 1 94 1312 43 3 4 20 Elmo de Concha
+1 1 99 1318 43 3 2 20 3 20 Calça de Concha
+1 1 104 1315 43 3 2 20 3 20 Armadura de Concha
+
+1 1 119 1336 43 3 2 20  Manoplas de Conjuradoras
+1 1 124 1339 43 3 2 20 74 12 Botas de Conjuradoras
+1 1 129 1327 43 3 4 20 Elmo de Conjuradoras
+1 1 135 1333 43 3 2 20 3 20 Calça de Conjuradoras
+1 1 139 1330 43 3 2 20 3 20 Armadura de Conjuradoras
+
+1 1 154 824 43 3 2 36   Arco Élfico	
+
+1 1 159 1351 43 3 2 20  Manoplas Mytril
+1 1 169 1354 43 3 2 20 74 12 Botas Mytril
+1 1 179 1342 43 3 4 20 Elmo Mytril
+1 1 189 1348 43 3 2 20 3 20 Calça Mytril
+1 1 199 1345 43 3 2 20 3 20 Armadura Mytril
+
+1 1 254 3556 43 3 2 36  Arco Guardião	
+
+#FM DN - DEXTRESA
+1 3 29 1297 43 3 2 20 Luvas de Sombrias
+1 3 34 1309 43 3 2 20 74 12 Botas de Sombrias
+1 3 49 1261 43 3 4 20 Elmo de Sombrias
+1 3 44 1285 43 3 2 20 3 20 Calça de Sombrias
+1 3 50 1273 43 3 2 20 3 20 Peito de Sombrias
+
+1 3 84 1321 43 3 2 20  Manoplas de Concha
+1 3 89 1324 43 3 2 20 74 12 Botas de Concha
+1 3 94 1312 43 3 4 20 Elmo de Concha
+1 3 99 1318 43 3 2 20 3 20 Calça de Concha
+1 3 104 1315 43 3 2 20 3 20 Armadura de Concha
+
+1 3 119 1336 43 3 2 20  Manoplas de Conjuradoras
+1 3 124 1339 43 3 2 20 74 12 Botas de Conjuradoras
+1 3 129 1327 43 3 4 20 Elmo de Conjuradoras
+1 3 135 1333 43 3 2 20 3 20 Calça de Conjuradoras
+1 3 139 1330 43 3 2 20 3 20 Armadura de Conjuradoras
+
+1 3 154 824 43 3 2 36   Arco Élfico	
+
+1 3 159 1351 43 3 2 20  Manoplas Mytril
+1 3 169 1354 43 3 2 20 74 12 Botas Mytril
+1 3 179 1342 43 3 4 20 Elmo Mytril
+1 3 189 1348 43 3 2 20 3 20 Calça Mytril
+1 3 199 1345 43 3 2 20 3 20 Armadura Mytril
+
+1 3 254 3556 43 3 2 36  Arco Guardião		
+
+#TK DN - FORÇA
+0 1 29 1147 43 3 2 20 Luvas de Malha
+0 1 34 1159 43 3 2 20 74 12 Botas de Malha
+0 1 49 1111 43 3 4 20 Elmo de Malha
+0 1 44 1135 43 3 2 20 3 20 Calça de Malha
+0 1 50 1123 43 3 2 20 3 20 Peito de Malha
+
+0 1 84 1186 43 3 2 20  Manoplas de Douradas
+0 1 89 1189 43 3 2 20 74 12 Botas de Douradas
+0 1 94 1177 43 3 4 20 Elmo de Douradas
+0 1 99 1183 43 3 2 20 3 20 Calça de Douradas
+0 1 104 1180 43 3 2 20 3 20 Armadura de Douradas
+
+0 1 119 1195 43 3 2 20  Manoplas de Anã
+0 1 124 1204 43 3 2 20 74 12 Botas de Anã
+0 1 129 1192 43 3 4 20 Elmo de Anã
+0 1 135 1198 43 3 2 20 3 20 Calça de Anã
+0 1 139 1195 43 3 2 20 3 20 Armadura de Anã
+
+0 1 154 869 43 3 2 36  Gram	
+0 1 154 869 43 3 2 36  Gram
+
+0 1 159 1216 43 3 2 20  Manoplas Embutidas
+0 1 169 1219 43 3 2 20 74 12 Botas Embutidas
+0 1 179 1207 43 3 4 20 Elmo Embutidas
+0 1 189 1213 43 3 2 20 3 20 Calça Embutidas
+0 1 199 1210 43 3 2 20 3 20 Armadura Embutidas
+
+0 1 254 3591 43 3 2 36  Éden	
+
+
+#TK DN - DEXTRESA
+0 3 29 1147 43 3 2 20 Luvas de Malha
+0 3 34 1159 43 3 2 20 74 12 Botas de Malha
+0 3 49 1111 43 3 4 20 Elmo de Malha
+0 3 44 1135 43 3 2 20 3 20 Calça de Malha
+0 3 50 1123 43 3 2 20 3 20 Peito de Malha
+
+0 3 84 1186 43 3 2 20  Manoplas de Douradas
+0 3 89 1189 43 3 2 20 74 12 Botas de Douradas
+0 3 94 1177 43 3 4 20 Elmo de Douradas
+0 3 99 1183 43 3 2 20 3 20 Calça de Douradas
+0 3 104 1180 43 3 2 20 3 20 Armadura de Douradas
+
+0 3 119 1195 43 3 2 20  Manoplas de Anã
+0 3 124 1204 43 3 2 20 74 12 Botas de Anã
+0 3 129 1192 43 3 4 20 Elmo de Anã
+0 3 135 1198 43 3 2 20 3 20 Calça de Anã
+0 3 139 1195 43 3 2 20 3 20 Armadura de Anã
+
+0 3 154 869 43 3 2 36   Gram	
+0 3 154 869 43 3 2 36   Gram
+
+0 3 159 1216 43 3 2 20  Manoplas Embutidas
+0 3 169 1219 43 3 2 20 74 12 Botas Embutidas
+0 3 179 1207 43 3 4 20 Elmo Embutidas
+0 3 189 1213 43 3 2 20 3 20 Calça Embutidas
+0 3 199 1210 43 3 2 20 3 20 Armadura Embutidas
+
+0 3 254 3596 43 3 2 36  Asa Draconiana	
+
+
+#TK MG - INTELIGENCIA
+0 2 29 1147 43 3 60 6 Luvas de Malha
+0 2 34 1159 43 3 60 6 74 12 Botas de Malha
+0 2 49 1111 43 3 4 20 Elmo de Malha
+0 2 44 1135 43 3 60 6 3 20 Calça de Malha
+0 2 50 1123 43 3 60 6 3 20 Peito de Malha
+
+0 2 84 1186 43 3 60 6  Manoplas de Douradas
+0 2 89 1189 43 3 60 6 74 12 Botas de Douradas
+0 2 94 1177 43 3 4 20 Elmo de Douradas
+0 2 99 1183 43 3 60 3 20 Calça de Douradas
+0 2 104 1180 43 3 60 6 3 20 Armadura de Douradas
+
+0 2 119 1195 43 3 60 6  Manoplas de Anã
+0 2 124 1204 43 3 60 6 74 12 Botas de Anã
+0 2 129 1192 43 3 4 20 Elmo de Anã
+0 2 135 1198 43 3 60 6 3 20 Calça de Anã
+0 2 139 1195 43 3 60 6 3 20 Armadura de Anã
+
+0 2 154 854 43 3 60 16   Gungnir
+
+0 2 159 1216 43 3 60 6  Manoplas Embutidas
+0 2 169 1219 43 3 60 6 74 12 Botas Embutidas
+0 2 179 1207 43 3 4 20 Elmo Embutidas
+0 2 189 1213 43 3 60 6 3 20 Calça Embutidas
+0 2 199 1210 43 3 60 6 3 20 Armadura Embutidas
+
+0 2 254 3566 43 3 60 16  Foice Platinada	
+
+#MONTARIA
+4 4 149 2366 16 39 5 5 100 0 
+	

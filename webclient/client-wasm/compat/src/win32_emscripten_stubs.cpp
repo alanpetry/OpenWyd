@@ -76,6 +76,7 @@ float g_debug_demo_camera_offset_y = 0.0f;
 float g_debug_demo_camera_offset_z = 0.0f;
 float g_debug_demo_camera_offset_h = 0.0f;
 float g_debug_demo_camera_offset_v = 0.0f;
+HCURSOR g_current_cursor = nullptr;
 
 struct FileHandle {
   int fd = -1;
@@ -353,9 +354,11 @@ struct WindowState {
   HMENU menu = nullptr;
   RECT rect{0, 0, kDefaultWidth, kDefaultHeight};
   std::string text;
+  WNDPROC wnd_proc = nullptr;
 };
 
 std::unordered_map<HWND, WindowState> g_windows;
+std::unordered_map<std::string, WNDPROC> g_window_classes;
 std::deque<MSG> g_msg_queue;
 HWND g_focus = nullptr;
 uint64_t g_tex_decode_success = 0;
@@ -718,6 +721,7 @@ bool CollectDetailedTelemetry() {
 
 bool DrawTraceIsEnabled();
 void ResetDrawOrderFrame();
+void BeginCompare3DStateFrame();
 
 void* NewOpaqueHandle() {
   uintptr_t v = g_handle_seed.fetch_add(0x10);
@@ -2941,6 +2945,13 @@ BOOL PeekMessageA(MSG* lpMsg, HWND, UINT, UINT, UINT wRemoveMsg) {
 BOOL TranslateMessage(const MSG*) { return TRUE; }
 LRESULT DispatchMessageA(const MSG* lpMsg) {
   if (!lpMsg) return 0;
+  WNDPROC wnd_proc = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_windows.find(lpMsg->hwnd);
+    if (it != g_windows.end()) wnd_proc = it->second.wnd_proc;
+  }
+  if (wnd_proc) return wnd_proc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
   return DefWindowProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
 }
 
@@ -2995,8 +3006,73 @@ BOOL IntersectRect(RECT* lprcDst, const RECT* lprcSrc1, const RECT* lprcSrc2) {
   return (lprcDst->left < lprcDst->right && lprcDst->top < lprcDst->bottom) ? TRUE : FALSE;
 }
 
+EM_JS(void, WydWebSetCursor, (unsigned int resource_id), {
+  const canvas =
+      Module.canvas ||
+      (typeof document !== 'undefined' ? document.querySelector('#canvas') : null);
+  if (!canvas) return;
+
+  const state = Module.wydCursorState || (Module.wydCursorState = {
+    currentResource: 0,
+    entries: new Map()
+  });
+  const resourceId = resource_id >>> 0;
+  state.currentResource = resourceId;
+
+  if (resourceId === 0) {
+    canvas.style.cursor = 'none';
+    return;
+  }
+
+  const path =
+      resourceId === 129 ? '/UI/cursor11.CUR' :
+      resourceId === 130 ? '/UI/cursor21.CUR' :
+      null;
+  if (!path) {
+    canvas.style.cursor = 'auto';
+    return;
+  }
+
+  let entry = state.entries.get(resourceId);
+  if (!entry) {
+    try {
+      const bytes = FS.readFile(path);
+      let hotspotX = 0;
+      let hotspotY = 0;
+      if (
+        bytes.length >= 14 &&
+        bytes[0] === 0 && bytes[1] === 0 &&
+        bytes[2] === 2 && bytes[3] === 0
+      ) {
+        hotspotX = bytes[10] | (bytes[11] << 8);
+        hotspotY = bytes[12] | (bytes[13] << 8);
+      }
+      entry = {
+        hotspotX,
+        hotspotY,
+        url: URL.createObjectURL(
+            new Blob([bytes], {type: 'image/x-icon'}))
+      };
+      state.entries.set(resourceId, entry);
+    } catch (_) {
+      canvas.style.cursor = 'auto';
+      return;
+    }
+  }
+
+  canvas.style.cursor =
+      `url("${entry.url}") ${entry.hotspotX} ${entry.hotspotY}, auto`;
+});
+
 BOOL AdjustWindowRect(RECT*, DWORD, BOOL) { return TRUE; }
-HCURSOR SetCursor(HCURSOR hCursor) { return hCursor; }
+HCURSOR SetCursor(HCURSOR hCursor) {
+  HCURSOR previous = g_current_cursor;
+  g_current_cursor = hCursor;
+  WydWebSetCursor(
+      static_cast<unsigned int>(
+          reinterpret_cast<uintptr_t>(hCursor) & 0xFFFFFFFFu));
+  return previous;
+}
 HGDIOBJ GetStockObject(int) { return reinterpret_cast<HGDIOBJ>(NewOpaqueHandle()); }
 BOOL DeleteObject(HGDIOBJ object) {
   void* key = reinterpret_cast<void*>(object);
@@ -3011,7 +3087,12 @@ BOOL DeleteObject(HGDIOBJ object) {
   return TRUE;
 }
 HBITMAP LoadBitmapA(HINSTANCE, LPCSTR) { return reinterpret_cast<HBITMAP>(NewOpaqueHandle()); }
-HCURSOR LoadCursorA(HINSTANCE, LPCSTR) { return reinterpret_cast<HCURSOR>(NewOpaqueHandle()); }
+HCURSOR LoadCursorA(HINSTANCE, LPCSTR lpCursorName) {
+  const uintptr_t resource = reinterpret_cast<uintptr_t>(lpCursorName);
+  if (resource != 0 && resource <= 0xFFFFu)
+    return reinterpret_cast<HCURSOR>(resource);
+  return reinterpret_cast<HCURSOR>(NewOpaqueHandle());
+}
 HICON LoadIconA(HINSTANCE, LPCSTR) { return reinterpret_cast<HICON>(NewOpaqueHandle()); }
 HACCEL LoadAcceleratorsA(HINSTANCE, LPCSTR) { return reinterpret_cast<HACCEL>(NewOpaqueHandle()); }
 int TranslateAcceleratorA(HWND, HACCEL, MSG*) { return 0; }
@@ -3156,12 +3237,28 @@ BOOL GetTextExtentPoint32A(HDC hdc, LPCSTR lpString, int c, SIZE* pSize) {
   pSize->cy = font_h + 4;
   return TRUE;
 }
-ATOM RegisterClassA(const WNDCLASSA*) { return 1; }
-ATOM RegisterClassExA(const WNDCLASSEXA*) { return 1; }
-BOOL UnregisterClassA(LPCSTR, HINSTANCE) { return TRUE; }
+ATOM RegisterClassA(const WNDCLASSA* wndClass) {
+  if (!wndClass || !wndClass->lpszClassName || !wndClass->lpfnWndProc) return 0;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_window_classes[wndClass->lpszClassName] = wndClass->lpfnWndProc;
+  return 1;
+}
+
+ATOM RegisterClassExA(const WNDCLASSEXA* wndClass) {
+  if (!wndClass || !wndClass->lpszClassName || !wndClass->lpfnWndProc) return 0;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_window_classes[wndClass->lpszClassName] = wndClass->lpfnWndProc;
+  return 1;
+}
+
+BOOL UnregisterClassA(LPCSTR className, HINSTANCE) {
+  if (!className) return FALSE;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_window_classes.erase(className) ? TRUE : FALSE;
+}
 
 HWND CreateWindowExA(DWORD,
-                     LPCSTR,
+                     LPCSTR lpClassName,
                      LPCSTR lpWindowName,
                      DWORD dwStyle,
                      int X,
@@ -3182,6 +3279,10 @@ HWND CreateWindowExA(DWORD,
   if (lpWindowName) st.text = lpWindowName;
 
   std::lock_guard<std::mutex> lock(g_mutex);
+  if (lpClassName) {
+    auto class_it = g_window_classes.find(lpClassName);
+    if (class_it != g_window_classes.end()) st.wnd_proc = class_it->second;
+  }
   g_windows[hwnd] = st;
   if (!g_focus) g_focus = hwnd;
   return hwnd;
@@ -3724,7 +3825,11 @@ int WSAStartup(WORD wVersionRequested, WSAData* lpWSAData) {
 
 int WSACleanup(void) { return 0; }
 int WSAGetLastError(void) { return errno; }
-int WSAAsyncSelect(SOCKET, HWND, unsigned int, long) { return 0; }
+extern "C" int wyd_wasm_socket_async_select(SOCKET, HWND, unsigned int, long);
+
+int WSAAsyncSelect(SOCKET socket, HWND window, unsigned int message, long events) {
+  return wyd_wasm_socket_async_select(socket, window, message, events);
+}
 
 int closesocket(SOCKET s) {
   return close(static_cast<int>(s));
@@ -4299,24 +4404,24 @@ D3DXQUATERNION* D3DXQuaternionRotationMatrix(D3DXQUATERNION* out, const D3DXMATR
   if (trace > 0.0f) {
     float s = std::sqrt(trace + 1.0f) * 2.0f;
     out->w = 0.25f * s;
-    out->x = (m->_32 - m->_23) / s;
-    out->y = (m->_13 - m->_31) / s;
-    out->z = (m->_21 - m->_12) / s;
+    out->x = (m->_23 - m->_32) / s;
+    out->y = (m->_31 - m->_13) / s;
+    out->z = (m->_12 - m->_21) / s;
   } else if (m->_11 > m->_22 && m->_11 > m->_33) {
     float s = std::sqrt(1.0f + m->_11 - m->_22 - m->_33) * 2.0f;
-    out->w = (m->_32 - m->_23) / s;
+    out->w = (m->_23 - m->_32) / s;
     out->x = 0.25f * s;
     out->y = (m->_12 + m->_21) / s;
     out->z = (m->_13 + m->_31) / s;
   } else if (m->_22 > m->_33) {
     float s = std::sqrt(1.0f + m->_22 - m->_11 - m->_33) * 2.0f;
-    out->w = (m->_13 - m->_31) / s;
+    out->w = (m->_31 - m->_13) / s;
     out->x = (m->_12 + m->_21) / s;
     out->y = 0.25f * s;
     out->z = (m->_23 + m->_32) / s;
   } else {
     float s = std::sqrt(1.0f + m->_33 - m->_11 - m->_22) * 2.0f;
-    out->w = (m->_21 - m->_12) / s;
+    out->w = (m->_12 - m->_21) / s;
     out->x = (m->_13 + m->_31) / s;
     out->y = (m->_23 + m->_32) / s;
     out->z = 0.25f * s;
@@ -5016,6 +5121,7 @@ HRESULT WydD3D9Device_Present(IDirect3DDevice9*, const RECT*, const RECT*, HWND,
 HRESULT WydD3D9Device_BeginScene(IDirect3DDevice9*) {
   if (!EnsureWasmContext()) return E_FAIL;
   g_debug_begin_scene_calls += 1;
+  BeginCompare3DStateFrame();
   ResetDrawOrderFrame();
   g_wasm_d3d9_state.scene_active = true;
   return S_OK;
@@ -5433,8 +5539,19 @@ struct WasmFixedFunctionState {
   uint64_t shader_draw_skipped = 0;
 };
 
+struct Compare3DState {
+  bool armed = false;
+  bool valid = false;
+  uint32_t sequence = 0;
+  uint32_t frame_serial = 0;
+  uint32_t draw_serial = 0;
+  uint64_t begin_draw_calls = 0;
+  std::array<D3DMATRIX, 3> matrices{};
+};
+
 WasmFFPProgram g_ffp_program;
 WasmFixedFunctionState g_ffp_state;
+Compare3DState g_compare_3d_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
 DummyDirect3DSurface9* g_default_depth_surface = nullptr;
 bool g_ffp_state_initialized = false;
@@ -5592,6 +5709,16 @@ void EnsureFFPStateInitialized() {
   g_ffp_state.tex_stage[0][D3DTSS_ALPHAARG1] = D3DTA_TEXTURE;
   g_ffp_state.tex_stage[0][D3DTSS_ALPHAARG2] = D3DTA_DIFFUSE;
   g_ffp_state_initialized = true;
+}
+
+void BeginCompare3DStateFrame() {
+  EnsureFFPStateInitialized();
+  g_compare_3d_state.armed = true;
+  g_compare_3d_state.valid = false;
+  g_compare_3d_state.frame_serial =
+      static_cast<uint32_t>(g_debug_begin_scene_calls);
+  g_compare_3d_state.draw_serial = 0;
+  g_compare_3d_state.begin_draw_calls = g_ffp_state.draw_calls;
 }
 
 void DummyD3DXSprite::SaveDeviceState() {
@@ -5910,6 +6037,19 @@ void TrackDepthWriteFVF(DWORD fvf, bool depth_write_enabled) {
 float SafeClipW(float clip_w) {
   if (std::fabs(clip_w) > kEpsilonW) return clip_w;
   return (clip_w < 0.0f) ? -kEpsilonW : kEpsilonW;
+}
+
+void ApplyD3D9PixelCenterToClip(float clip_w, float* clip_x, float* clip_y) {
+  if (!clip_x || !clip_y) return;
+  const float vp_w =
+      std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Width));
+  const float vp_h =
+      std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Height));
+  // D3D9 samples pixels at integer window coordinates while WebGL samples at
+  // half-integers. In homogeneous coordinates this is +0.5 pixel in the
+  // top-left viewport convention: +1/width in NDC X and -1/height in NDC Y.
+  *clip_x += clip_w / vp_w;
+  *clip_y -= clip_w / vp_h;
 }
 
 void TrackGLErrorsPostDraw() {
@@ -7650,10 +7790,14 @@ bool DecodeVertexFromDeclaration(
   } else {
     D3DXVec3Transform(&clip, &cam_pos, reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
   }
+  out_vertex->w = std::isfinite(clip.w) ? clip.w : 1.0e-5f;
   out_vertex->x = clip.x;
   out_vertex->y = clip.y;
+  ApplyD3D9PixelCenterToClip(
+      out_vertex->w,
+      &out_vertex->x,
+      &out_vertex->y);
   out_vertex->z = ((g_debug_ffp_flags & kDebugUseRawClipZ) != 0u) ? clip.z : (2.0f * clip.z - clip.w);
-  out_vertex->w = std::isfinite(clip.w) ? clip.w : 1.0e-5f;
   out_vertex->u0 = decoded.tex0_u;
   out_vertex->v0 = decoded.tex0_v;
   out_vertex->u1 = decoded.tex1_u;
@@ -8679,8 +8823,13 @@ bool DecodeVertexFromFVF(
   if (has_xyzrhw || force_screen_space) {
     const float vp_w = std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Width));
     const float vp_h = std::max(1.0f, static_cast<float>(g_wasm_d3d9_state.viewport.Height));
-    const float ndc_x = ((vx - static_cast<float>(g_wasm_d3d9_state.viewport.X)) / vp_w) * 2.0f - 1.0f;
-    const float ndc_y = 1.0f - ((vy - static_cast<float>(g_wasm_d3d9_state.viewport.Y)) / vp_h) * 2.0f;
+    // D3D9 samples pixels at integer window coordinates; OpenGL/WebGL samples
+    // at half-integers. Move the D3D9 position to the corresponding WebGL
+    // sample centre before converting viewport coordinates to NDC.
+    const float webgl_x = vx + 0.5f;
+    const float webgl_y = vy + 0.5f;
+    const float ndc_x = ((webgl_x - static_cast<float>(g_wasm_d3d9_state.viewport.X)) / vp_w) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - ((webgl_y - static_cast<float>(g_wasm_d3d9_state.viewport.Y)) / vp_h) * 2.0f;
     const float ndc_z = vz * 2.0f - 1.0f;
     // FVF322 startup overlays can be emitted in viewport space without XYZRHW.
     // Replay them like projected quads only when the whole draw matches.
@@ -8693,11 +8842,12 @@ bool DecodeVertexFromFVF(
     D3DXVECTOR4 clip{};
     D3DXVec3Transform(&clip, &in, &wvp);
     // Preserve clip-space and let GL perform clipping/perspective divide.
+    clip_w = SafeClipW(clip.w);
     clip_x = clip.x;
     clip_y = clip.y;
+    ApplyD3D9PixelCenterToClip(clip_w, &clip_x, &clip_y);
     // D3D clip-space z maps to [0,w], while GL expects [-w,w].
     clip_z = ((g_debug_ffp_flags & kDebugUseRawClipZ) != 0u) ? clip.z : (2.0f * clip.z - clip.w);
-    clip_w = SafeClipW(clip.w);
 
     D3DXVec3TransformCoord(&cam_pos, &in, &world_view);
 
@@ -10090,6 +10240,49 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib) {
   if (!buffer) return D3DERR_INVALIDCALL;
   buffer->locked = false;
   return S_OK;
+}
+
+extern "C" void wyd_compare_latch_3d_state() {
+  EnsureFFPStateInitialized();
+  if (!g_compare_3d_state.armed) return;
+
+  g_compare_3d_state.matrices[0] = g_ffp_state.world[0];
+  g_compare_3d_state.matrices[1] = g_ffp_state.view;
+  g_compare_3d_state.matrices[2] = g_ffp_state.proj;
+  g_compare_3d_state.draw_serial = static_cast<uint32_t>(
+      g_ffp_state.draw_calls - g_compare_3d_state.begin_draw_calls);
+  g_compare_3d_state.sequence += 1;
+  g_compare_3d_state.valid = true;
+  g_compare_3d_state.armed = false;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_sequence() {
+  return g_compare_3d_state.sequence;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_valid() {
+  return g_compare_3d_state.valid ? 1u : 0u;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_frame_serial() {
+  return g_compare_3d_state.frame_serial;
+}
+
+extern "C" uint32_t wyd_compare_3d_state_draw_serial() {
+  return g_compare_3d_state.draw_serial;
+}
+
+extern "C" const float* wyd_compare_3d_state_matrices() {
+  static_assert(
+      sizeof(D3DMATRIX) == sizeof(float) * 16u,
+      "D3DMATRIX must contain exactly sixteen contiguous floats");
+  return &g_compare_3d_state.matrices[0]._11;
+}
+
+extern "C" float wyd_compare_3d_state_matrix_value(uint32_t index) {
+  if (index >= 48u) return 0.0f;
+  const float* values = &g_compare_3d_state.matrices[0]._11;
+  return values[index];
 }
 
 HRESULT WydD3D9Device_SetTransform(IDirect3DDevice9*, D3DTRANSFORMSTATETYPE state, const D3DMATRIX* mat) {

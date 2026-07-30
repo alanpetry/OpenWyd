@@ -1,0 +1,15 @@
+{
+    "CHARACTER_CREATE": {
+        "ARCH": 1,
+        "CELESTIAL": 1,
+        "CELESTIALCS": 1,
+        "MORTAL": 447,
+        "SCELESTIAL": 1
+    },
+    "CLASS_CREATE": {
+        "BM": 1,
+        "FM": 1,
+        "HT": 1,
+        "TK": 1
+    }
+}

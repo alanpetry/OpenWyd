@@ -1,0 +1,16 @@
+{
+"STATUS": {
+			"String": "qwertyuiopasdfghjklzxcvbnm",
+			"Off": 0,
+			"MSGOff": "Servidor no momento se encontra offiline",
+			"Free": 1,
+			"MSGFree": "Servidor Disponivel para todos, bom jogo!!",
+			"Maintenance": 0,
+			"MSGMaintenance": "Servidor em manutencao! Estaremos Online as 11:30",
+			"Staff": 0,
+			"MSGStaff": "Abertura do Servidor presvista para Hoje, 31/07/2020 as 22H. Registrem-se!        ",
+			"Premium": 0,
+			"MSGPremium": "Servidor disponivel apenas para jogadores premium."
+			
+		 }
+}

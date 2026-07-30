@@ -113,6 +113,8 @@ TMSkinMesh::TMSkinMesh(LOOK_INFO* pLook, SANC_INFO* pSanc, int nBoneAniIndex, in
 	m_dwLastUsedTime = 0;
 	m_dwShowTime = 0;
 	m_nAniIndex = 0;
+	m_dwTickLast = 0;
+	m_dwStartTime = 0;
 	m_dwFPS = 30;
 	m_dwStartOffset = 0;
 	m_pOwner = 0;

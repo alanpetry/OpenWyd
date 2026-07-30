@@ -5,13 +5,57 @@ import argparse
 import asyncio
 import base64
 import hashlib
+import itertools
+import json
 import logging
+from pathlib import Path
 import struct
+import time
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+class TransportTrace:
+    """Append-only metadata for byte-exact proxy transfers.
+
+    This deliberately records transport chunks rather than interpreting WYD
+    packets. The payload itself is never decoded, changed, or persisted.
+    """
+
+    def __init__(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
+        self._handle = path.open("a", encoding="utf-8", newline="\n", buffering=1)
+        self._lock = asyncio.Lock()
+        self._sequence = itertools.count(1)
+
+    async def record(
+        self,
+        connection_id: int,
+        peer: str,
+        direction: str,
+        payload: bytes,
+    ) -> None:
+        entry = {
+            "schema": "openwyd.transport-chunk.v1",
+            "sequence": next(self._sequence),
+            "connection_id": connection_id,
+            "peer": peer,
+            "direction": direction,
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "wall_time_ns": time.time_ns(),
+            "monotonic_time_ns": time.monotonic_ns(),
+        }
+        line = json.dumps(entry, sort_keys=True, separators=(",", ":"))
+        async with self._lock:
+            self._handle.write(line + "\n")
+
+    def close(self) -> None:
+        self._handle.close()
 
 
 async def read_http_request(reader: asyncio.StreamReader) -> tuple[str, dict[str, str]]:
@@ -111,6 +155,8 @@ async def pipe_ws_to_tcp(
     ws_reader: asyncio.StreamReader,
     tcp_writer: asyncio.StreamWriter,
     label: str,
+    connection_id: int,
+    trace: Optional[TransportTrace],
 ) -> None:
     while True:
         opcode, payload = await read_ws_frame(ws_reader)
@@ -125,6 +171,8 @@ async def pipe_ws_to_tcp(
         if payload:
             tcp_writer.write(payload)
             await tcp_writer.drain()
+            if trace:
+                await trace.record(connection_id, label, "websocket_to_tcp", payload)
             logging.debug("%s ws->tcp bytes=%s", label, len(payload))
 
 
@@ -132,6 +180,8 @@ async def pipe_tcp_to_ws(
     tcp_reader: asyncio.StreamReader,
     ws_writer: asyncio.StreamWriter,
     label: str,
+    connection_id: int,
+    trace: Optional[TransportTrace],
 ) -> None:
     while True:
         payload = await tcp_reader.read(8192)
@@ -139,6 +189,8 @@ async def pipe_tcp_to_ws(
             logging.info("%s tcp eof", label)
             break
         await write_ws_frame(ws_writer, 0x2, payload)
+        if trace:
+            await trace.record(connection_id, label, "tcp_to_websocket", payload)
         logging.debug("%s tcp->ws bytes=%s", label, len(payload))
 
 
@@ -148,6 +200,8 @@ async def handle_client(
     default_host: str,
     default_port: int,
     allow_client_target: bool,
+    connection_id: int,
+    trace: Optional[TransportTrace],
 ) -> None:
     peer = writer.get_extra_info("peername")
     label = f"{peer[0]}:{peer[1]}" if peer else "client"
@@ -158,8 +212,12 @@ async def handle_client(
         logging.info("%s connect target=%s:%s", label, host, port)
         tcp_reader, tcp_writer = await asyncio.open_connection(host, port)
         tasks = [
-            asyncio.create_task(pipe_ws_to_tcp(reader, tcp_writer, label)),
-            asyncio.create_task(pipe_tcp_to_ws(tcp_reader, writer, label)),
+            asyncio.create_task(
+                pipe_ws_to_tcp(reader, tcp_writer, label, connection_id, trace)
+            ),
+            asyncio.create_task(
+                pipe_tcp_to_ws(tcp_reader, writer, label, connection_id, trace)
+            ),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -188,6 +246,11 @@ async def main() -> None:
     parser.add_argument("--target-host", default="")
     parser.add_argument("--target-port", type=int, default=8281)
     parser.add_argument("--no-client-target", dest="allow_client_target", action="store_false")
+    parser.add_argument(
+        "--trace-jsonl",
+        type=Path,
+        help="append byte-count/hash metadata for each forwarded transport chunk",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -196,15 +259,29 @@ async def main() -> None:
         format="[%(asctime)s] %(levelname)s %(message)s",
     )
 
-    server = await asyncio.start_server(
-        lambda r, w: handle_client(r, w, args.target_host, args.target_port, args.allow_client_target),
-        args.listen_host,
-        args.listen_port,
-    )
-    sockets = ", ".join(str(sock.getsockname()) for sock in server.sockets or [])
-    logging.info("listening on %s", sockets)
-    async with server:
-        await server.serve_forever()
+    trace = TransportTrace(args.trace_jsonl) if args.trace_jsonl else None
+    connection_ids = itertools.count(1)
+    try:
+        server = await asyncio.start_server(
+            lambda r, w: handle_client(
+                r,
+                w,
+                args.target_host,
+                args.target_port,
+                args.allow_client_target,
+                next(connection_ids),
+                trace,
+            ),
+            args.listen_host,
+            args.listen_port,
+        )
+        sockets = ", ".join(str(sock.getsockname()) for sock in server.sockets or [])
+        logging.info("listening on %s", sockets)
+        async with server:
+            await server.serve_forever()
+    finally:
+        if trace:
+            trace.close()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,100 @@
+{
+"STATUS": {
+
+			"Days": [1,1,1,1,1,1,1],
+			"StartHour": [3,8,13,18,23],
+			"Follow": 4,
+			"NoticeStart": "Boss Kirei apareceu.",
+			"NoticeEnd": "O Grupo de [%s] dorrotou Kirei!!!"
+		  },
+"LOCATION": {
+			"0": [1188,1729],
+			"1": [1264,1687],
+			"2": [1371,1709],
+			"3": [1308,1851]
+		},
+"BOSS": {
+				"ID": 4641,
+				"STRING": "qwertyuiopasdfghjklçzxcvbnm",
+				"NAME": "Kirei",
+				"FACE": [396,0,43,9,0,0,0,0],
+				"HELM": [0,0,0,0,0,0,0,0],
+				"BODY": [0,0,0,0,0,0,0,0],
+				"LEG": [0,0,0,0,0,0,0,0],
+				"GLOVE": [0,0,0,0,0,0,0,0],
+				"BOOT": [0,0,0,0,0,0,0,0],
+				"WEAPON": [0,0,0,0,0,0,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,0,43,3,0,0,0,0],
+				"StartX": 0,
+				"StartY": 0,
+				"DestX": 0,
+				"DestY": 0,
+				"REGEN": 209,
+				"LEVEL": 200,
+				"HP": 10000,
+				"MP": 200,
+				"AC": 3000,
+				"DAN": 3000,
+				"MAGIC": 500,
+				"STR": 1000,
+				"INT": 1000,
+				"DEX": 2000,
+				"CON": 12000,
+				"MSG1": "Haa.haaa.Sinto cheiro de virgemmmmm....",
+				"MSG2": "Haa.haaa.Ser abominavel saia daqui....",
+				"MSG3": "graaaa.Insetos malditos...."
+
+		},
+		
+"GUARDIAN": {
+				"ID": 4645,
+				"NAME": "Kirei Clone",
+				"FACE": [396,0,43,9,0,0,0,0],
+				"HELM": [0,0,0,0,0,0,0,0],
+				"BODY": [0,0,0,0,0,0,0,0],
+				"LEG": [0,0,0,0,0,0,0,0],
+				"GLOVE": [0,0,0,0,0,0,0,0],
+				"BOOT": [0,0,0,0,0,0,0,0],
+				"WEAPON": [0,0,0,0,0,0,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,0,43,3,0,0,0,0],
+				"StartX": 0,
+				"StartY": 0,
+				"DestX": 0,
+				"DestY": 0,
+				"REGEN": 209,
+				"LEVEL": 150,
+				"HP": 2000,
+				"MP": 100,
+				"AC": 500,
+				"DAN": 500,
+				"MAGIC": 20,
+				"STR": 50,
+				"INT": 60,
+				"DEX": 800,
+				"CON": 3000,
+				"MSG1": "Haa.haaa.Terao que nos derrotar antes de chegar em nosso Mestre....",
+				"MSG2": "Haa.haaa.Saiam daqui....",
+				"MSG3": "graaaa.Nao permitiremos que incomodem o Mestre...."
+			},
+		
+"DROP": {
+			"0": [412,0,61,5,0,0,0,0],
+			"1": [413,0,61,5,0,0,0,0],
+			"2": [4029,0,0,0,0,0,0,0],
+			"3": [670,0,0,0,0,0,0,0],
+			"4": [671,0,0,0,0,0,0,0],
+			"5": [1741,0,0,0,0,0,0,0]
+		},	
+
+"DROPPARTY": {
+				"0": [412,0,61,5,0,0,0,0],
+				"1": [413,0,61,5,0,0,0,0],
+				"2": [4029,0,0,0,0,0,0,0],
+				"3": [670,0,0,0,0,0,0,0],
+				"4": [671,0,0,0,0,0,0,0],
+				"5": [412,0,0,0,0,0,0,0]
+		     }			
+
+}

@@ -1,0 +1,9 @@
+{
+    "STATUS": {
+        "DayKiled": 0,
+        "HourKiled": 0,
+        "MinKiled": 0,
+        "PlayerKiled": "NINGUEM",
+        "aLive": 0
+    }
+}

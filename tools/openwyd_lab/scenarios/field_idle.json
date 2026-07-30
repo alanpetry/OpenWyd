@@ -1,0 +1,33 @@
+{
+  "mode": "field",
+  "seed": 769,
+  "start_time_ms": 10000,
+  "tick_ms": 50,
+  "camera": {
+    "horizon": 0.78539818,
+    "vertical": -0.78539818,
+    "length": 5.5,
+    "height": 0.4
+  },
+  "actors": [
+    {
+      "id": 1,
+      "name": "OpenWYD",
+      "x": 2096,
+      "y": 2092,
+      "class": 0,
+      "equip": [6, 1417, 1230, 1230, 1230, 1230, 3605, 0],
+      "score": {
+        "level": 0,
+        "ac": 12,
+        "damage": 18,
+        "max_hp": 320,
+        "max_mp": 140,
+        "str": 12,
+        "int": 10,
+        "dex": 12,
+        "con": 10
+      }
+    }
+  ]
+}

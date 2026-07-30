@@ -17,6 +17,9 @@
 #include "TMGround.h"
 #include "TMHuman.h"
 #include "ItemEffect.h"
+#if defined(OPENWYD_LAB)
+#include "OpenWydLab.h"
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include "CPSock.h"
@@ -42,8 +45,151 @@ float g_wasmLastFieldPickY = -10000.0f;
 float g_wasmLastFieldPickZ = 0.0f;
 int g_wasmLastFieldPickValid = 0;
 
+constexpr int kWasmFieldVisibleHumanLimit = 64;
+
+struct WasmFieldHumanObservation
+{
+	unsigned int id = 0;
+	float x = 0.0f;
+	float y = 0.0f;
+	int hp = 0;
+	int maxHp = 0;
+	int motion = -1;
+	int classId = -1;
+	int titleProgressVisible = 0;
+};
+
+WasmFieldHumanObservation
+	g_wasmFieldVisibleHumans[kWasmFieldVisibleHumanLimit]{};
+int g_wasmFieldVisibleHumanCount = 0;
+int g_wasmFieldVisibleHumanTotal = 0;
+
 void WasmEnsureFieldDebugMobData(ObjectManager* objectManager);
 void WasmEnsureDirectSelectCharData(ObjectManager* objectManager);
+
+TMHuman* WasmFieldMyHuman()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ?
+		g_pCurrentScene->m_pMyHuman :
+		nullptr;
+}
+
+int WasmObservedHumanHp(const TMHuman* human)
+{
+	if (!human)
+		return 0;
+	return human->m_MaxBigHp ?
+		static_cast<int>(human->m_BigHp) :
+		human->m_stScore.Hp;
+}
+
+int WasmObservedHumanMaxHp(const TMHuman* human)
+{
+	if (!human)
+		return 0;
+	return human->m_MaxBigHp ?
+		static_cast<int>(human->m_MaxBigHp) :
+		human->m_stScore.MaxHp;
+}
+
+int WasmTitleProgressVisible(const TMHuman* human)
+{
+	return human && human->m_pTitleProgressBar &&
+		human->m_pTitleProgressBar->IsVisible() ? 1 : 0;
+}
+
+bool WasmFieldHumanLess(
+	const WasmFieldHumanObservation& left,
+	const WasmFieldHumanObservation& right)
+{
+	if (left.id != right.id)
+		return left.id < right.id;
+	if (left.x != right.x)
+		return left.x < right.x;
+	if (left.y != right.y)
+		return left.y < right.y;
+	if (left.classId != right.classId)
+		return left.classId < right.classId;
+	if (left.motion != right.motion)
+		return left.motion < right.motion;
+	if (left.hp != right.hp)
+		return left.hp < right.hp;
+	return left.maxHp < right.maxHp;
+}
+
+void WasmInsertVisibleHuman(const WasmFieldHumanObservation& observation)
+{
+	int insertAt = 0;
+	while (insertAt < g_wasmFieldVisibleHumanCount &&
+		WasmFieldHumanLess(
+			g_wasmFieldVisibleHumans[insertAt],
+			observation))
+	{
+		++insertAt;
+	}
+
+	if (g_wasmFieldVisibleHumanCount < kWasmFieldVisibleHumanLimit)
+	{
+		for (int index = g_wasmFieldVisibleHumanCount;
+			index > insertAt;
+			--index)
+		{
+			g_wasmFieldVisibleHumans[index] =
+				g_wasmFieldVisibleHumans[index - 1];
+		}
+		g_wasmFieldVisibleHumans[insertAt] = observation;
+		++g_wasmFieldVisibleHumanCount;
+		return;
+	}
+
+	if (insertAt >= kWasmFieldVisibleHumanLimit)
+		return;
+	for (int index = kWasmFieldVisibleHumanLimit - 1;
+		index > insertAt;
+		--index)
+	{
+		g_wasmFieldVisibleHumans[index] =
+			g_wasmFieldVisibleHumans[index - 1];
+	}
+	g_wasmFieldVisibleHumans[insertAt] = observation;
+}
+
+void WasmRefreshVisibleHumans()
+{
+	g_wasmFieldVisibleHumanCount = 0;
+	g_wasmFieldVisibleHumanTotal = 0;
+	if (!g_pCurrentScene ||
+		g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD)
+	{
+		return;
+	}
+
+	unsigned int visited = 0;
+	for (TreeNode* node = g_pCurrentScene->m_pHumanContainer ?
+			g_pCurrentScene->m_pHumanContainer->m_pDown :
+			nullptr;
+		node && visited < 100000u;
+		node = node->m_pNextLink, ++visited)
+	{
+		TMHuman* human = static_cast<TMHuman*>(node);
+		if (human->m_cDeleted || !human->m_bVisible)
+			continue;
+
+		++g_wasmFieldVisibleHumanTotal;
+		WasmFieldHumanObservation observation;
+		observation.id = human->m_dwID;
+		observation.x = human->m_vecPosition.x;
+		observation.y = human->m_vecPosition.y;
+		observation.hp = WasmObservedHumanHp(human);
+		observation.maxHp = WasmObservedHumanMaxHp(human);
+		observation.motion = static_cast<int>(human->m_eMotion);
+		observation.classId = human->m_nClass;
+		observation.titleProgressVisible =
+			WasmTitleProgressVisible(human);
+		WasmInsertVisibleHuman(observation);
+	}
+}
 
 void WasmStateLog(const char* msg)
 {
@@ -568,6 +714,24 @@ extern "C" int wyd_field_critical_error()
 	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ? g_pCurrentScene->m_bCriticalError : 0;
 }
 
+extern "C" int wyd_field_message_box_visible()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMessageBox ?
+		g_pCurrentScene->m_pMessageBox->IsVisible() :
+		0;
+}
+
+extern "C" unsigned int wyd_field_message_box_message()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMessageBox ?
+		g_pCurrentScene->m_pMessageBox->GetMessageA() :
+		0;
+}
+
 extern "C" int wyd_field_map_x()
 {
 	return g_pObjectManager ? static_cast<int>(g_pObjectManager->m_stMobData.HomeTownX) >> 7 : -1;
@@ -590,6 +754,126 @@ extern "C" float wyd_field_myhuman_y()
 	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD && g_pCurrentScene->m_pMyHuman
 		? g_pCurrentScene->m_pMyHuman->m_vecPosition.y
 		: 0.0f;
+}
+
+extern "C" unsigned int wyd_field_myhuman_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_dwID : 0;
+}
+
+extern "C" const char* wyd_field_myhuman_name()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_szName : "";
+}
+
+extern "C" int wyd_field_myhuman_hp()
+{
+	return WasmObservedHumanHp(WasmFieldMyHuman());
+}
+
+extern "C" int wyd_field_myhuman_max_hp()
+{
+	return WasmObservedHumanMaxHp(WasmFieldMyHuman());
+}
+
+extern "C" int wyd_field_myhuman_class_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_nClass : -1;
+}
+
+extern "C" unsigned int wyd_field_myhuman_attack_dest_id()
+{
+	TMHuman* human = WasmFieldMyHuman();
+	return human ? human->m_nAttackDestID : 0;
+}
+
+extern "C" int wyd_field_myhuman_title_progress_visible()
+{
+	return WasmTitleProgressVisible(WasmFieldMyHuman());
+}
+
+extern "C" unsigned int wyd_field_mouse_over_human_id()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMouseOverHuman ?
+		g_pCurrentScene->m_pMouseOverHuman->m_dwID :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_count()
+{
+	WasmRefreshVisibleHumans();
+	return g_wasmFieldVisibleHumanCount;
+}
+
+extern "C" int wyd_field_visible_human_total()
+{
+	return g_wasmFieldVisibleHumanTotal;
+}
+
+extern "C" int wyd_field_visible_human_limit()
+{
+	return kWasmFieldVisibleHumanLimit;
+}
+
+extern "C" unsigned int wyd_field_visible_human_id(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].id :
+		0;
+}
+
+extern "C" float wyd_field_visible_human_x(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].x :
+		0.0f;
+}
+
+extern "C" float wyd_field_visible_human_y(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].y :
+		0.0f;
+}
+
+extern "C" int wyd_field_visible_human_hp(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].hp :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_max_hp(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].maxHp :
+		0;
+}
+
+extern "C" int wyd_field_visible_human_motion(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].motion :
+		-1;
+}
+
+extern "C" int wyd_field_visible_human_class_id(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].classId :
+		-1;
+}
+
+extern "C" int wyd_field_visible_human_title_progress_visible(int index)
+{
+	return index >= 0 && index < g_wasmFieldVisibleHumanCount ?
+		g_wasmFieldVisibleHumans[index].titleProgressVisible :
+		0;
 }
 
 extern "C" int wyd_field_myhuman_motion()
@@ -862,7 +1146,7 @@ ObjectManager::ObjectManager()
 {
 	m_pRoot = nullptr;
 	m_pCamera = nullptr;
-	m_pPreviousScene = nullptr;
+	m_bInsideCleanUp = 0;
 
 	g_pApp->SetObjectManager(this);
 
@@ -919,6 +1203,14 @@ ObjectManager::ObjectManager()
 
 ObjectManager::~ObjectManager()
 {
+	// Retired scenes must be destroyed while the active scene is still valid:
+	// derived destructors intentionally inspect the published destination.
+	if (!m_PreviousScenes.empty())
+		CleanUp();
+
+	// m_pRoot owns every active or retired scene.  Scene destructors call
+	// CleanUp(), so suppress re-entry while the complete tree is going away.
+	m_bInsideCleanUp = 1;
 	SAFE_DELETE(m_pRoot);
 	g_pCurrentScene = nullptr;
 }
@@ -1469,6 +1761,15 @@ void ObjectManager::RenderControl()
 
 void ObjectManager::RenderObject()
 {
+#if defined(OPENWYD_LAB)
+	if (OpenWydLabIsIsolated() &&
+		g_pCurrentScene != nullptr &&
+		g_pCurrentScene->m_pHumanContainer != nullptr)
+	{
+		OpenWydLabRenderSubtree(g_pCurrentScene->m_pHumanContainer);
+		return;
+	}
+#endif
 	if (g_pCurrentScene != nullptr)
 	{
 		TreeNode* pCurrentNode = g_pCurrentScene;
@@ -1538,6 +1839,12 @@ void ObjectManager::RenderTargetObject(float fHeight)
 
 void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 {
+	const TM_GAME_STATE ePreviousState = m_eCurrentState;
+	TMScene* const pPreviousCurrentScene = g_pCurrentScene;
+	SCursor* const pPreviousCursor = g_pCursor;
+	const int bPreviousCleanUp = m_bCleanUp;
+	const size_t nPreviousSceneCount = m_PreviousScenes.size();
+
 #if defined(__EMSCRIPTEN__)
 	WasmStateLogValue("[obj:set-state] request=", static_cast<int>(ieNewState));
 
@@ -1549,22 +1856,21 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		return;
 	}
 
-	if (m_eCurrentState == ieNewState && g_pCurrentScene != nullptr)
+	if (m_eCurrentState == ieNewState &&
+		ieNewState != TM_GAME_STATE::TM_FIELD2_STATE &&
+		g_pCurrentScene != nullptr)
 		return;
 
 	m_eCurrentState = ieNewState;
 #else
-	if (ieNewState == TM_GAME_STATE::TM_FIELD2_STATE)
-	{
-		m_eCurrentState = TM_GAME_STATE::TM_NONE_STATE;
-	}
-	else
-	{
-		if (m_eCurrentState == ieNewState)
-			return;
+	// FIELD2 is an intentional reload of an already active Field, so it must
+	// bypass the normal same-state early return while still reaching the
+	// FIELD2 factory below.
+	if (m_eCurrentState == ieNewState &&
+		ieNewState != TM_GAME_STATE::TM_FIELD2_STATE)
+		return;
 
-		m_eCurrentState = ieNewState;
-	}
+	m_eCurrentState = ieNewState;
 #endif
 
 	if (m_pCamera)
@@ -1602,6 +1908,8 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #if defined(__EMSCRIPTEN__)
 		WasmStateLog("[obj:set-state] new real TMFieldScene for Field2");
 		pScene = WasmCreateFieldScene(this);
+#else
+		pScene = new TMFieldScene();
 #endif
 		break;
 	case TM_GAME_STATE::TM_SELECTCHAR_STATE:
@@ -1665,7 +1973,8 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		WasmStateLog("[obj:set-state] SetCurrentScene");
 #endif
 		SetCurrentScene(pScene);
-		g_pCursor->SetStyle(ECursorStyle::TMC_CURSOR_HAND);
+		if (g_pCursor)
+			g_pCursor->SetStyle(ECursorStyle::TMC_CURSOR_HAND);
 
 #if defined(__EMSCRIPTEN__)
 		WasmStateLog("[obj:set-state] InitializeScene begin");
@@ -1675,7 +1984,31 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #if defined(__EMSCRIPTEN__)
 			WasmStateLog("[obj:set-state] InitializeScene failed");
 #endif
+			// SetCurrentScene publishes the replacement so InitializeScene can
+			// use the same globals as a normal scene.  If initialization fails,
+			// restore the prior scene ownership, state and cursor instead of
+			// leaving global pointers aimed at the failed allocation.
+			const int bWasInsideCleanUp = m_bInsideCleanUp;
+			m_bInsideCleanUp = 1;
+			m_PreviousScenes.resize(nPreviousSceneCount);
+
+			if (pPreviousCurrentScene)
+				pPreviousCurrentScene->m_cDeleted = 0;
+
+			g_pCurrentScene = pScene;
+			pScene->m_cDeleted = 0;
 			SAFE_DELETE(pScene);
+
+			g_pCurrentScene = pPreviousCurrentScene;
+			g_pCursor =
+				pPreviousCurrentScene != nullptr &&
+				pPreviousCurrentScene->m_pControlContainer != nullptr ?
+				pPreviousCurrentScene->m_pControlContainer->m_pCursor :
+				pPreviousCursor;
+			m_eCurrentState = ePreviousState;
+			m_bCleanUp = bPreviousCleanUp;
+			m_bInsideCleanUp = bWasInsideCleanUp;
+
 			MessageBox(g_pApp->m_hWnd, "Initialize Scene Fail.", "Error", MB_SYSTEMMODAL);
 			PostMessage(g_pApp->m_hWnd, 16, 0, 0);
 			return;
@@ -1689,6 +2022,7 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 	}
 	else
 	{
+		m_eCurrentState = ePreviousState;
 		MessageBox(g_pApp->m_hWnd, "Create Scene Fail.", "Error", MB_SYSTEMMODAL);
 		PostMessage(g_pApp->m_hWnd, 16, 0, 0);
 	}
@@ -1696,20 +2030,21 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 
 void ObjectManager::SetCurrentScene(TMScene* pScene)
 {
-	m_pPreviousScene = g_pCurrentScene;
+	TMScene* pPreviousScene = g_pCurrentScene;
 	g_pCurrentScene = pScene;
 
-	if (m_pPreviousScene != nullptr)
+	if (pPreviousScene != nullptr)
 	{
-		m_pPreviousScene->m_cDeleted = 1;
-		g_pCurrentScene->m_pMessagePanel->m_pText->SetText(m_pPreviousScene->m_pMessagePanel->m_pText->GetText(), 0);
-		g_pCurrentScene->m_pMessagePanel->m_pText2->SetText(m_pPreviousScene->m_pMessagePanel->m_pText2->GetText(), 0);
+		m_PreviousScenes.push_back(pPreviousScene);
+		pPreviousScene->m_cDeleted = 1;
+		g_pCurrentScene->m_pMessagePanel->m_pText->SetText(pPreviousScene->m_pMessagePanel->m_pText->GetText(), 0);
+		g_pCurrentScene->m_pMessagePanel->m_pText2->SetText(pPreviousScene->m_pMessagePanel->m_pText2->GetText(), 0);
 
-		g_pCurrentScene->m_pMessagePanel->m_bVisible = m_pPreviousScene->m_pMessagePanel->m_bVisible;
-		g_pCurrentScene->m_pMessagePanel->m_dwOldServerTime = m_pPreviousScene->m_pMessagePanel->m_dwOldServerTime;
-		g_pCurrentScene->m_pMessagePanel->m_dwLifeTime = m_pPreviousScene->m_pMessagePanel->m_dwLifeTime + 6000;
+		g_pCurrentScene->m_pMessagePanel->m_bVisible = pPreviousScene->m_pMessagePanel->m_bVisible;
+		g_pCurrentScene->m_pMessagePanel->m_dwOldServerTime = pPreviousScene->m_pMessagePanel->m_dwOldServerTime;
+		g_pCurrentScene->m_pMessagePanel->m_dwLifeTime = pPreviousScene->m_pMessagePanel->m_dwLifeTime + 6000;
 
-		DeleteObject(m_pPreviousScene);
+		DeleteObject(pPreviousScene);
 	}
 }
 
@@ -1854,6 +2189,11 @@ TMCamera* ObjectManager::GetCamera()
 
 void ObjectManager::CleanUp()
 {
+	if (m_bInsideCleanUp)
+		return;
+
+	m_bInsideCleanUp = 1;
+
 	TreeNode* pCurrentNode = g_pCurrentScene;
 	TreeNode* pRootNode = pCurrentNode;
 
@@ -1889,7 +2229,21 @@ void ObjectManager::CleanUp()
 			} while (pCurrentNode != pRootNode && pCurrentNode != nullptr);
 		} while (pCurrentNode != pRootNode && pCurrentNode != nullptr);
 
-		SAFE_DELETE(m_pPreviousScene);
-		m_bCleanUp = 0;
 	}
+
+	// More than one packet may replace a scene before NewApp reaches the
+	// end-of-frame cleanup.  Keep every retired scene until this point instead
+	// of overwriting a single pointer and leaking an earlier scene.
+	std::vector<TMScene*> previousScenes;
+	previousScenes.swap(m_PreviousScenes);
+	for (TMScene* pPreviousScene : previousScenes)
+		SAFE_DELETE(pPreviousScene);
+
+	g_pCursor =
+		g_pCurrentScene != nullptr &&
+		g_pCurrentScene->m_pControlContainer != nullptr ?
+		g_pCurrentScene->m_pControlContainer->m_pCursor :
+		nullptr;
+	m_bCleanUp = 0;
+	m_bInsideCleanUp = 0;
 }

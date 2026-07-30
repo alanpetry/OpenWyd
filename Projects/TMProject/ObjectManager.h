@@ -3,6 +3,8 @@
 #include "Structures.h"
 #include "Basedef.h"
 
+#include <vector>
+
 class TreeNode;
 class TMFieldScene;
 class TMScene;
@@ -101,7 +103,8 @@ public:
 	TreeNode* m_pRoot;
 	TM_GAME_STATE m_eCurrentState;
 	TMCamera* m_pCamera;
-	TMScene* m_pPreviousScene;
+	std::vector<TMScene*> m_PreviousScenes;
+	int m_bInsideCleanUp;
 	int m_bCleanUp;
 	int m_bBilling;
 	stMemo m_stMemo[100];

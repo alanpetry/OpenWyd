@@ -1,0 +1,181 @@
+{
+  "schema": "openwyd.gdi-font-atlas",
+  "schemaVersion": 1,
+  "selfTest": {
+    "passed": true,
+    "mode": "TMFont2 sequence plus exhaustive display-byte pairs and negative-kerning triples equal TextOutA",
+    "displayByteCount": 223,
+    "orderedPairCount": 49729,
+    "negativeKerningTripleMinimum": 3
+  },
+  "font": {
+    "requestedFace": "Tahoma",
+    "realizedFace": "Tahoma",
+    "height": 12,
+    "weight": 500,
+    "charset": 1,
+    "outPrecision": 4,
+    "clipPrecision": 0,
+    "quality": 4,
+    "pitchAndFamily": 2,
+    "windowsAnsiCodePage": 1252,
+    "fontDataSha256": "9af03d4ad44a3b413d92f7de48b94aa7cc8a1471a75d498406eae837f62ee1d1"
+  },
+  "atlas": {
+    "format": "A4",
+    "width": 512,
+    "height": 256,
+    "cellWidth": 32,
+    "cellHeight": 16,
+    "glyphCount": 256,
+    "byteSize": 69828,
+    "sha256": "aae460c1d066bc6da7d3091a79488746733178e425ba6b8d63e00100dfbee440",
+    "pixelsFnv1a64": "25373807e90eead8"
+  },
+  "textMetrics": {
+    "height": 12,
+    "ascent": 10,
+    "descent": 2,
+    "internalLeading": 2,
+    "externalLeading": 0,
+    "averageWidth": 4,
+    "maximumWidth": 25
+  },
+  "alphaHistogram": [
+    128236,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    2836
+  ],
+  "buildContract": {
+    "schema": "openwyd.gdi-font-atlas-build-contract",
+    "schemaVersion": 1,
+    "compileFlags": [
+      "/nologo",
+      "/std:c++17",
+      "/EHsc",
+      "/O2",
+      "/MT",
+      "/utf-8"
+    ],
+    "compilerIdentity": {
+      "returncode": 2,
+      "outputSha256": "c5731b93a5146a2cb69731d4f59d409d1917ef1e6c727a101bd3e9b6a69a7cb8"
+    },
+    "toolchainPaths": {
+      "compiler": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86/cl.exe",
+      "compiler_bin": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86",
+      "msvc_include": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/include",
+      "msvc_lib": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/lib/x86",
+      "sdk_bin": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/bin/10.0.19041.0/x64",
+      "sdk_include": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Include/10.0.19041.0",
+      "sdk_lib": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Lib/10.0.19041.0",
+      "sdk_root": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10"
+    },
+    "files": [
+      {
+        "role": "generator-source",
+        "path": "<REPO_ROOT>/webclient/client-wasm/tools/generate_gdi_font_atlas.cpp",
+        "size": 29340,
+        "sha256": "11deca6c721917daa8df0c6c1ded3fb5a8720f874e15643aec2594000433ee66"
+      },
+      {
+        "role": "generator-build-script",
+        "path": "<REPO_ROOT>/webclient/client-wasm/tools/build_gdi_font_atlas.py",
+        "size": 13593,
+        "sha256": "87d4c7b8854ad7f43c2fdc0331f0e13ad681f8c66e4fbc323b28d16286935ab2"
+      },
+      {
+        "role": "msvc-cl",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86/cl.exe",
+        "size": 404072,
+        "sha256": "73e2bb370bfc32c04df58752b00f97db388207f29f2b7d4f23f5273e9dbfb212"
+      },
+      {
+        "role": "msvc-c1xx",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86/c1xx.dll",
+        "size": 9791544,
+        "sha256": "aec9abab7512d309423297af8cdbd5b515eb89faff521eeb1dfd03606a662f47"
+      },
+      {
+        "role": "msvc-c2",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86/c2.dll",
+        "size": 8173616,
+        "sha256": "0aa90d8f69445a692515bcc8a32beba2a9b4f037cc95b95fa45283cca45f7496"
+      },
+      {
+        "role": "msvc-link",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x86/link.exe",
+        "size": 2243656,
+        "sha256": "1e1df946b3cb2942d7ae84294e7cb478ad0eeeb6f61afc3a54028678a50e395c"
+      },
+      {
+        "role": "windows-sdk-windows-h",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Include/10.0.19041.0/um/Windows.h",
+        "size": 7153,
+        "sha256": "65ccd069fe343519a7ec0698ccaf5a6f0388f1af180b959b8271902b983cb099"
+      },
+      {
+        "role": "windows-sdk-wingdi-h",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Include/10.0.19041.0/um/wingdi.h",
+        "size": 239639,
+        "sha256": "bb866ffbdb97c3e22eb546db17c64639f433371c95fca83988301c1da7783294"
+      },
+      {
+        "role": "windows-sdk-bcrypt-h",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Include/10.0.19041.0/shared/bcrypt.h",
+        "size": 68707,
+        "sha256": "cbfdee9fbe0d4644000d1ad7768a4d9aae99ad589317c1ea9ef16bf43914e504"
+      },
+      {
+        "role": "windows-sdk-gdi32-lib",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Lib/10.0.19041.0/um/x86/Gdi32.Lib",
+        "size": 144392,
+        "sha256": "32326907c0768ad5c33b9b2bf5c0b0e20f10b4062b691919a30cc37c7ab87e22"
+      },
+      {
+        "role": "windows-sdk-user32-lib",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Lib/10.0.19041.0/um/x86/User32.Lib",
+        "size": 176154,
+        "sha256": "592709800a0bf13688a5109afcf481eb62f36fafa690ff23f704f7c7a43ac660"
+      },
+      {
+        "role": "windows-sdk-bcrypt-lib",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Lib/10.0.19041.0/um/x86/bcrypt.lib",
+        "size": 15170,
+        "sha256": "f8c712ddc61714da358fadd68b8cfe625d80c82f261b73bb23e0848c0d545232"
+      },
+      {
+        "role": "windows-sdk-ucrt-lib",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/Windows Kits/10/Lib/10.0.19041.0/ucrt/x86/libucrt.lib",
+        "size": 34228228,
+        "sha256": "c7fc69f7e79a2a8011a974c06a2c850f2186415ee408efc6d6b0d376a53c84f7"
+      },
+      {
+        "role": "msvc-libcmt",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/lib/x86/libcmt.lib",
+        "size": 5552954,
+        "sha256": "3c430a68b96c85eeb12ab28db569e6cc65e546d96f0762b6fe87c98ef09bc91b"
+      },
+      {
+        "role": "msvc-libcpmt",
+        "path": "<TOOLS_ROOT>/portable-msvc-v142-x86/msvc/VC/Tools/MSVC/14.29.30133/lib/x86/libcpmt.lib",
+        "size": 15332656,
+        "sha256": "5e1ef514e8fff237fa63ca75624c9cbc80581f8e09241fce30536bcc4bd2e92e"
+      }
+    ],
+    "digest": "2eb5c9f9de95ef10d7a1b5a8e265460d86455d22e31e38b7b358055b1196c146"
+  }
+}

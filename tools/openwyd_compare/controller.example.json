@@ -1,0 +1,94 @@
+{
+  "captures": [],
+  "comparisons": [],
+  "hold_seconds": 0,
+  "node_command": [
+    "node"
+  ],
+  "node_cwd": "../../webclient",
+  "processes": [
+    {
+      "command": [
+        "replace-with-current-dbsrv-build-command"
+      ],
+      "enabled": false,
+      "name": "dbsrv",
+      "readiness": {
+        "host": "127.0.0.1",
+        "port": 7514,
+        "timeout_seconds": 30,
+        "type": "tcp"
+      },
+      "role": "DBSrv"
+    },
+    {
+      "command": [
+        "replace-with-current-tmsrv-build-command"
+      ],
+      "enabled": false,
+      "name": "tmsrv",
+      "readiness": {
+        "pattern": "READY",
+        "timeout_seconds": 30,
+        "type": "log"
+      },
+      "role": "TMSrv"
+    },
+    {
+      "command": [
+        "replace-with-current-proxy-source-command"
+      ],
+      "enabled": false,
+      "name": "proxy",
+      "readiness": {
+        "host": "127.0.0.1",
+        "port": 8282,
+        "timeout_seconds": 30,
+        "type": "tcp"
+      },
+      "role": "proxy"
+    },
+    {
+      "command": [
+        "replace-with-current-http-source-command"
+      ],
+      "enabled": false,
+      "name": "http",
+      "readiness": {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "timeout_seconds": 30,
+        "type": "tcp"
+      },
+      "role": "http"
+    },
+    {
+      "command": [
+        "replace-with-current-native-client-build-command"
+      ],
+      "enabled": false,
+      "name": "native-client",
+      "readiness": {
+        "min_uptime_seconds": 1,
+        "timeout_seconds": 30,
+        "type": "process"
+      },
+      "role": "native"
+    },
+    {
+      "command": [
+        "replace-with-current-browser-controller-source-command"
+      ],
+      "enabled": false,
+      "name": "browser-controller",
+      "readiness": {
+        "pattern": "READY",
+        "timeout_seconds": 30,
+        "type": "log"
+      },
+      "role": "browser-controller"
+    }
+  ],
+  "run_root": "../../artifacts/openwyd_compare/runs",
+  "version": 1
+}

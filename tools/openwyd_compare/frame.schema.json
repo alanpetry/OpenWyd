@@ -1,0 +1,84 @@
+{
+  "$id": "https://openwyd.local/schemas/debug-frame-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "camera": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "clock": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "draws": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "description": "Versioned producer-specific data and future protocol fields.",
+      "type": "object"
+    },
+    "frame_id": {
+      "oneOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        }
+      ]
+    },
+    "matrices": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "network": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "render": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "schema": {
+      "const": "openwyd.debug-frame"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "state": {
+      "type": [
+        "null",
+        "string",
+        "integer",
+        "object"
+      ]
+    },
+    "ticks": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "schema_version",
+    "frame_id",
+    "state",
+    "ticks",
+    "clock",
+    "camera",
+    "matrices",
+    "draws",
+    "render",
+    "network",
+    "extensions"
+  ],
+  "title": "OpenWyd shared debug frame",
+  "type": "object"
+}

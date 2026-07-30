@@ -44,15 +44,12 @@ NewApp* g_wyd_app = nullptr;
 MSG g_wyd_msg{};
 bool g_wyd_msg_initialized = false;
 bool g_wyd_boot_in_progress = false;
+unsigned int g_wyd_compare_present_state_sequence = 0;
+bool g_wyd_compare_present_game_state_valid = false;
+int g_wyd_compare_present_game_state = 0;
+bool g_wyd_compare_present_scene_type_valid = false;
+int g_wyd_compare_present_scene_type = 0;
 
-constexpr unsigned int kWydMouseMove = 0x0200u;
-constexpr unsigned int kWydLButtonDown = 0x0201u;
-constexpr unsigned int kWydLButtonUp = 0x0202u;
-constexpr unsigned int kWydRButtonDown = 0x0204u;
-constexpr unsigned int kWydRButtonUp = 0x0205u;
-constexpr unsigned int kWydMButtonDown = 0x0207u;
-constexpr unsigned int kWydMButtonUp = 0x0208u;
-constexpr unsigned int kWydMouseWheel = 0x020Au;
 constexpr unsigned int kWydMkShift = 0x0004u;
 constexpr unsigned int kWydMkControl = 0x0008u;
 
@@ -64,6 +61,14 @@ void WydBootLog(const char* msg) {
 #endif
 }
 
+void WydResetComparePresentState() {
+  g_wyd_compare_present_state_sequence = 0;
+  g_wyd_compare_present_game_state_valid = false;
+  g_wyd_compare_present_game_state = 0;
+  g_wyd_compare_present_scene_type_valid = false;
+  g_wyd_compare_present_scene_type = 0;
+}
+
 }  // namespace
 
 extern "C" void wyd_dinput_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta);
@@ -72,27 +77,22 @@ extern "C" void wyd_dinput_key_event(unsigned int msg, unsigned int key);
 extern "C" int wyd_mouse_event(unsigned int msg, unsigned int wParam, int x, int y, int wheel_delta) {
   wyd_dinput_mouse_event(msg, wParam, x, y, wheel_delta);
 
-  if (!g_pEventTranslator) return 0;
+  if (!g_wyd_app || !g_pEventTranslator) return 0;
 
   g_pEventTranslator->m_bShift = (wParam & kWydMkShift) ? 1 : 0;
   g_pEventTranslator->m_bCtrl = (wParam & kWydMkControl) ? 1 : 0;
 
-  switch (msg) {
-    case kWydMouseMove:
-    case kWydLButtonDown:
-    case kWydLButtonUp:
-    case kWydRButtonDown:
-    case kWydRButtonUp:
-    case kWydMButtonDown:
-    case kWydMButtonUp:
-      g_pEventTranslator->OnMouseEvent(msg, wParam, x, y);
-      break;
-    case kWydMouseWheel:
-      g_pEventTranslator->OnMouseEvent(kWydMouseMove, wParam, x, y);
-      break;
-    default:
-      break;
-  }
+  // Keep the browser on the same source path as the native client: the
+  // Win32 message updates cursor/control state where the original MsgProc
+  // handles it, while button presses are observed once through DirectInput
+  // during ReadInputEventData. Calling OnMouseEvent here as well duplicates
+  // a click in scenes which consume both paths.
+  g_wyd_app->MsgProc(
+      g_wyd_app->m_hWnd,
+      msg,
+      static_cast<DWORD>(wParam),
+      static_cast<int>(
+          MAKELONG(static_cast<WORD>(x), static_cast<WORD>(y))));
 
   return 1;
 }
@@ -153,6 +153,8 @@ extern "C" int wyd_boot_client(int fullscreen) {
     g_wyd_boot_in_progress = false;
     return 1;
   }
+
+  WydResetComparePresentState();
 
   WydBootLog("[wyd_boot] os-check");
   if (CheckOS()) {
@@ -224,6 +226,42 @@ extern "C" int wyd_shutdown_client() {
 extern "C" int wyd_get_game_state() {
   if (!g_pObjectManager) return static_cast<int>(ObjectManager::TM_GAME_STATE::TM_NONE_STATE);
   return static_cast<int>(g_pObjectManager->m_eCurrentState);
+}
+
+extern "C" void wyd_compare_latch_present_state() {
+  g_wyd_compare_present_game_state_valid = g_pObjectManager != nullptr;
+  if (g_pObjectManager) {
+    g_wyd_compare_present_game_state =
+        static_cast<int>(g_pObjectManager->m_eCurrentState);
+  }
+
+  g_wyd_compare_present_scene_type_valid = g_pCurrentScene != nullptr;
+  if (g_pCurrentScene) {
+    g_wyd_compare_present_scene_type =
+        static_cast<int>(g_pCurrentScene->m_eSceneType);
+  }
+
+  g_wyd_compare_present_state_sequence += 1;
+}
+
+extern "C" unsigned int wyd_compare_present_state_sequence() {
+  return g_wyd_compare_present_state_sequence;
+}
+
+extern "C" int wyd_compare_present_game_state_valid() {
+  return g_wyd_compare_present_game_state_valid ? 1 : 0;
+}
+
+extern "C" int wyd_compare_present_game_state() {
+  return g_wyd_compare_present_game_state;
+}
+
+extern "C" int wyd_compare_present_scene_type_valid() {
+  return g_wyd_compare_present_scene_type_valid ? 1 : 0;
+}
+
+extern "C" int wyd_compare_present_scene_type() {
+  return g_wyd_compare_present_scene_type;
 }
 
 extern "C" int wyd_cursor_visible() {
@@ -413,6 +451,25 @@ extern "C" int wyd_debug_selectserver_login(const char* account, const char* pas
   select_server->m_dwLastClickLoginBtnTime = 0;
 
   return select_server->OnControlEvent(B_LOGIN_OK, 0);
+}
+
+extern "C" int wyd_public_demo_unlock_select_character() {
+  if (!g_pObjectManager) return 0;
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  if (!scene || scene->GetSceneType() != ESCENE_TYPE::ESCENE_SELCHAR) return 0;
+
+  auto* select_character = static_cast<TMSelectCharScene*>(scene);
+  g_AccountLock = 1;
+  if (select_character->m_pAccountLockDlg) {
+    select_character->m_pAccountLockDlg->SetVisible(0);
+  }
+  if (select_character->m_pAccountLock) {
+    select_character->m_pAccountLock->SetVisible(0);
+  }
+  if (select_character->m_pInputPWPanel) {
+    select_character->m_pInputPWPanel->SetVisible(0);
+  }
+  return 1;
 }
 
 extern "C" int wyd_start_client() {
