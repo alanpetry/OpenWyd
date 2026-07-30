@@ -4404,24 +4404,24 @@ D3DXQUATERNION* D3DXQuaternionRotationMatrix(D3DXQUATERNION* out, const D3DXMATR
   if (trace > 0.0f) {
     float s = std::sqrt(trace + 1.0f) * 2.0f;
     out->w = 0.25f * s;
-    out->x = (m->_32 - m->_23) / s;
-    out->y = (m->_13 - m->_31) / s;
-    out->z = (m->_21 - m->_12) / s;
+    out->x = (m->_23 - m->_32) / s;
+    out->y = (m->_31 - m->_13) / s;
+    out->z = (m->_12 - m->_21) / s;
   } else if (m->_11 > m->_22 && m->_11 > m->_33) {
     float s = std::sqrt(1.0f + m->_11 - m->_22 - m->_33) * 2.0f;
-    out->w = (m->_32 - m->_23) / s;
+    out->w = (m->_23 - m->_32) / s;
     out->x = 0.25f * s;
     out->y = (m->_12 + m->_21) / s;
     out->z = (m->_13 + m->_31) / s;
   } else if (m->_22 > m->_33) {
     float s = std::sqrt(1.0f + m->_22 - m->_11 - m->_33) * 2.0f;
-    out->w = (m->_13 - m->_31) / s;
+    out->w = (m->_31 - m->_13) / s;
     out->x = (m->_12 + m->_21) / s;
     out->y = 0.25f * s;
     out->z = (m->_23 + m->_32) / s;
   } else {
     float s = std::sqrt(1.0f + m->_33 - m->_11 - m->_22) * 2.0f;
-    out->w = (m->_21 - m->_12) / s;
+    out->w = (m->_12 - m->_21) / s;
     out->x = (m->_13 + m->_31) / s;
     out->y = (m->_23 + m->_32) / s;
     out->z = 0.25f * s;

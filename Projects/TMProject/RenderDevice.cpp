@@ -433,6 +433,21 @@ int RenderDevice::Unlock(int bEnd)
 		static char szString[256];
 
 		static float fLastTime = 0.0f;
+#if defined(__EMSCRIPTEN__)
+		// Browser startup spends several seconds decoding and mounting assets
+		// before the first rendered frame. Do not count that non-rendering
+		// interval as one giant frame: it reports < 10 FPS for two seconds,
+		// disables TMSkinMesh interpolation and visibly snaps a character just
+		// before it stops moving. Start the sampling window at the first real
+		// frame; the official two-second average takes over afterwards.
+		if (fLastTime == 0.0f)
+		{
+			fLastTime = fTime;
+			dwFrames = 0;
+			m_fFPS = 30.0f;
+		}
+		else
+#endif
 		if ((fTime - fLastTime) > 2.0f)
 		{
 			m_fFPS = dwFrames / (fTime - fLastTime);
