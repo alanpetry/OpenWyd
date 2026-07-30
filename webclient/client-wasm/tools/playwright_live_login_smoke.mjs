@@ -23,14 +23,27 @@ const account = args.get("--account") || "ADMIN";
 const password = args.get("--password") || "admin";
 const host = args.get("--host") || "tmsrv";
 const autoDemo = args.get("--auto-demo") === "1";
+const logical = args.get("--logical") || "800x600";
+const fit = args.get("--fit") || "actual";
+const logicalMatch = logical.match(/^(\d+)x(\d+)$/);
+if (!logicalMatch) {
+  throw new Error(`invalid --logical value: ${logical}`);
+}
+if (fit !== "actual" && fit !== "contain") {
+  throw new Error(`invalid --fit value: ${fit}`);
+}
+const logicalWidth = Number.parseInt(logicalMatch[1], 10);
+const logicalHeight = Number.parseInt(logicalMatch[2], 10);
+const viewportWidth = Number.parseInt(args.get("--viewport-width") || "800", 10);
+const viewportHeight = Number.parseInt(args.get("--viewport-height") || "600", 10);
 fs.mkdirSync(profile, { recursive: true });
 fs.mkdirSync(path.dirname(screenshot), { recursive: true });
 
 const target = new URL(url);
 target.searchParams.set("mode", "play");
 target.searchParams.set("state", "7");
-target.searchParams.set("logical", "800x600");
-target.searchParams.set("fit", "actual");
+target.searchParams.set("logical", logical);
+target.searchParams.set("fit", fit);
 target.searchParams.set("fieldMode", "real");
 target.searchParams.set("autoboot", "1");
 target.searchParams.set("autostart", "1");
@@ -44,7 +57,7 @@ if (autoDemo) {
 
 const context = await chromium.launchPersistentContext(profile, chromiumLaunchOptions({
   headless: true,
-  viewport: { width: 800, height: 600 },
+  viewport: { width: viewportWidth, height: viewportHeight },
   args: [
     "--enable-webgl",
     "--ignore-gpu-blocklist",
@@ -72,6 +85,8 @@ const readState = () => page.evaluate(() => {
     gameState: call("_wyd_get_game_state"),
     sceneType: call("_wyd_get_scene_type"),
     glErrorTotal: call("_wyd_d3d9_gl_error_total"),
+    screenWidth: call("_wyd_lab_screen_width"),
+    screenHeight: call("_wyd_lab_screen_height"),
     accountLockDialogVisible: typeof M._wyd_control_visible === "function"
       ? M._wyd_control_visible(66432)
       : null,
@@ -94,6 +109,7 @@ const result = {
   before: null,
   after: null,
   demoCredentials: null,
+  display: null,
   consoleErrors,
   screenshot,
 };
@@ -129,10 +145,34 @@ try {
   }
 
   const canvas = page.locator("#canvas");
+  result.display = await page.evaluate(() => {
+    const canvas = document.getElementById("canvas");
+    const rect = canvas.getBoundingClientRect();
+    return {
+      bitmapWidth: canvas.width,
+      bitmapHeight: canvas.height,
+      cssWidth: rect.width,
+      cssHeight: rect.height,
+      resolutionControl: document.getElementById("display-resolution")?.value || null,
+      fitControl: document.getElementById("display-fit")?.value || null,
+    };
+  });
   await canvas.screenshot({ path: screenshot });
+  const bitmapMatches = result.display.bitmapWidth === logicalWidth &&
+    result.display.bitmapHeight === logicalHeight;
+  const runtimeMatches = result.after?.screenWidth === logicalWidth &&
+    result.after?.screenHeight === logicalHeight;
+  const aspectError = Math.abs(
+    (result.display.cssWidth / result.display.cssHeight) - (logicalWidth / logicalHeight)
+  );
   result.ok = (autoDemo || result.loginReturn === 1) &&
     result.after?.gameState === 5 &&
     result.after?.glErrorTotal === 0 &&
+    bitmapMatches &&
+    runtimeMatches &&
+    result.display.resolutionControl === logical &&
+    result.display.fitControl === fit &&
+    aspectError < 0.002 &&
     consoleErrors.length === 0 &&
     (!autoDemo || (
       /^DEMO[A-Z2-9]{8}$/.test(result.demoCredentials?.account || "") &&

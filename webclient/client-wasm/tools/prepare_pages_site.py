@@ -22,8 +22,47 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="refresh" content="0; url=./startup_harness.html?mode=play&demo=1&state=7&logical=800x600&fit=actual&fieldMode=real&autoboot=1&autostart=1" />
   <title>OpenWyd</title>
+  <script>
+    (() => {
+      const resolutionKey = 'openwyd.displayResolution.v1';
+      const fitKey = 'openwyd.displayFit.v1';
+      const validResolutions = new Set([
+        '640x480', '800x600', '1024x768', '1280x1024', '1600x1200'
+      ]);
+      const incoming = new URLSearchParams(window.location.search);
+      let resolution = incoming.get('logical') || '';
+      let fit = incoming.get('fit') || '';
+      try {
+        if (!validResolutions.has(resolution)) {
+          resolution = window.localStorage.getItem(resolutionKey) || '';
+        }
+        if (fit !== 'actual' && fit !== 'contain') {
+          fit = window.localStorage.getItem(fitKey) || '';
+        }
+      } catch {
+        // Storage is optional; the official 800x600 default remains available.
+      }
+      if (!validResolutions.has(resolution)) resolution = '800x600';
+      if (fit !== 'actual' && fit !== 'contain') fit = 'actual';
+
+      const target = new URL('./startup_harness.html', window.location.href);
+      const params = target.searchParams;
+      params.set('v', '3');
+      params.set('mode', 'play');
+      params.set('demo', '1');
+      params.set('state', '7');
+      params.set('logical', resolution);
+      params.set('fit', fit);
+      params.set('fieldMode', 'real');
+      params.set('autoboot', '1');
+      params.set('autostart', '1');
+      window.location.replace(target.toString());
+    })();
+  </script>
+  <noscript>
+    <meta http-equiv="refresh" content="0; url=./startup_harness.html?v=3&amp;mode=play&amp;demo=1&amp;state=7&amp;logical=800x600&amp;fit=actual&amp;fieldMode=real&amp;autoboot=1&amp;autostart=1" />
+  </noscript>
 </head>
 <body>
   <p>Opening OpenWyd...</p>
