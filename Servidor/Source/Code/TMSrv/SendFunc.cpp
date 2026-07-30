@@ -1,4 +1,5 @@
 #include <memory>
+#include <cstdarg>
 #include "../Basedef.h"
 #include "SendFunc.h"
 #include "GetFunc.h"

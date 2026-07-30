@@ -2,6 +2,7 @@
 #include <ws2tcpip.h>
 #include <Windows.h>
 #include <windowsx.h>
+#include <cstdarg>
 #include <stdlib.h>
 #include <stdio.h> 
 #include <fcntl.h>
