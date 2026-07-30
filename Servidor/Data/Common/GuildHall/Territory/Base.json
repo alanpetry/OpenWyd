@@ -1,0 +1,22 @@
+{
+    "CONFIG": {
+        "Challenger": 0,
+        "DayWar": 6,
+        "GuildIndex": 0,
+        "InputX": 152,
+        "InputY": 788,
+        "Key": "qwertyuiopasdfghjklzxcvbnm",
+        "Level": 0,
+        "MaxMob": 10000,
+        "Mob": 0,
+        "Name": "NONE",
+        "X1": 143,
+        "X2": 241,
+        "Y1": 783,
+        "Y2": 881,
+		"Day": 0,
+		"Year": 0,
+		"Start": 0,
+		"CooReset": 0
+    }
+}

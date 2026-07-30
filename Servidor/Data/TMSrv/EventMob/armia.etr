@@ -1,0 +1,31 @@
+{
+	"1": {
+			"MinuteGenerate": 1,
+			"MaxNumMob": 1,
+			"MinGroup": 0,
+			"MaxGroup": 0,
+			"Leader": "Gremlin",
+			"Follower": "Gremlin",
+			"RouteType": 2,
+			"Formation": 0,
+			"StartX": 2184,
+			"StartY": 2118,
+			"StartRange": 6,
+			"StartWait": 9,
+			"Segment1X": 2184,
+			"Segment1Y": 2118,
+			"Segment1Range": 6,
+			"Segment1Wait": 4,
+			"Segment2X": 2184,
+			"Segment2Y": 2118,
+			"Segment2Range": 6,
+			"Segment2Wait": 8,
+			"DestX": 2184,
+			"DestY": 2118,
+			"DestRange": 6,
+			"DestWait": 6
+		 }
+
+
+
+}

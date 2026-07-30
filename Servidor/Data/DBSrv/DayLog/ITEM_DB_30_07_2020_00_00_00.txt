@@ -1,0 +1,2 @@
+[30/07/2020][00:00:00]  ItemID:1758 ItemName:Pedra_do_Lugefer ItemNum:25 
+[30/07/2020][00:00:00]  ItemID:4038 ItemName:Vela_do_Coveiro ItemNum:1 

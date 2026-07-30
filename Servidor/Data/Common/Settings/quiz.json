@@ -1,0 +1,171 @@
+{
+"CONFIG": {
+			"GOLD": 100,
+			"EXP": 100,
+			"ToTalQuiz": 20
+		  },
+"QUESTIONS": [
+				{
+					"Title": "Qual classe evoca monstros?",
+					"Correct": 1,
+					"Answer0": "Foema",
+					"Answer1": "BeastMaster",
+					"Answer2": "Transknight",
+					"Answer3": "Huntress"
+				},
+				{
+					"Title": "Em qual cidade fica a Zona Elemental da Agua?",
+					"Correct": 0,
+					"Answer0": "Arzam",
+					"Answer1": "Armia",
+					"Answer2": "Erion",
+					"Answer3": "Noatum"
+				},
+				{
+					"Title": "Qual o nome do Servidor?",
+					"Correct": 3,
+					"Answer0": "Eternity",
+					"Answer1": "7DY",
+					"Answer2": "WYD",
+					"Answer3": "ETERNAL"
+				},
+				{
+					"Title": "Quem Descobriu o WYD?",
+					"Correct": 0,
+					"Answer0": "SKY",
+					"Answer1": "BUTZ",
+					"Answer2": "NUNES",
+					"Answer3": "EU"
+				},
+				{
+					"Title": "Quantas Classes Tem no Eternal?",
+					"Correct": 2,
+					"Answer0": "3",
+					"Answer1": "6",
+					"Answer2": "4",
+					"Answer3": "16"
+				},
+				{
+					"Title": "Qual Classe usa Samaritano?",
+					"Correct": 0,
+					"Answer0": "Transknight",
+					"Answer1": "BeastMaster",
+					"Answer2": "Huntress",
+					"Answer3": "Foema"
+				},
+				{
+					"Title": "Quantos dedos o Lula tem na mao Esquerda?",
+					"Correct": 1,
+					"Answer0": "6",
+					"Answer1": "5",
+					"Answer2": "4",
+					"Answer3": "Todos"
+				},
+				{
+					"Title": "Qual item necessario para refinar +6++?",
+					"Correct": 2,
+					"Answer0": "Poeira das Fadas",
+					"Answer1": "Poeira de Ori",
+					"Answer2": "Poeira de Lac",
+					"Answer3": "Resto de Lac"
+				},
+				{
+					"Title": "Qual o nome do ADM?",
+					"Correct": 3,
+					"Answer0": "Juju",
+					"Answer1": "Jonas",
+					"Answer2": "Betina",
+					"Answer3": "Tanto Faz"
+				},
+				{
+					"Title": "Qual o nome do NPC que registra cidadania?”",
+					"Correct": 3,
+					"Answer0": "Aki",
+					"Answer1": "Odin",
+					"Answer2": "Rainy",
+					"Answer3": "Kibita"
+				},
+				{
+					"Title": "Qual nome do NPC que vende as Skills da classe TK”",
+					"Correct": 1,
+					"Answer0": "Mestre Archi",
+					"Answer1": "Cap.Cavaleiros",
+					"Answer2": "ForeLearner",
+					"Answer3": "Foema Ancian"
+				},
+				{
+					"Title": "Qual nome do NPC de transporte para Quests”",
+					"Correct": 1,
+					"Answer0": "Mestre Archi",
+					"Answer1": "Mestre Grifo",
+					"Answer2": "ForeLearner",
+					"Answer3": "Foema Ancian"
+				},
+				{
+					"Title": "Qual nome do NPC que transfere adicional de armas para armas arch”",
+					"Correct": 1,
+					"Answer0": "Shany",
+					"Answer1": "Tiny",
+					"Answer2": "Aki",
+					"Answer3": "Jurema"
+				},
+				{
+					"Title": "Qual nome do Boss do Castelo do Gelo?”",
+					"Correct": 1,
+					"Answer0": "Kefra",
+					"Answer1": "SombraNegra",
+					"Answer2": "LichInfernal",
+					"Answer3": "Verid"
+				},
+				{
+					"Title": "Qual nome do Boss da Vila Amald”",
+					"Correct": 2,
+					"Answer0": "Kefra",
+					"Answer1": "SombraNegra",
+					"Answer2": "Verid",
+					"Answer3": "Lula"
+				},
+				{
+					"Title": "Qual nome do item que leva agua automatico do WYD Eternal”",
+					"Correct": 2,
+					"Answer0": "Fada azul",
+					"Answer1": "Fada dourada",
+					"Answer2": "MacroEternal",
+					"Answer3": "Dedo do Charlão"
+				},
+				{
+					"Title": "Qual o custo de gold por tentativa de item mas 10?”",
+					"Correct": 2,
+					"Answer0": "10kk",
+					"Answer1": "30kk",
+					"Answer2": "50kk",
+					"Answer3": "100kk"
+				},
+				{
+					"Title": "Qual a comida preferida do DEV NEWS?”",
+					"Correct": 2,
+					"Answer0": "Carne",
+					"Answer1": "OVO",
+					"Answer2": "Miojo",
+					"Answer3": "Come ate Pedra"
+				},
+				{
+					"Title": "Qual horario da Guerra de Torres?”",
+					"Correct": 3,
+					"Answer0": "19h",
+					"Answer1": "20h",
+					"Answer2": "23h",
+					"Answer3": "22h"
+				},
+				{
+					"Title": "Qual nome do virus que fudeu a nossa vida em 2020?",
+					"Correct": 0,
+					"Answer0": "COVID 19",
+					"Answer1": "EBOLA",
+					"Answer2": "BUTZ",
+					"Answer3": "Nenhum"
+				}
+			]
+	
+	
+}

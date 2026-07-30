@@ -1,0 +1,96 @@
+{
+"STATUS": {
+
+			"Days": [1,1,1,1,1,1,1],
+			"StartHour": 0,
+			"EndHour": 23,
+			"Follow": 4,
+			"String": "qwertyuiopasdfghjklçzxcvbnm",
+			"NoticeStart": "Sombra Negra apareceu.",
+			"NoticeEnd1": "O Grupo de [%s] dorrotou Sombra Negra!!!",
+			"NoticeEnd2": "Sombra Negra desapareceu."
+		  },
+"BOSS": {
+				"ID": 4103,
+				"NAME": "Sombra Negra",
+				"FACE": [174,0,0,0,0,0,0,0],
+				"HELM": [1225,0,43,0,26,50,0,0],
+				"BODY": [1226,0,43,0,0,0,0,0],
+				"LEG": [1227,0,43,0,0,0,0,0],
+				"GLOVE": [1228,0,43,0,0,0,0,0],
+				"BOOT": [1229,0,43,0,0,0,0,0],
+				"WEAPON": [3591,0,43,0,26,100,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,43,5,0,0,0,0,0],
+				"StartX": 3818,
+				"StartY": 2880,
+				"DestX": 3820,
+				"DestY": 2890,
+				"REGEN": 209,
+				"LEVEL": 399,
+				"HP": 15000,
+				"MP": 1000,
+				"AC": 7000,
+				"DAN": 6000,
+				"MAGIC": 1000,
+				"STR": 5,
+				"INT": 1000,
+				"DEX": 8000,
+				"CON": 8000,
+				"MSG1": "Haa.haaa.Irei aniquilar todos....",
+				"MSG2": "Haa.haaa.Saiam do meu territorio....",
+				"MSG3": "graaaa.A morte te aguarda...."
+
+		},
+		
+"GUARDIAN": {
+				"ID": 4631,
+				"NAME": "Guardian Shadow",
+				"FACE": [174,0,0,0,0,0,0,0],
+				"HELM": [1225,0,43,0,26,50,0,0],
+				"BODY": [1226,0,43,0,0,0,0,0],
+				"LEG": [1227,0,43,0,0,0,0,0],
+				"GLOVE": [1228,0,43,0,0,0,0,0],
+				"BOOT": [1229,0,43,0,0,0,0,0],
+				"WEAPON": [3591,0,43,0,26,100,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,43,1,0,0,0,0,0],
+				"StartX": 3818,
+				"StartY": 2880,
+				"DestX": 3820,
+				"DestY": 2885,
+				"REGEN": 209,
+				"LEVEL": 200,
+				"HP": 5000,
+				"MP": 5000,
+				"AC": 5000,
+				"DAN": 1000,
+				"MAGIC": 1000,
+				"STR": 5,
+				"INT": 1000,
+				"DEX": 8000,
+				"CON": 3000,
+				"MSG1": "Haa.haaa.Terao que nos derrotar antes de chegar em nosso Mestre....",
+				"MSG2": "Haa.haaa.Saiam do nosso castelo....",
+				"MSG3": "graaaa.Nao permitiremos que incomodem o Mestre...."
+			},
+		
+"DROP": {
+			"0": [412,0,61,5,0,0,0,0],
+			"1": [413,0,61,5,0,0,0,0],
+			"2": [4029,0,0,0,0,0,0,0],
+			"3": [670,0,0,0,0,0,0,0],
+			"4": [671,0,0,0,0,0,0,0],
+			"5": [1741,0,61,5,0,0,0,0]
+		},	
+
+"DROPPARTY": {
+				"0": [412,0,61,5,0,0,0,0],
+				"1": [413,0,61,5,0,0,0,0],
+				"2": [4029,0,0,0,0,0,0,0],
+				"3": [670,0,0,0,0,0,0,0],
+				"4": [671,0,0,0,0,0,0,0],
+				"5": [412,0,61,10,0,0,0,0]
+		     }			
+
+}

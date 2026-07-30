@@ -1,0 +1,48 @@
+{
+"INDEX": {
+	     "Timer": {
+						"Days": [1,1,1,1,1,1,1],
+						"Hour": [8,13,21],
+						"Minute": [0,10,20],
+						"Notice": 0
+
+		           },
+						
+		"Reward": {
+		
+					"0": [413,0,61,3,0,0,0,0],
+					"1": [4028,0,0,0,0,0,0,0],
+					"2": [4019,61,10,0,0,0,0,0],
+					"3": [646,61,5,0,0,0,0,0],
+					"4": [412,0,61,5,0,0,0,0]
+		
+				  },
+				  
+		"Boss":{
+				"ID": 4630,
+				"NAME": "Altar Guardian",
+				"FACE": [174,43,9,0,0,0,0,0],
+				"LEVEL": 100,
+				"HP": 10000,
+				"CON": 5000,
+				"MP": 10000,
+				"AC": 5000,
+				"DAN": 1000,
+				"MAGIC": 1000,
+				"MSG1": "Haa.haaa.Saiam do Altar humanos....",
+				"MSG2": "Haa.haaa.Sou o guardiao do altar Buts o noob....",
+				"MSG3": "graaaa.Vou matar todos voces...."
+			   },
+			   
+		"Counter": {
+					"StartX": 1065,
+					"StartY": 1714,
+					"DestX": 1128,
+					"DestY": 1742
+		
+				   },
+		"TimerAltar": 60,
+		"Duration": 1200
+		 
+		  }
+}

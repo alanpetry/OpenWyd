@@ -1,0 +1,100 @@
+{
+"STATUS": {
+
+			"Days": [1,1,1,1,1,1,1],
+			"StartHour": [1,6,11,16,21],
+			"Follow": 4,
+			"NoticeStart": "Boss Talos apareceu.",
+			"NoticeEnd": "O Grupo de [%s] dorrotou Talos!!!"
+		  },
+"LOCATION": {
+			"0": [2354,1689],
+			"1": [2128,1600],
+			"2": [2278,1554],
+			"3": [1996,1756]
+		},
+"BOSS": {
+				"ID": 4639,
+				"STRING": "qwertyuiopasdfghjklçzxcvbnm",
+				"NAME": "Talos",
+				"FACE": [360,0,0,0,0,0,0,0],
+				"HELM": [0,0,0,0,0,0,0,0],
+				"BODY": [0,0,0,0,0,0,0,0],
+				"LEG": [0,0,0,0,0,0,0,0],
+				"GLOVE": [0,0,0,0,0,0,0,0],
+				"BOOT": [0,0,0,0,0,0,0,0],
+				"WEAPON": [0,0,0,0,0,0,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,0,43,1,0,0,0,0],
+				"StartX": 0,
+				"StartY": 0,
+				"DestX": 0,
+				"DestY": 0,
+				"REGEN": 209,
+				"LEVEL": 200,
+				"HP": 10000,
+				"MP": 200,
+				"AC": 4000,
+				"DAN": 3000,
+				"MAGIC": 500,
+				"STR": 1000,
+				"INT": 1000,
+				"DEX": 2000,
+				"CON": 12000,
+				"MSG1": "Haa.haaa.Sinto cheiro de virgemmmmm....",
+				"MSG2": "Haa.haaa.Ser abominavel saia daqui....",
+				"MSG3": "graaaa.Insetos malditos...."
+
+		},
+		
+"GUARDIAN": {
+				"ID": 4643,
+				"NAME": "Talos Clone",
+				"FACE": [360,0,0,0,0,0,0,0],
+				"HELM": [0,0,0,0,0,0,0,0],
+				"BODY": [0,0,0,0,0,0,0,0],
+				"LEG": [0,0,0,0,0,0,0,0],
+				"GLOVE": [0,0,0,0,0,0,0,0],
+				"BOOT": [0,0,0,0,0,0,0,0],
+				"WEAPON": [0,0,0,0,0,0,0,0],
+				"SHIELD": [0,0,0,0,0,0,0,0],
+				"PIXIE": [1936,43,2,0,0,0,0,0],
+				"StartX": 0,
+				"StartY": 0,
+				"DestX": 0,
+				"DestY": 0,
+				"REGEN": 209,
+				"LEVEL": 150,
+				"HP": 2000,
+				"MP": 100,
+				"AC": 500,
+				"DAN": 500,
+				"MAGIC": 20,
+				"STR": 50,
+				"INT": 60,
+				"DEX": 800,
+				"CON": 3000,
+				"MSG1": "Haa.haaa.Terao que nos derrotar antes de chegar em nosso Mestre....",
+				"MSG2": "Haa.haaa.Saiam daqui....",
+				"MSG3": "graaaa.Nao permitiremos que incomodem o Mestre...."
+			},
+		
+"DROP": {
+			"0": [412,0,61,5,0,0,0,0],
+			"1": [413,0,61,5,0,0,0,0],
+			"2": [4029,0,0,0,0,0,0,0],
+			"3": [4028,0,0,0,0,0,0,0],
+			"4": [4028,0,0,0,0,0,0,0],
+			"5": [1741,0,0,0,0,0,0,0]
+		},	
+
+"DROPPARTY": {
+				"0": [412,0,61,5,0,0,0,0],
+				"1": [413,0,61,5,0,0,0,0],
+				"2": [4029,0,0,0,0,0,0,0],
+				"3": [4028,0,0,0,0,0,0,0],
+				"4": [4028,0,0,0,0,0,0,0],
+				"5": [412,0,0,0,0,0,0,0]
+		     }			
+
+}

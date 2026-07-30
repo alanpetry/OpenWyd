@@ -1,0 +1,7 @@
+0 0 1 ETERNAL
+0 0 2 LIDERANÇA   
+0 0 3 BlueTop   
+0 0 4 ETERNAL   
+0 0 5 AMENO   
+0 0 6 -MAFIA-   
+0 0 7 Boladetes   

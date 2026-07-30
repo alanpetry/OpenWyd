@@ -1,0 +1,148 @@
+{
+"CONQUISTA": {
+
+				"NOVATO":{
+							"Level": 10,
+							"ClassMaster": 2,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"EXPLORADOR":{
+							"Level": 100,
+							"ClassMaster": 2,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+						 
+				"PERITO":{
+							"Level": 256,
+							"ClassMaster": 2,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				 "VETERANO":{
+							"Level": 356,
+							"ClassMaster": 2,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"MORTAL":{
+							"Level": 400,
+							"ClassMaster": 2,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+						 
+				"MISTICO":{
+							"Level": 1,
+							"ClassMaster": 1,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"ARCANO":{
+							"Level": 256,
+							"ClassMaster": 1,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"PESADELO":{
+							"Level": 356,
+							"ClassMaster": 1,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"ARCH":{
+							"Level": 400,
+							"ClassMaster": 1,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 },
+				"SUPREMO":{
+							"Level": 1,
+							"ClassMaster": 3,
+							"Classe": 0,
+							"Str":0,
+							"Int":0,
+							"Dex":0,
+							"Con":0,
+							"LevelMontaria":0,
+							"ConjutoRefino":0,
+							"Coin": 0,
+							"Defesa":0
+							
+						 }
+	}
+
+}

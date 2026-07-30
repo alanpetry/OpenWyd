@@ -1,0 +1,2 @@
+[17/05/2021][14:09:11]  ItemID:412 ItemName:Poeira_de_Oriharucon ItemNum:2 
+[17/05/2021][14:09:11]  ItemID:413 ItemName:Poeira_de_Lactolerium ItemNum:1 

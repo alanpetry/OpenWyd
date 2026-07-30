@@ -1,0 +1,4 @@
+[07/08/2020][09:08:10]  ItemID:1219 ItemName:Botas_Embutidas(M) ItemNum:1 
+[07/08/2020][09:08:10]  ItemID:1351 ItemName:Luvas_de_Mytril(M) ItemNum:1 
+[07/08/2020][09:08:10]  ItemID:1354 ItemName:Botas_de_Mytril(M) ItemNum:1 
+[07/08/2020][09:08:10]  ItemID:1501 ItemName:Manoplas_Elementais(M) ItemNum:1 

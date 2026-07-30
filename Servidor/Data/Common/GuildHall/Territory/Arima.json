@@ -1,0 +1,22 @@
+{
+    "CONFIG": {
+        "Challenger": 0,
+        "CooReset": 356,
+        "Day": 0,
+        "DayWar": 6,
+        "GuildIndex": 0,
+        "InputX": 363,
+        "InputY": 1330,
+        "Key": "qwertyuiopasdfghjklzxcvbnm",
+        "Level": 0,
+        "MaxMob": 10000,
+        "Mob": 0,
+        "Name": "Arima",
+        "Start": 0,
+        "X1": 271,
+        "X2": 369,
+        "Y1": 1295,
+        "Y2": 1389,
+        "Year": 0
+    }
+}

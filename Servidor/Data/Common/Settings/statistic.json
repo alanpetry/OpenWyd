@@ -1,0 +1,20 @@
+{
+    "CLASS": {
+        "BM": 0,
+        "FM": 0,
+        "HT": 0,
+        "TK": 0
+    },
+    "GERAL": {
+        "TOTAL": 0
+    },
+    "PLAYER": {
+        "Arch": 0,
+        "Celestial": 0,
+        "Mortal": 0,
+        "ReinoBlue": 0,
+        "ReinoRed": 0,
+        "SemReino": 0,
+        "SubCelestial": 0
+    }
+}

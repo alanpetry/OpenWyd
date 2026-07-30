@@ -1,0 +1,35 @@
+{
+	"CONFIG": {
+		"Sapphire": 8,
+		"LastCapsule": 0
+	},
+	"SERVERLIST": {
+		"MaxServer": 10,
+		"MaxServerGroup": 10,
+		"MaxServerNumber": 11,
+		"IPLIST": [
+					{
+						"ServerGroup": 0,
+						"ServerNumber": 0,
+						"Address": "192.168.0.103"
+					},
+					{
+						"ServerGroup": 0,
+						"ServerNumber": 1,
+						"Address": "192.168.0.103"
+					},
+					{
+						"ServerGroup": 0,
+						"ServerNumber": 2,
+						"Address": "192.168.0.103"
+					}
+				]
+			
+			},
+	"ADMIN": {
+				
+				"0": "192.168.0.103"
+				
+			 }
+		}
+    
