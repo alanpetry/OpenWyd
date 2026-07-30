@@ -17,6 +17,9 @@
 #include "TMGround.h"
 #include "TMHuman.h"
 #include "ItemEffect.h"
+#if defined(OPENWYD_LAB)
+#include "OpenWydLab.h"
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include "CPSock.h"
@@ -711,6 +714,24 @@ extern "C" int wyd_field_critical_error()
 	return g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD ? g_pCurrentScene->m_bCriticalError : 0;
 }
 
+extern "C" int wyd_field_message_box_visible()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMessageBox ?
+		g_pCurrentScene->m_pMessageBox->IsVisible() :
+		0;
+}
+
+extern "C" unsigned int wyd_field_message_box_message()
+{
+	return g_pCurrentScene &&
+		g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD &&
+		g_pCurrentScene->m_pMessageBox ?
+		g_pCurrentScene->m_pMessageBox->GetMessageA() :
+		0;
+}
+
 extern "C" int wyd_field_map_x()
 {
 	return g_pObjectManager ? static_cast<int>(g_pObjectManager->m_stMobData.HomeTownX) >> 7 : -1;
@@ -1125,7 +1146,7 @@ ObjectManager::ObjectManager()
 {
 	m_pRoot = nullptr;
 	m_pCamera = nullptr;
-	m_pPreviousScene = nullptr;
+	m_bInsideCleanUp = 0;
 
 	g_pApp->SetObjectManager(this);
 
@@ -1182,6 +1203,14 @@ ObjectManager::ObjectManager()
 
 ObjectManager::~ObjectManager()
 {
+	// Retired scenes must be destroyed while the active scene is still valid:
+	// derived destructors intentionally inspect the published destination.
+	if (!m_PreviousScenes.empty())
+		CleanUp();
+
+	// m_pRoot owns every active or retired scene.  Scene destructors call
+	// CleanUp(), so suppress re-entry while the complete tree is going away.
+	m_bInsideCleanUp = 1;
 	SAFE_DELETE(m_pRoot);
 	g_pCurrentScene = nullptr;
 }
@@ -1732,6 +1761,15 @@ void ObjectManager::RenderControl()
 
 void ObjectManager::RenderObject()
 {
+#if defined(OPENWYD_LAB)
+	if (OpenWydLabIsIsolated() &&
+		g_pCurrentScene != nullptr &&
+		g_pCurrentScene->m_pHumanContainer != nullptr)
+	{
+		OpenWydLabRenderSubtree(g_pCurrentScene->m_pHumanContainer);
+		return;
+	}
+#endif
 	if (g_pCurrentScene != nullptr)
 	{
 		TreeNode* pCurrentNode = g_pCurrentScene;
@@ -1801,6 +1839,12 @@ void ObjectManager::RenderTargetObject(float fHeight)
 
 void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 {
+	const TM_GAME_STATE ePreviousState = m_eCurrentState;
+	TMScene* const pPreviousCurrentScene = g_pCurrentScene;
+	SCursor* const pPreviousCursor = g_pCursor;
+	const int bPreviousCleanUp = m_bCleanUp;
+	const size_t nPreviousSceneCount = m_PreviousScenes.size();
+
 #if defined(__EMSCRIPTEN__)
 	WasmStateLogValue("[obj:set-state] request=", static_cast<int>(ieNewState));
 
@@ -1812,22 +1856,21 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		return;
 	}
 
-	if (m_eCurrentState == ieNewState && g_pCurrentScene != nullptr)
+	if (m_eCurrentState == ieNewState &&
+		ieNewState != TM_GAME_STATE::TM_FIELD2_STATE &&
+		g_pCurrentScene != nullptr)
 		return;
 
 	m_eCurrentState = ieNewState;
 #else
-	if (ieNewState == TM_GAME_STATE::TM_FIELD2_STATE)
-	{
-		m_eCurrentState = TM_GAME_STATE::TM_NONE_STATE;
-	}
-	else
-	{
-		if (m_eCurrentState == ieNewState)
-			return;
+	// FIELD2 is an intentional reload of an already active Field, so it must
+	// bypass the normal same-state early return while still reaching the
+	// FIELD2 factory below.
+	if (m_eCurrentState == ieNewState &&
+		ieNewState != TM_GAME_STATE::TM_FIELD2_STATE)
+		return;
 
-		m_eCurrentState = ieNewState;
-	}
+	m_eCurrentState = ieNewState;
 #endif
 
 	if (m_pCamera)
@@ -1865,6 +1908,8 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #if defined(__EMSCRIPTEN__)
 		WasmStateLog("[obj:set-state] new real TMFieldScene for Field2");
 		pScene = WasmCreateFieldScene(this);
+#else
+		pScene = new TMFieldScene();
 #endif
 		break;
 	case TM_GAME_STATE::TM_SELECTCHAR_STATE:
@@ -1928,7 +1973,8 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 		WasmStateLog("[obj:set-state] SetCurrentScene");
 #endif
 		SetCurrentScene(pScene);
-		g_pCursor->SetStyle(ECursorStyle::TMC_CURSOR_HAND);
+		if (g_pCursor)
+			g_pCursor->SetStyle(ECursorStyle::TMC_CURSOR_HAND);
 
 #if defined(__EMSCRIPTEN__)
 		WasmStateLog("[obj:set-state] InitializeScene begin");
@@ -1938,7 +1984,31 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 #if defined(__EMSCRIPTEN__)
 			WasmStateLog("[obj:set-state] InitializeScene failed");
 #endif
+			// SetCurrentScene publishes the replacement so InitializeScene can
+			// use the same globals as a normal scene.  If initialization fails,
+			// restore the prior scene ownership, state and cursor instead of
+			// leaving global pointers aimed at the failed allocation.
+			const int bWasInsideCleanUp = m_bInsideCleanUp;
+			m_bInsideCleanUp = 1;
+			m_PreviousScenes.resize(nPreviousSceneCount);
+
+			if (pPreviousCurrentScene)
+				pPreviousCurrentScene->m_cDeleted = 0;
+
+			g_pCurrentScene = pScene;
+			pScene->m_cDeleted = 0;
 			SAFE_DELETE(pScene);
+
+			g_pCurrentScene = pPreviousCurrentScene;
+			g_pCursor =
+				pPreviousCurrentScene != nullptr &&
+				pPreviousCurrentScene->m_pControlContainer != nullptr ?
+				pPreviousCurrentScene->m_pControlContainer->m_pCursor :
+				pPreviousCursor;
+			m_eCurrentState = ePreviousState;
+			m_bCleanUp = bPreviousCleanUp;
+			m_bInsideCleanUp = bWasInsideCleanUp;
+
 			MessageBox(g_pApp->m_hWnd, "Initialize Scene Fail.", "Error", MB_SYSTEMMODAL);
 			PostMessage(g_pApp->m_hWnd, 16, 0, 0);
 			return;
@@ -1952,6 +2022,7 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 	}
 	else
 	{
+		m_eCurrentState = ePreviousState;
 		MessageBox(g_pApp->m_hWnd, "Create Scene Fail.", "Error", MB_SYSTEMMODAL);
 		PostMessage(g_pApp->m_hWnd, 16, 0, 0);
 	}
@@ -1959,20 +2030,21 @@ void ObjectManager::SetCurrentState(TM_GAME_STATE ieNewState)
 
 void ObjectManager::SetCurrentScene(TMScene* pScene)
 {
-	m_pPreviousScene = g_pCurrentScene;
+	TMScene* pPreviousScene = g_pCurrentScene;
 	g_pCurrentScene = pScene;
 
-	if (m_pPreviousScene != nullptr)
+	if (pPreviousScene != nullptr)
 	{
-		m_pPreviousScene->m_cDeleted = 1;
-		g_pCurrentScene->m_pMessagePanel->m_pText->SetText(m_pPreviousScene->m_pMessagePanel->m_pText->GetText(), 0);
-		g_pCurrentScene->m_pMessagePanel->m_pText2->SetText(m_pPreviousScene->m_pMessagePanel->m_pText2->GetText(), 0);
+		m_PreviousScenes.push_back(pPreviousScene);
+		pPreviousScene->m_cDeleted = 1;
+		g_pCurrentScene->m_pMessagePanel->m_pText->SetText(pPreviousScene->m_pMessagePanel->m_pText->GetText(), 0);
+		g_pCurrentScene->m_pMessagePanel->m_pText2->SetText(pPreviousScene->m_pMessagePanel->m_pText2->GetText(), 0);
 
-		g_pCurrentScene->m_pMessagePanel->m_bVisible = m_pPreviousScene->m_pMessagePanel->m_bVisible;
-		g_pCurrentScene->m_pMessagePanel->m_dwOldServerTime = m_pPreviousScene->m_pMessagePanel->m_dwOldServerTime;
-		g_pCurrentScene->m_pMessagePanel->m_dwLifeTime = m_pPreviousScene->m_pMessagePanel->m_dwLifeTime + 6000;
+		g_pCurrentScene->m_pMessagePanel->m_bVisible = pPreviousScene->m_pMessagePanel->m_bVisible;
+		g_pCurrentScene->m_pMessagePanel->m_dwOldServerTime = pPreviousScene->m_pMessagePanel->m_dwOldServerTime;
+		g_pCurrentScene->m_pMessagePanel->m_dwLifeTime = pPreviousScene->m_pMessagePanel->m_dwLifeTime + 6000;
 
-		DeleteObject(m_pPreviousScene);
+		DeleteObject(pPreviousScene);
 	}
 }
 
@@ -2117,6 +2189,11 @@ TMCamera* ObjectManager::GetCamera()
 
 void ObjectManager::CleanUp()
 {
+	if (m_bInsideCleanUp)
+		return;
+
+	m_bInsideCleanUp = 1;
+
 	TreeNode* pCurrentNode = g_pCurrentScene;
 	TreeNode* pRootNode = pCurrentNode;
 
@@ -2152,7 +2229,21 @@ void ObjectManager::CleanUp()
 			} while (pCurrentNode != pRootNode && pCurrentNode != nullptr);
 		} while (pCurrentNode != pRootNode && pCurrentNode != nullptr);
 
-		SAFE_DELETE(m_pPreviousScene);
-		m_bCleanUp = 0;
 	}
+
+	// More than one packet may replace a scene before NewApp reaches the
+	// end-of-frame cleanup.  Keep every retired scene until this point instead
+	// of overwriting a single pointer and leaking an earlier scene.
+	std::vector<TMScene*> previousScenes;
+	previousScenes.swap(m_PreviousScenes);
+	for (TMScene* pPreviousScene : previousScenes)
+		SAFE_DELETE(pPreviousScene);
+
+	g_pCursor =
+		g_pCurrentScene != nullptr &&
+		g_pCurrentScene->m_pControlContainer != nullptr ?
+		g_pCurrentScene->m_pControlContainer->m_pCursor :
+		nullptr;
+	m_bCleanUp = 0;
+	m_bInsideCleanUp = 0;
 }

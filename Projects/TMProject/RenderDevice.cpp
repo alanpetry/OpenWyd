@@ -11,6 +11,9 @@
 #include "TMCamera.h"
 #include "TMMesh.h"
 #include "Basedef.h"
+#if defined(OPENWYD_LAB)
+#include "OpenWydLab.h"
+#endif
 #include <io.h>
 #include <fcntl.h>
 #include <winnt.h>
@@ -399,7 +402,15 @@ int RenderDevice::Lock(int bClear)
 
 	if (bClear)
 	{
-		if (g_pCurrentScene != nullptr && g_pCurrentScene->m_pSky != nullptr)
+		if (
+#if defined(OPENWYD_LAB)
+			OpenWydLabIsIsolated())
+		{
+			m_dwActualClearColor = OpenWydLabClearColor();
+		}
+		else if (
+#endif
+			g_pCurrentScene != nullptr && g_pCurrentScene->m_pSky != nullptr)
 		{
 			if (RenderDevice::m_bDungeon != 0 && RenderDevice::m_bDungeon != 3 && RenderDevice::m_bDungeon != 4)
 				m_dwActualClearColor = 0;
@@ -461,6 +472,9 @@ int RenderDevice::Unlock(int bEnd)
 
 		m_bShowEffects = 1;
 		if (g_bDebugMsg == 1
+#if defined(OPENWYD_LAB)
+			&& !OpenWydLabIsEnabled()
+#endif
 #if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
 			&& !OpenWydCompareIsEnabled()
 #endif
@@ -476,6 +490,9 @@ int RenderDevice::Unlock(int bEnd)
 
 	if (bEnd == 1)
 	{
+#if defined(OPENWYD_LAB)
+		OpenWydLabOnBeforePresent(m_pd3dDevice);
+#endif
 #if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
 		OpenWydCompareOnBeforePresent(m_pd3dDevice);
 #endif
@@ -487,6 +504,9 @@ int RenderDevice::Unlock(int bEnd)
 			m_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
 #if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
 		OpenWydCompareOnAfterPresent(presentResult);
+#endif
+#if defined(OPENWYD_LAB)
+		OpenWydLabOnAfterPresent(presentResult);
 #endif
 		if (presentResult == D3DERR_DEVICELOST)
 			m_bDeviceLost = 1;

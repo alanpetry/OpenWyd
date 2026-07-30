@@ -1,7 +1,8 @@
 #include "pch.h"
 
 #if defined(__EMSCRIPTEN__) || \
-	(defined(OPENWYD_COMPARE) && defined(_DEBUG))
+	(defined(OPENWYD_COMPARE) && defined(_DEBUG)) || \
+	defined(OPENWYD_LAB)
 
 // pch.h redirects client rand/srand calls. This implementation needs the real
 // platform CRT as the exact inactive-mode fallback.

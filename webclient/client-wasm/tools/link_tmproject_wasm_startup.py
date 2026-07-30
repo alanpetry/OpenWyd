@@ -15,6 +15,8 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Sequence
@@ -30,7 +32,16 @@ from tmproject_wasm_object_contract import (
     make_stamp,
     parse_vcxproj_sources,
     read_stamp,
+    resolve_emxx,
     stamp_matches,
+)
+from build_gdi_font_atlas import (
+    build_gdi_font_atlas,
+    validate_gdi_font_atlas_manifest,
+)
+from build_tmproject_wasm_incremental import (
+    build_incremental,
+    compile_source_incremental,
 )
 
 UNDEF_RE = re.compile(r"undefined symbol: (.+)$")
@@ -42,6 +53,7 @@ STARTUP_OUTPUT_NAMES = (
 )
 STARTUP_LINK_CONTRACT_SCHEMA = "openwyd.tmproject-wasm-startup-link-contract"
 STARTUP_LINK_CONTRACT_VERSION = 1
+_PRESERVE_STARTUP_OUTPUTS_ON_FAILURE = False
 
 
 def compile_source(repo_root: Path, src: Path, out_obj: Path, optimization_flag: str) -> None:
@@ -55,6 +67,20 @@ def compile_source(repo_root: Path, src: Path, out_obj: Path, optimization_flag:
     ]
 
     subprocess.run(cmd, cwd=repo_root, check=True)
+
+
+def build_gdi_font_atlas_preload(repo_root: Path) -> list[str]:
+    output_dir = (
+        repo_root
+        / "webclient/client-wasm/build/generated/gdi-font"
+    )
+    atlas, manifest = build_gdi_font_atlas(repo_root, output_dir)
+    atlas_source = atlas.relative_to(repo_root).as_posix()
+    manifest_source = manifest.relative_to(repo_root).as_posix()
+    return [
+        f"{atlas_source}@/OpenWydGdiFontAtlas.bin",
+        f"{manifest_source}@/OpenWydGdiFontAtlas.json",
+    ]
 
 
 def all_tmproject_objects(obj_root: Path) -> list[Path]:
@@ -157,6 +183,51 @@ def ensure_tmproject_object_contract(
     return expected, True
 
 
+def ensure_tmproject_objects_incremental(
+    repo_root: Path,
+    obj_root: Path,
+    optimization_flag: str,
+    *,
+    jobs: int,
+    force: bool,
+) -> tuple[list[Path], bool]:
+    """Update only stale translation units and return the exact project set."""
+
+    vcxproj = repo_root / "Projects/TMProject/TMProject.vcxproj"
+    sources = parse_vcxproj_sources(vcxproj)
+    report = build_incremental(
+        repo_root=repo_root,
+        vcxproj=vcxproj,
+        obj_root=obj_root,
+        report_json=(
+            repo_root
+            / "webclient/client-wasm/build/reports/"
+            "tmproject-wasm-incremental.json"
+        ),
+        jobs=jobs,
+        optimization_flag=optimization_flag,
+        force=force,
+        use_pch=True,
+    )
+    summary = report["summary"]
+    if summary["failed"]:
+        raise RuntimeError(
+            f"incremental object build failed for {summary['failed']} TUs"
+        )
+    objects = expected_objects(repo_root, obj_root, sources)
+    missing = [
+        path.relative_to(repo_root).as_posix()
+        for path in objects
+        if not path.is_file()
+    ]
+    if missing:
+        raise RuntimeError(
+            "incremental build did not produce expected objects: "
+            + ", ".join(missing)
+        )
+    return objects, bool(summary["compiled"])
+
+
 def parse_undefined(stderr_text: str) -> Counter[str]:
     counter: Counter[str] = Counter()
     for line in stderr_text.splitlines():
@@ -177,6 +248,116 @@ def invalidate_startup_outputs(link_dir: Path) -> None:
 
     for output in startup_output_paths(link_dir):
         output.unlink(missing_ok=True)
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+        text=True,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(
+            descriptor,
+            "w",
+            encoding="utf-8",
+            newline="\n",
+        ) as stream:
+            stream.write(text)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def publish_incremental_code(
+    staging_dir: Path,
+    link_dir: Path,
+    build_name: str,
+    link_signature: dict[str, Any],
+) -> tuple[Path, Path]:
+    """Publish a complete versioned JS/WASM pair, then switch one bootstrap."""
+
+    staged_js = staging_dir / f"{build_name}.js"
+    staged_wasm = staging_dir / f"{build_name}.wasm"
+    published_js = link_dir / staged_js.name
+    published_wasm = link_dir / staged_wasm.name
+    os.replace(staged_wasm, published_wasm)
+    os.replace(staged_js, published_js)
+    bootstrap = (
+        "/* Generated atomically by link_tmproject_wasm_startup.py. */\n"
+        "document.write("
+        f"'<script src=\"./{published_js.name}\"><\\/script>'"
+        ");\n"
+    )
+    _atomic_write_text(link_dir / "tmproject_startup.js", bootstrap)
+    _atomic_write_text(
+        link_dir / "tmproject_startup.state.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "javascript": published_js.name,
+                "wasm": published_wasm.name,
+                "link_signature": link_signature,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+    return published_js, published_wasm
+
+
+def incremental_link_signature(
+    link_cmd: Sequence[str],
+    objects: Sequence[Path],
+) -> dict[str, Any]:
+    normalized_command = list(link_cmd)
+    try:
+        output_index = normalized_command.index("-o") + 1
+        normalized_command[output_index] = "<VERSIONED_OUTPUT>"
+    except (ValueError, IndexError):
+        pass
+    inputs = []
+    for path in (*objects, Path(__file__)):
+        stat = path.stat()
+        inputs.append(
+            {
+                "path": str(path.resolve()),
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "command": normalized_command,
+        "inputs": inputs,
+    }
+
+
+def reusable_incremental_code(
+    link_dir: Path,
+    signature: dict[str, Any],
+) -> bool:
+    try:
+        state = json.loads(
+            (link_dir / "tmproject_startup.state.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return False
+    javascript = state.get("javascript")
+    wasm = state.get("wasm")
+    return (
+        state.get("link_signature") == signature
+        and isinstance(javascript, str)
+        and isinstance(wasm, str)
+        and (link_dir / javascript).is_file()
+        and (link_dir / wasm).is_file()
+        and (link_dir / "tmproject_startup.js").is_file()
+    )
 
 
 def _sha256_file(path: Path) -> str:
@@ -242,6 +423,7 @@ def capture_startup_link_contract(
     preload_entries: Sequence[str],
     link_cmd: Sequence[str],
     response_files: Sequence[Path],
+    generated_preload_entries: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Capture every input that can affect the public startup artifact.
 
@@ -285,7 +467,37 @@ def capture_startup_link_contract(
             "link contract capture"
         )
 
-    current_preload_entries = read_preload_entries(repo_root, preload_manifest)
+    current_manifest_preload_entries = read_preload_entries(
+        repo_root,
+        preload_manifest,
+    )
+    if generated_preload_entries:
+        generated_manifests = [
+            _preload_source_path(repo_root, entry)
+            for entry in generated_preload_entries
+            if entry.partition("@")[2].strip()
+            == "/OpenWydGdiFontAtlas.json"
+        ]
+        generated_atlases = [
+            _preload_source_path(repo_root, entry)
+            for entry in generated_preload_entries
+            if entry.partition("@")[2].strip()
+            == "/OpenWydGdiFontAtlas.bin"
+        ]
+        if len(generated_manifests) != 1 or len(generated_atlases) != 1:
+            raise RuntimeError(
+                "generated GDI font preload must contain exactly one certified "
+                "manifest and binary"
+            )
+        validate_gdi_font_atlas_manifest(
+            repo_root,
+            generated_manifests[0],
+            atlas=generated_atlases[0],
+        )
+    current_preload_entries = [
+        *current_manifest_preload_entries,
+        *generated_preload_entries,
+    ]
     expected_preload_entries = list(preload_entries)
     if current_preload_entries != expected_preload_entries:
         raise RuntimeError(
@@ -313,6 +525,20 @@ def capture_startup_link_contract(
         ),
     ):
         _add_contract_file(records, repo_root, path, role)
+    if generated_preload_entries:
+        for path, role in (
+            (
+                repo_root
+                / "webclient/client-wasm/tools/generate_gdi_font_atlas.cpp",
+                "gdi-font-atlas-generator-source",
+            ),
+            (
+                repo_root
+                / "webclient/client-wasm/tools/build_gdi_font_atlas.py",
+                "gdi-font-atlas-build-script",
+            ),
+        ):
+            _add_contract_file(records, repo_root, path, role)
 
     manifest_record: dict[str, Any]
     if preload_manifest.is_file():
@@ -387,6 +613,7 @@ def capture_startup_link_contract(
         "preload": {
             "manifest": manifest_record,
             "entries": current_preload_entries,
+            "generated_entries": list(generated_preload_entries),
         },
         "files": ordered_records,
     }
@@ -563,17 +790,18 @@ def fail_startup_build(
     undef: Counter[str] | None = None,
     input_contract: dict[str, Any] | None = None,
 ) -> int:
-    """Invalidate exact public outputs and publish a non-stale failure report."""
+    """Publish a failure report, preserving the last good incremental build."""
 
     error_text = str(error)
-    try:
-        invalidate_startup_outputs(link_dir)
-    except OSError as invalidation_error:
-        error_text = (
-            f"{error_text}; could not invalidate startup outputs: "
-            f"{invalidation_error}"
-        )
-        returncode = 2
+    if not _PRESERVE_STARTUP_OUTPUTS_ON_FAILURE:
+        try:
+            invalidate_startup_outputs(link_dir)
+        except OSError as invalidation_error:
+            error_text = (
+                f"{error_text}; could not invalidate startup outputs: "
+                f"{invalidation_error}"
+            )
+            returncode = 2
     write_reports(
         report_json,
         report_md,
@@ -590,6 +818,8 @@ def fail_startup_build(
 
 
 def main() -> int:
+    global _PRESERVE_STARTUP_OUTPUTS_ON_FAILURE
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--obj-root", type=Path, default=Path("webclient/client-wasm/build/obj"))
@@ -601,7 +831,34 @@ def main() -> int:
         type=Path,
         default=Path("webclient/client-wasm/config/startup-preload-manifest.txt"),
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help=(
+            "Use per-TU incremental objects, external assets, cached compat "
+            "objects, and atomic publication."
+        ),
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=max(1, min(8, (os.cpu_count() or 4) // 2)),
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force all objects to rebuild (still leaves assets external).",
+    )
+    parser.add_argument(
+        "--link-opt-level",
+        choices=sorted(VALID_OPT_LEVELS),
+        help=(
+            "Override only the final link optimization. Dev defaults to O0 "
+            "while translation units remain at OPENWYD_WASM_OPT_LEVEL."
+        ),
+    )
     args = parser.parse_args()
+    _PRESERVE_STARTUP_OUTPUTS_ON_FAILURE = args.dev
 
     repo_root = args.repo_root.resolve()
     opt_level = os.environ.get("OPENWYD_WASM_OPT_LEVEL", "O2")
@@ -611,6 +868,13 @@ def main() -> int:
             + ", ".join(sorted(VALID_OPT_LEVELS))
         )
     optimization_flag = f"-{opt_level}"
+    link_optimization_flag = (
+        f"-{args.link_opt_level}"
+        if args.link_opt_level
+        else "-O0"
+        if args.dev
+        else optimization_flag
+    )
     obj_root = (repo_root / args.obj_root).resolve()
     link_dir = (repo_root / args.link_dir).resolve()
     report_json = (repo_root / args.report_json).resolve()
@@ -618,25 +882,36 @@ def main() -> int:
     preload_manifest = (repo_root / args.preload_manifest).resolve()
 
     link_dir.mkdir(parents=True, exist_ok=True)
-    out_js = link_dir / "tmproject_startup.js"
+    staging_context: tempfile.TemporaryDirectory[str] | None = None
+    build_name = "tmproject_startup"
+    build_output_dir = link_dir
+    if args.dev:
+        build_name = f"tmproject_startup.{time.time_ns()}"
+        staging_context = tempfile.TemporaryDirectory(
+            prefix=".openwyd-code-",
+            dir=link_dir,
+        )
+        build_output_dir = Path(staging_context.name)
+    out_js = build_output_dir / f"{build_name}.js"
     stdout_path = link_dir / "startup-strict-all.stdout.txt"
     stderr_path = link_dir / "startup-strict-all.stderr.txt"
 
-    try:
-        invalidate_startup_outputs(link_dir)
-    except OSError as error:
-        write_reports(
-            report_json,
-            report_md,
-            False,
-            2,
-            [],
-            Counter(),
-            phase="invalidate-before-build",
-            error=str(error),
-        )
-        print(f"[startup-link] could not invalidate old outputs: {error}")
-        return 2
+    if not args.dev:
+        try:
+            invalidate_startup_outputs(link_dir)
+        except OSError as error:
+            write_reports(
+                report_json,
+                report_md,
+                False,
+                2,
+                [],
+                Counter(),
+                phase="invalidate-before-build",
+                error=str(error),
+            )
+            print(f"[startup-link] could not invalidate old outputs: {error}")
+            return 2
     write_reports(
         report_json,
         report_md,
@@ -645,7 +920,11 @@ def main() -> int:
         [],
         Counter(),
         phase="build-started",
-        error="startup outputs invalidated; build has not completed",
+        error=(
+            "incremental build in progress; last good artifact preserved"
+            if args.dev
+            else "startup outputs invalidated; build has not completed"
+        ),
     )
 
     entry_src = repo_root / "webclient/client-wasm/compat/src/wyd_client_entry.cpp"
@@ -654,11 +933,20 @@ def main() -> int:
     stubs_obj = obj_root / "webclient/client-wasm/compat/src/win32_emscripten_stubs.o"
 
     try:
-        tm_objs, rebuilt_tmproject = ensure_tmproject_object_contract(
-            repo_root,
-            obj_root,
-            optimization_flag,
-        )
+        if args.dev:
+            tm_objs, rebuilt_tmproject = ensure_tmproject_objects_incremental(
+                repo_root,
+                obj_root,
+                optimization_flag,
+                jobs=max(1, args.jobs),
+                force=args.rebuild,
+            )
+        else:
+            tm_objs, rebuilt_tmproject = ensure_tmproject_object_contract(
+                repo_root,
+                obj_root,
+                optimization_flag,
+            )
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         return fail_startup_build(
             link_dir,
@@ -696,7 +984,30 @@ def main() -> int:
         f"({optimization_flag})"
     )
     try:
-        compile_source(repo_root, entry_src, entry_obj, optimization_flag)
+        if args.dev:
+            result = compile_source_incremental(
+                source=entry_src,
+                repo_root=repo_root,
+                object_path=entry_obj,
+                logs_dir=(
+                    repo_root
+                    / "webclient/client-wasm/build/reports/"
+                    "logs-compat-incremental"
+                ),
+                optimization_flag=optimization_flag,
+                force=args.rebuild,
+            )
+            print(
+                f"[startup-link] entry={result.action} "
+                f"reason={result.reason} elapsed_ms={result.elapsed_ms}"
+            )
+            if not result.ok:
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    [str(entry_src)],
+                )
+        else:
+            compile_source(repo_root, entry_src, entry_obj, optimization_flag)
     except (OSError, subprocess.CalledProcessError) as error:
         return fail_startup_build(
             link_dir,
@@ -724,7 +1035,30 @@ def main() -> int:
         f"({optimization_flag})"
     )
     try:
-        compile_source(repo_root, stubs_src, stubs_obj, optimization_flag)
+        if args.dev:
+            result = compile_source_incremental(
+                source=stubs_src,
+                repo_root=repo_root,
+                object_path=stubs_obj,
+                logs_dir=(
+                    repo_root
+                    / "webclient/client-wasm/build/reports/"
+                    "logs-compat-incremental"
+                ),
+                optimization_flag=optimization_flag,
+                force=args.rebuild,
+            )
+            print(
+                f"[startup-link] stubs={result.action} "
+                f"reason={result.reason} elapsed_ms={result.elapsed_ms}"
+            )
+            if not result.ok:
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    [str(stubs_src)],
+                )
+        else:
+            compile_source(repo_root, stubs_src, stubs_obj, optimization_flag)
     except (OSError, subprocess.CalledProcessError) as error:
         return fail_startup_build(
             link_dir,
@@ -747,6 +1081,33 @@ def main() -> int:
             ),
         )
 
+    if args.dev:
+        generated_preload_entries = []
+    else:
+        try:
+            generated_preload_entries = build_gdi_font_atlas_preload(repo_root)
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+            return fail_startup_build(
+                link_dir,
+                report_json,
+                report_md,
+                phase="generate-gdi-font-atlas",
+                error=error,
+                returncode=(
+                    error.returncode
+                    if isinstance(error, subprocess.CalledProcessError)
+                    else 2
+                ),
+                cmd=(
+                    list(error.cmd)
+                    if isinstance(error, subprocess.CalledProcessError)
+                    and not isinstance(error.cmd, str)
+                    else [str(error.cmd)]
+                    if isinstance(error, subprocess.CalledProcessError)
+                    else []
+                ),
+            )
+
     all_objs = [*tm_objs, entry_obj, stubs_obj]
     rsp_path = link_dir / "startup-objects.rsp"
     write_response_file(
@@ -754,11 +1115,18 @@ def main() -> int:
         [p.relative_to(repo_root).as_posix() for p in all_objs],
     )
 
-    preload_entries = read_preload_entries(repo_root, preload_manifest)
+    preload_entries = (
+        []
+        if args.dev
+        else [
+            *read_preload_entries(repo_root, preload_manifest),
+            *generated_preload_entries,
+        ]
+    )
 
     link_cmd = [
-        "em++",
-        optimization_flag,
+        resolve_emxx(),
+        link_optimization_flag,
         f"@{rsp_path.relative_to(repo_root)}",
         "--no-entry",
         "--profiling-funcs",
@@ -779,6 +1147,77 @@ def main() -> int:
     ]
 
     extra_exports = [
+        "_malloc",
+        "_free",
+        "_wyd_lab_load_scenario",
+        "_wyd_lab_show",
+        "_wyd_lab_is_enabled",
+        "_wyd_lab_is_pending",
+        "_wyd_lab_last_result",
+        "_wyd_lab_current_frame",
+        "_wyd_lab_clock_ms",
+        "_wyd_lab_packet_hash",
+        "_wyd_lab_scenario_hash",
+        "_wyd_lab_scene_type",
+        "_wyd_lab_screen_width",
+        "_wyd_lab_screen_height",
+        "_wyd_lab_player_x",
+        "_wyd_lab_player_y",
+        "_wyd_lab_player_height",
+        "_wyd_lab_player_visible",
+        "_wyd_lab_player_hidden",
+        "_wyd_lab_player_has_skin",
+        "_wyd_lab_player_class",
+        "_wyd_lab_player_motion",
+        "_wyd_lab_player_skin_type",
+        "_wyd_lab_player_speed",
+        "_wyd_lab_player_progress",
+        "_wyd_lab_player_moving",
+        "_wyd_lab_player_last_route",
+        "_wyd_lab_player_max_route",
+        "_wyd_lab_player_move_started_ms",
+        "_wyd_lab_player_animation_started_ms",
+        "_wyd_lab_player_animation_index",
+        "_wyd_lab_player_animation_last_index",
+        "_wyd_lab_player_skin_fps",
+        "_wyd_lab_player_skin_offset",
+        "_wyd_lab_player_skin_start_offset",
+        "_wyd_lab_player_skin_tick_last",
+        "_wyd_lab_player_skin_animation_base",
+        "_wyd_lab_render_fps",
+        "_wyd_lab_camera_x",
+        "_wyd_lab_camera_y",
+        "_wyd_lab_camera_z",
+        "_wyd_lab_camera_horizon",
+        "_wyd_lab_camera_vertical",
+        "_wyd_lab_camera_length",
+        "_wyd_lab_camera_height",
+        "_wyd_lab_status",
+        "_wyd_socket_compare_ingress_protocol_version",
+        "_wyd_socket_compare_ingress_status",
+        "_wyd_socket_compare_ingress_status_generation",
+        "_wyd_socket_compare_ingress_status_available",
+        "_wyd_socket_compare_ingress_status_capacity",
+        "_wyd_socket_compare_ingress_status_armed",
+        "_wyd_socket_compare_ingress_status_active",
+        "_wyd_socket_compare_ingress_status_frame_low",
+        "_wyd_socket_compare_ingress_status_frame_high",
+        "_wyd_socket_compare_ingress_status_arm_generation",
+        "_wyd_socket_compare_ingress_status_available_at_arm",
+        "_wyd_socket_compare_ingress_status_capacity_at_arm",
+        "_wyd_socket_compare_ingress_status_quota",
+        "_wyd_socket_compare_ingress_status_consumed",
+        "_wyd_socket_compare_ingress_status_remaining",
+        "_wyd_socket_compare_ingress_arm",
+        "_wyd_socket_compare_ingress_begin",
+        "_wyd_socket_compare_ingress_end",
+        "_wyd_gdi_font_atlas_loaded",
+        "_wyd_gdi_font_atlas_textout_calls",
+        "_wyd_gdi_font_atlas_fallback_calls",
+        "_wyd_gdi_font_atlas_last_width",
+        "_wyd_gdi_font_atlas_last_alpha_hash_lo",
+        "_wyd_gdi_font_atlas_last_alpha_hash_hi",
+        "_wyd_gdi_font_atlas_last_alpha_histogram",
         "_wyd_compare_latch_3d_state",
         "_wyd_compare_3d_state_sequence",
         "_wyd_compare_3d_state_valid",
@@ -1024,6 +1463,8 @@ def main() -> int:
         "_wyd_field_has_ground",
         "_wyd_field_has_my_human",
         "_wyd_field_critical_error",
+        "_wyd_field_message_box_visible",
+        "_wyd_field_message_box_message",
         "_wyd_field_map_x",
         "_wyd_field_map_y",
         "_wyd_field_myhuman_x",
@@ -1207,31 +1648,61 @@ def main() -> int:
         link_cmd[0],
         f"@{link_rsp_path.relative_to(repo_root)}",
     ]
+    dev_link_signature: dict[str, Any] | None = None
+    if args.dev:
+        dev_link_signature = incremental_link_signature(
+            link_cmd,
+            all_objs,
+        )
+        if (
+            not args.rebuild
+            and reusable_incremental_code(
+                link_dir,
+                dev_link_signature,
+            )
+        ):
+            if staging_context is not None:
+                staging_context.cleanup()
+            write_reports(
+                report_json,
+                report_md,
+                True,
+                0,
+                link_cmd,
+                Counter(),
+                phase="up-to-date",
+            )
+            print("[startup-link] code=up-to-date; link skipped")
+            print("[startup-link] undefined_total=0 unique=0")
+            return 0
 
-    try:
-        link_contract_before = capture_startup_link_contract(
-            repo_root=repo_root,
-            obj_root=obj_root,
-            optimization_flag=optimization_flag,
-            tm_objects=tm_objs,
-            entry_src=entry_src,
-            stubs_src=stubs_src,
-            entry_obj=entry_obj,
-            stubs_obj=stubs_obj,
-            preload_manifest=preload_manifest,
-            preload_entries=preload_entries,
-            link_cmd=link_cmd,
-            response_files=(rsp_path, link_rsp_path),
-        )
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        return fail_startup_build(
-            link_dir,
-            report_json,
-            report_md,
-            phase="link-input-contract-before-link",
-            error=error,
-            cmd=link_cmd,
-        )
+    link_contract_before: dict[str, Any] | None = None
+    if not args.dev:
+        try:
+            link_contract_before = capture_startup_link_contract(
+                repo_root=repo_root,
+                obj_root=obj_root,
+                optimization_flag=optimization_flag,
+                tm_objects=tm_objs,
+                entry_src=entry_src,
+                stubs_src=stubs_src,
+                entry_obj=entry_obj,
+                stubs_obj=stubs_obj,
+                preload_manifest=preload_manifest,
+                preload_entries=preload_entries,
+                link_cmd=link_cmd,
+                response_files=(rsp_path, link_rsp_path),
+                generated_preload_entries=generated_preload_entries,
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            return fail_startup_build(
+                link_dir,
+                report_json,
+                report_md,
+                phase="link-input-contract-before-link",
+                error=error,
+                cmd=link_cmd,
+            )
 
     print("[startup-link] linking strict artifact")
     try:
@@ -1271,7 +1742,7 @@ def main() -> int:
 
     missing_outputs = [
         output.name
-        for output in (out_js, link_dir / "tmproject_startup.wasm")
+        for output in (out_js, out_js.with_suffix(".wasm"))
         if not output.is_file()
     ]
     if missing_outputs:
@@ -1288,61 +1759,94 @@ def main() -> int:
             undef=undef,
         )
 
-    try:
-        link_contract_after = capture_startup_link_contract(
-            repo_root=repo_root,
-            obj_root=obj_root,
-            optimization_flag=optimization_flag,
-            tm_objects=tm_objs,
-            entry_src=entry_src,
-            stubs_src=stubs_src,
-            entry_obj=entry_obj,
-            stubs_obj=stubs_obj,
-            preload_manifest=preload_manifest,
-            preload_entries=preload_entries,
-            link_cmd=link_cmd,
-            response_files=(rsp_path, link_rsp_path),
+    input_contract_report: dict[str, Any] | None = None
+    if args.dev:
+        assert dev_link_signature is not None
+        try:
+            published_js, published_wasm = publish_incremental_code(
+                build_output_dir,
+                link_dir,
+                build_name,
+                dev_link_signature,
+            )
+        except OSError as error:
+            return fail_startup_build(
+                link_dir,
+                report_json,
+                report_md,
+                phase="publish-incremental-code",
+                error=error,
+                cmd=link_cmd,
+                undef=undef,
+            )
+        if staging_context is not None:
+            staging_context.cleanup()
+        print(
+            "[startup-link] published="
+            f"{published_js.name},{published_wasm.name}"
         )
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        return fail_startup_build(
-            link_dir,
-            report_json,
-            report_md,
-            phase="link-input-contract-changed",
-            error=f"post-link input revalidation failed: {error}",
-            cmd=link_cmd,
-            undef=undef,
-            input_contract={
-                "schema": STARTUP_LINK_CONTRACT_SCHEMA,
-                "schema_version": STARTUP_LINK_CONTRACT_VERSION,
-                "before_fingerprint": link_contract_before["fingerprint"],
-                "after_fingerprint": None,
-                "unchanged": False,
-            },
-        )
+    else:
+        assert link_contract_before is not None
+        try:
+            link_contract_after = capture_startup_link_contract(
+                repo_root=repo_root,
+                obj_root=obj_root,
+                optimization_flag=optimization_flag,
+                tm_objects=tm_objs,
+                entry_src=entry_src,
+                stubs_src=stubs_src,
+                entry_obj=entry_obj,
+                stubs_obj=stubs_obj,
+                preload_manifest=preload_manifest,
+                preload_entries=preload_entries,
+                link_cmd=link_cmd,
+                response_files=(rsp_path, link_rsp_path),
+                generated_preload_entries=generated_preload_entries,
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            return fail_startup_build(
+                link_dir,
+                report_json,
+                report_md,
+                phase="link-input-contract-changed",
+                error=f"post-link input revalidation failed: {error}",
+                cmd=link_cmd,
+                undef=undef,
+                input_contract={
+                    "schema": STARTUP_LINK_CONTRACT_SCHEMA,
+                    "schema_version": STARTUP_LINK_CONTRACT_VERSION,
+                    "before_fingerprint": (
+                        link_contract_before["fingerprint"]
+                    ),
+                    "after_fingerprint": None,
+                    "unchanged": False,
+                },
+            )
 
-    link_contract_unchanged = link_contract_after == link_contract_before
-    input_contract_report = {
-        "schema": STARTUP_LINK_CONTRACT_SCHEMA,
-        "schema_version": STARTUP_LINK_CONTRACT_VERSION,
-        "before_fingerprint": link_contract_before["fingerprint"],
-        "after_fingerprint": link_contract_after["fingerprint"],
-        "unchanged": link_contract_unchanged,
-    }
-    if not link_contract_unchanged:
-        return fail_startup_build(
-            link_dir,
-            report_json,
-            report_md,
-            phase="link-input-contract-changed",
-            error=(
-                "startup link source, toolchain, object, preload, or argument "
-                "contract changed while em++ was linking"
-            ),
-            cmd=link_cmd,
-            undef=undef,
-            input_contract=input_contract_report,
+        link_contract_unchanged = (
+            link_contract_after == link_contract_before
         )
+        input_contract_report = {
+            "schema": STARTUP_LINK_CONTRACT_SCHEMA,
+            "schema_version": STARTUP_LINK_CONTRACT_VERSION,
+            "before_fingerprint": link_contract_before["fingerprint"],
+            "after_fingerprint": link_contract_after["fingerprint"],
+            "unchanged": link_contract_unchanged,
+        }
+        if not link_contract_unchanged:
+            return fail_startup_build(
+                link_dir,
+                report_json,
+                report_md,
+                phase="link-input-contract-changed",
+                error=(
+                    "startup link source, toolchain, object, preload, or "
+                    "argument contract changed while em++ was linking"
+                ),
+                cmd=link_cmd,
+                undef=undef,
+                input_contract=input_contract_report,
+            )
 
     write_reports(
         report_json,

@@ -39,10 +39,17 @@ using namespace std::chrono_literals;
 #endif
 
 #if defined(__EMSCRIPTEN__) || \
-	(defined(OPENWYD_COMPARE) && defined(_DEBUG))
+	(defined(OPENWYD_COMPARE) && defined(_DEBUG)) || \
+	defined(OPENWYD_LAB)
 #include "OpenWydCompareRandom.h"
 #define rand OpenWydCompareRandomRand
 #define srand OpenWydCompareRandomSrand
+#endif
+
+#if defined(OPENWYD_LAB) && !defined(__EMSCRIPTEN__)
+#include "OpenWydLab.h"
+#define timeGetTime OpenWydLabTimeGetTime
+#define GetTickCount OpenWydLabGetTickCount
 #endif
 
 #endif //PCH_H

@@ -9,8 +9,8 @@ Projects/TMProject/TMProject.vcxproj.
 
 All outputs, intermediate files, logs, and build metadata are written below
 artifacts/native-build by default. The script refuses any output path inside
-v769ClientRelease. Every successful output is source-certified, so every
-invocation uses the MSBuild Rebuild target and recompiles all project objects.
+v769ClientRelease. Normal development builds use MSBuild's incremental Build
+target and parallel C++ compilation.
 
 .PARAMETER Configuration
 Build configuration. Debug is the default.
@@ -19,10 +19,18 @@ Build configuration. Debug is the default.
 Defines OPENWYD_COMPARE=1 for every C/C++ compilation. This flag is accepted
 only for Debug builds and uses a separate output directory.
 
+.PARAMETER OpenWydLab
+Defines OPENWYD_LAB=1 for the direct deterministic Lab runtime. This flag is
+Debug-only and uses its own incremental output directory.
+
 .PARAMETER Clean
-Compatibility switch retained for existing callers. Certified builds always
-run the MSBuild Rebuild target, with or without this switch. No directory is
-deleted directly by this script.
+Runs the MSBuild Rebuild target. No directory is deleted directly by this
+script.
+
+.PARAMETER VerifySourceContract
+Runs the expensive full source/toolchain hashing contract before and after the
+build. This is intended for milestone verification, implies Rebuild, and is not
+part of the normal edit-build-test loop.
 
 .PARAMETER RepoRoot
 OpenWyd repository root. Defaults to the parent of this script's directory.
@@ -35,7 +43,11 @@ Explicit artifact directory. Defaults to
 artifacts/native-build/TMProject/<variant>.
 
 .PARAMETER Verbosity
-Console verbosity passed to MSBuild. The file log is always diagnostic.
+Console verbosity passed to MSBuild.
+
+.PARAMETER DiagnosticLog
+Writes the large diagnostic MSBuild file log. Disabled by default because its
+multi-megabyte synchronous output materially slows the edit-build-test loop.
 
 .PARAMETER Help
 Prints command-line usage without probing or changing the toolchain.
@@ -62,7 +74,11 @@ param(
 
     [switch]$OpenWydCompare,
 
+    [switch]$OpenWydLab,
+
     [switch]$Clean,
+
+    [switch]$VerifySourceContract,
 
     [string]$RepoRoot = "",
 
@@ -72,6 +88,8 @@ param(
 
     [ValidateSet("quiet", "minimal", "normal", "detailed", "diagnostic")]
     [string]$Verbosity = "minimal",
+
+    [switch]$DiagnosticLog,
 
     [Alias("h")]
     [switch]$Help
@@ -88,23 +106,26 @@ Usage:
 Options:
   -Configuration Debug|Release   Build configuration (default: Debug).
   -OpenWydCompare                Define OPENWYD_COMPARE=1; Debug only.
-  -Clean                         Compatibility switch; all builds already Rebuild.
+  -OpenWydLab                    Define OPENWYD_LAB=1; Debug only.
+  -Clean                         Run MSBuild Rebuild instead of incremental Build.
+  -VerifySourceContract          Full source/toolchain verification; implies Rebuild.
   -RepoRoot <path>               Override the detected OpenWyd repository root.
   -ToolsRoot <path>              Override the workspace-local .tools directory.
   -OutputRoot <path>             Override artifacts/native-build output.
   -Verbosity <level>             quiet|minimal|normal|detailed|diagnostic.
+  -DiagnosticLog                 Write the slow diagnostic MSBuild file log.
   -Help                          Print this message.
 
 Outputs:
-  WYD.exe, PDB/ILK, console.log, msbuild-diagnostic.log,
-  msbuild-invocation.txt, windows-source-contract.json, and
-  build-metadata.json.
+  WYD.exe, PDB/ILK, console.log, msbuild-invocation.txt, and
+  build-metadata.json. -DiagnosticLog adds msbuild-diagnostic.log. A verified
+  build also writes windows-source-contract.json.
 
 Safety:
   OutputRoot, OutDir, and IntDir are rejected if they resolve inside
   v769ClientRelease.
-  Source certification always uses MSBuild Rebuild; incremental objects are
-  never accepted as the basis of a certified executable.
+  Normal development builds are incremental. Use -Clean for a clean rebuild or
+  -VerifySourceContract for the slower milestone certification path.
 "@
     return
 }
@@ -221,6 +242,12 @@ function Get-PeMachine {
 if ($OpenWydCompare -and $Configuration -ne "Debug") {
     throw "OPENWYD_COMPARE is debug-only. Use -Configuration Debug."
 }
+if ($OpenWydLab -and $Configuration -ne "Debug") {
+    throw "OPENWYD_LAB is debug-only. Use -Configuration Debug."
+}
+if ($OpenWydCompare -and $OpenWydLab) {
+    throw "Choose one debug runtime: -OpenWydCompare or -OpenWydLab."
+}
 
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -232,7 +259,15 @@ if ([string]::IsNullOrWhiteSpace($ToolsRoot)) {
 }
 $ToolsRoot = Get-FullPath $ToolsRoot
 
-$variant = if ($OpenWydCompare) { "Debug-compare" } else { $Configuration }
+$variant = if ($OpenWydLab) {
+    "Debug-Lab"
+}
+elseif ($OpenWydCompare) {
+    "Debug-compare"
+}
+else {
+    $Configuration
+}
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $RepoRoot "artifacts\native-build\TMProject\$variant"
 }
@@ -249,13 +284,19 @@ foreach ($candidate in @($OutputRoot, $outDir, $intDir)) {
 
 $projectPath = Join-Path $RepoRoot "Projects\TMProject\TMProject.vcxproj"
 $compareProps = Join-Path $PSScriptRoot "build_windows_source.compare.props"
+$labProps = Join-Path $PSScriptRoot "build_windows_source.lab.props"
 $contractScript = Join-Path $PSScriptRoot "windows_source_contract.ps1"
 $directXInclude = Join-Path $RepoRoot "Dependencies\Directx\Include\d3dx9.h"
 $directXLibrary = Join-Path $RepoRoot "Dependencies\Directx\Lib\d3dx9.lib"
 Assert-File $projectPath "TMProject vcxproj"
-Assert-File $contractScript "Windows source-contract implementation"
+if ($VerifySourceContract) {
+    Assert-File $contractScript "Windows source-contract implementation"
+}
 if ($OpenWydCompare) {
     Assert-File $compareProps "OPENWYD_COMPARE MSBuild property sheet"
+}
+if ($OpenWydLab) {
+    Assert-File $labProps "OPENWYD_LAB MSBuild property sheet"
 }
 Assert-File $directXInclude "DirectX 9 header"
 Assert-File $directXLibrary "DirectX 9 x86 import library"
@@ -300,6 +341,13 @@ $sdkUmLibraryPath = Join-Path $windowsKitRoot "Lib\$sdkVersion\um\x86"
 $compilerBin = Join-Path $msvcToolsRoot "bin\Hostx64\x86"
 $sdkBin = Join-Path $windowsKitRoot "bin\$sdkVersion\x64"
 $msbuildBin = Split-Path -Parent $msbuild
+$toolPath = @(
+    $compilerBin,
+    $sdkBin,
+    (Join-Path $sdkBin "ucrt"),
+    $msbuildBin
+) -join ";"
+$escapedToolPath = $toolPath.Replace("%", "%25").Replace(";", "%3B")
 
 foreach ($requiredDirectory in @(
     $msvcInclude,
@@ -318,21 +366,20 @@ foreach ($requiredDirectory in @(
 New-Item -ItemType Directory -Force -Path $outDir, $intDir | Out-Null
 
 $consoleLog = Join-Path $OutputRoot "console.log"
-$diagnosticLog = Join-Path $OutputRoot "msbuild-diagnostic.log"
+$diagnosticLogPath = Join-Path $OutputRoot "msbuild-diagnostic.log"
+$diagnosticLog = if ($DiagnosticLog) { $diagnosticLogPath } else { $null }
 $invocationLog = Join-Path $OutputRoot "msbuild-invocation.txt"
 $metadataPath = Join-Path $OutputRoot "build-metadata.json"
 $sourceContractPath = Join-Path $OutputRoot "windows-source-contract.json"
-# A source-certified executable must never be linked from incremental objects
-# that predate the captured source contract. Rebuild asks MSBuild to clean the
-# project outputs and compile every object, without this script recursively
-# deleting the caller-selected artifact directory. -Clean remains accepted
-# only for command-line compatibility with earlier revisions of this script.
-$target = "Rebuild"
+# Development is deliberately incremental. Full contract verification is a
+# separate milestone operation because it scans the complete source/toolchain
+# tree and must start from a clean object set.
+$target = if ($Clean -or $VerifySourceContract) { "Rebuild" } else { "Build" }
 
 $msbuildArguments = @(
     $projectPath,
     "/nologo",
-    "/m:1",
+    "/m",
     "/t:$target",
     "/verbosity:$Verbosity",
     "/p:Configuration=$Configuration",
@@ -349,15 +396,33 @@ $msbuildArguments = @(
     "/p:UCRTVersion=$sdkVersion",
     "/p:WindowsSDKInstalled=true",
     "/p:WindowsSDK_Desktop_Support=true",
+    "/p:ExecutablePath=$escapedToolPath",
+    "/p:CLToolPath=$compilerBin",
+    "/p:LinkToolPath=$compilerBin",
+    "/p:LIBToolPath=$compilerBin",
+    "/p:RCToolPath=$sdkBin",
+    "/p:MtToolPath=$sdkBin",
     "/p:SolutionDir=$(Add-TrailingSeparator $RepoRoot)",
     "/p:OutDir=$(Add-TrailingSeparator $outDir)",
     "/p:IntDir=$(Add-TrailingSeparator $intDir)",
     "/p:OpenWydCompare=$($OpenWydCompare.IsPresent.ToString().ToLowerInvariant())",
-    "/fileLogger",
-    "/fileLoggerParameters:LogFile=$diagnosticLog;Verbosity=diagnostic;Encoding=UTF-8"
+    "/p:OpenWydLab=$($OpenWydLab.IsPresent.ToString().ToLowerInvariant())",
+    "/p:MultiProcessorCompilation=true",
+    "/p:UseMultiToolTask=true",
+    "/p:MultiProcCL=true"
 )
+if ($DiagnosticLog) {
+    $msbuildArguments += "/fileLogger"
+    $msbuildArguments += (
+        "/fileLoggerParameters:LogFile=$diagnosticLogPath;" +
+        "Verbosity=diagnostic;Encoding=UTF-8"
+    )
+}
 if ($OpenWydCompare) {
     $msbuildArguments += "/p:ForceImportAfterCppProps=$compareProps"
+}
+elseif ($OpenWydLab) {
+    $msbuildArguments += "/p:ForceImportAfterCppProps=$labProps"
 }
 
 foreach ($optionVariable in @("CL", "_CL_", "LINK", "_LINK_")) {
@@ -370,7 +435,9 @@ foreach ($optionVariable in @("CL", "_CL_", "LINK", "_LINK_")) {
     }
 }
 
-. $contractScript
+if ($VerifySourceContract) {
+    . $contractScript
+}
 
 $resourceCompiler = Join-Path $sdkBin "rc.exe"
 $manifestTool = Join-Path $sdkBin "mt.exe"
@@ -379,67 +446,61 @@ Assert-File $resourceCompiler "Windows SDK resource compiler"
 Assert-File $manifestTool "Windows SDK manifest tool"
 Assert-File $resourceConverter "MSVC resource converter"
 
-$toolchainFiles = @{
-    compiler = $compiler
-    linker = $linker
-    resourceConverter = $resourceConverter
-    resourceCompiler = $resourceCompiler
-    manifestTool = $manifestTool
-    msbuild = $msbuild
-    tracker = $tracker
-}
-
-$semanticArguments = @(
-    $msbuildArguments | ForEach-Object {
-        $normalized = [string]$_
-        $normalized = $normalized.Replace(
-            $OutputRoot,
-            "<OUTPUT_ROOT>"
-        )
-        $normalized = $normalized.Replace(
-            $RepoRoot,
-            "<REPO_ROOT>"
-        )
-        $normalized = $normalized.Replace(
-            $ToolsRoot,
-            "<TOOLS_ROOT>"
-        )
-        $normalized
+$sourceContractBefore = $null
+$sourceContractManifestSha256 = $null
+if ($VerifySourceContract) {
+    $toolchainFiles = @{
+        compiler = $compiler
+        linker = $linker
+        resourceConverter = $resourceConverter
+        resourceCompiler = $resourceCompiler
+        manifestTool = $manifestTool
+        msbuild = $msbuild
+        tracker = $tracker
     }
-)
-$sourceContractBefore = New-OpenWydWindowsSourceContract `
-    -RepoRoot $RepoRoot `
-    -ToolsRoot $ToolsRoot `
-    -ProjectPath $projectPath `
-    -ComparePropsPath $compareProps `
-    -BuildScriptPath $PSCommandPath `
-    -ContractScriptPath $contractScript `
-    -Configuration $Configuration `
-    -Platform "Win32" `
-    -PlatformToolset "v142" `
-    -OpenWydCompare $OpenWydCompare.IsPresent `
-    -MsvcVersion $msvcVersion `
-    -WindowsSdkVersion $sdkVersion `
-    -SemanticArguments $semanticArguments `
-    -ToolchainFiles $toolchainFiles `
-    -ToolchainDependencyRoots @(
-        $compilerBin,
-        $msvcInclude,
-        $vcLibraryPath,
-        $sdkIncludeRoot,
-        $sdkUcrtLibraryPath,
-        $sdkUmLibraryPath,
-        $sdkBin,
-        $msbuildBin,
-        $vCTargetsPath
-    ) `
-    -RepositoryDependencyRoots @(
-        (Join-Path $RepoRoot "Dependencies\Directx\Include"),
-        (Join-Path $RepoRoot "Dependencies\Directx\Lib")
+    $semanticArguments = @(
+        $msbuildArguments | ForEach-Object {
+            $normalized = [string]$_
+            $normalized = $normalized.Replace($OutputRoot, "<OUTPUT_ROOT>")
+            $normalized = $normalized.Replace($RepoRoot, "<REPO_ROOT>")
+            $normalized = $normalized.Replace($ToolsRoot, "<TOOLS_ROOT>")
+            $normalized
+        }
     )
-$sourceContractManifestSha256 = Write-OpenWydWindowsSourceContract `
-    -Contract $sourceContractBefore `
-    -Path $sourceContractPath
+    $sourceContractBefore = New-OpenWydWindowsSourceContract `
+        -RepoRoot $RepoRoot `
+        -ToolsRoot $ToolsRoot `
+        -ProjectPath $projectPath `
+        -ComparePropsPath $compareProps `
+        -BuildScriptPath $PSCommandPath `
+        -ContractScriptPath $contractScript `
+        -Configuration $Configuration `
+        -Platform "Win32" `
+        -PlatformToolset "v142" `
+        -OpenWydCompare $OpenWydCompare.IsPresent `
+        -MsvcVersion $msvcVersion `
+        -WindowsSdkVersion $sdkVersion `
+        -SemanticArguments $semanticArguments `
+        -ToolchainFiles $toolchainFiles `
+        -ToolchainDependencyRoots @(
+            $compilerBin,
+            $msvcInclude,
+            $vcLibraryPath,
+            $sdkIncludeRoot,
+            $sdkUcrtLibraryPath,
+            $sdkUmLibraryPath,
+            $sdkBin,
+            $msbuildBin,
+            $vCTargetsPath
+        ) `
+        -RepositoryDependencyRoots @(
+            (Join-Path $RepoRoot "Dependencies\Directx\Include"),
+            (Join-Path $RepoRoot "Dependencies\Directx\Lib")
+        )
+    $sourceContractManifestSha256 = Write-OpenWydWindowsSourceContract `
+        -Contract $sourceContractBefore `
+        -Path $sourceContractPath
+}
 
 $quotedArguments = $msbuildArguments | ForEach-Object {
     if ($_ -match '[\s;"]') {
@@ -480,8 +541,11 @@ $metadata = [ordered]@{
     platform = "Win32"
     openWydCompare = $OpenWydCompare.IsPresent
     compareProps = if ($OpenWydCompare) { $compareProps } else { $null }
+    openWydLab = $OpenWydLab.IsPresent
+    labProps = if ($OpenWydLab) { $labProps } else { $null }
     target = $target
     cleanRequested = $Clean.IsPresent
+    sourceContractRequested = $VerifySourceContract.IsPresent
     outputRoot = $OutputRoot
     outDir = $outDir
     intDir = $intDir
@@ -489,32 +553,42 @@ $metadata = [ordered]@{
     toolchain = [ordered]@{
         compiler = $compiler
         compilerVersion = (Get-Item -LiteralPath $compiler).VersionInfo.FileVersion
-        compilerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $compiler).Hash
+        compilerSha256 = if ($VerifySourceContract) {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath $compiler).Hash
+        } else { $null }
         linker = $linker
         linkerVersion = (Get-Item -LiteralPath $linker).VersionInfo.FileVersion
-        linkerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $linker).Hash
+        linkerSha256 = if ($VerifySourceContract) {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath $linker).Hash
+        } else { $null }
         msvcVersion = $msvcVersion
         windowsSdkVersion = $sdkVersion
         msbuild = $msbuild
         msbuildVersion = (Get-Item -LiteralPath $msbuild).VersionInfo.FileVersion
-        msbuildSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $msbuild).Hash
+        msbuildSha256 = if ($VerifySourceContract) {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath $msbuild).Hash
+        } else { $null }
         vcTargetsPath = $vCTargetsPath
     }
     invocationFile = $invocationLog
     consoleLog = $consoleLog
     diagnosticLog = $diagnosticLog
-    sourceContract = [ordered]@{
-        schema = [string]$sourceContractBefore.schema
-        schemaVersion = [int]$sourceContractBefore.schemaVersion
-        manifest = $sourceContractPath
-        manifestSha256 = $sourceContractManifestSha256
-        digest = [string]$sourceContractBefore.digest
-        inputCount = @($sourceContractBefore.inputs).Count
-        toolchainFileCount = @($sourceContractBefore.toolchain).Count
-        toolsRoot = $ToolsRoot
-        status = "captured-before-build"
-    }
+    diagnosticLogRequested = $DiagnosticLog.IsPresent
+    sourceContract = if ($VerifySourceContract) {
+        [ordered]@{
+            schema = [string]$sourceContractBefore.schema
+            schemaVersion = [int]$sourceContractBefore.schemaVersion
+            manifest = $sourceContractPath
+            manifestSha256 = $sourceContractManifestSha256
+            digest = [string]$sourceContractBefore.digest
+            inputCount = @($sourceContractBefore.inputs).Count
+            toolchainFileCount = @($sourceContractBefore.toolchain).Count
+            toolsRoot = $ToolsRoot
+            status = "captured-before-build"
+        }
+    } else { $null }
     exitCode = $null
+    sourceBuildVerified = $false
     sourceBuildCertified = $false
     completedUtc = $null
     output = $null
@@ -543,7 +617,6 @@ foreach ($key in $environmentKeys) {
 
 $exitCode = 1
 try {
-    $toolPath = @($compilerBin, $sdkBin, (Join-Path $sdkBin "ucrt"), $msbuildBin) -join ";"
     $includePath = @(
         $msvcInclude,
         (Join-Path $sdkIncludeRoot "ucrt"),
@@ -582,6 +655,9 @@ try {
     if ($OpenWydCompare) {
         Write-Host "Compile mode: OPENWYD_COMPARE=1"
     }
+    elseif ($OpenWydLab) {
+        Write-Host "Compile mode: OPENWYD_LAB=1"
+    }
 
     & $msbuild @msbuildArguments 2>&1 | Tee-Object -FilePath $consoleLog
     $exitCode = $LASTEXITCODE
@@ -596,44 +672,49 @@ $metadata.exitCode = $exitCode
 $metadata.completedUtc = [DateTime]::UtcNow.ToString("o")
 
 if ($exitCode -ne 0) {
-    $metadata.sourceContract.status = "build-failed"
+    if ($VerifySourceContract) {
+        $metadata.sourceContract.status = "build-failed"
+    }
     $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
-    throw "MSBuild failed with exit code $exitCode. See $diagnosticLog"
+    $failureLog = if ($DiagnosticLog) { $diagnosticLogPath } else { $consoleLog }
+    throw "MSBuild failed with exit code $exitCode. See $failureLog"
 }
 
-$sourceContractAfter = New-OpenWydWindowsSourceContractFromManifest `
-    -Manifest $sourceContractBefore `
-    -RepoRoot $RepoRoot `
-    -ToolsRoot $ToolsRoot
-if (
-    -not ([string]$sourceContractBefore.digest).Equals(
-        [string]$sourceContractAfter.digest,
-        [StringComparison]::OrdinalIgnoreCase
-    )
-) {
-    $metadata.sourceContract.status = "changed-during-build"
-    $metadata | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $metadataPath -Encoding UTF8
-    throw (
-        "Source inputs or toolchain changed while MSBuild was running. " +
-        "The output is not certified; rebuild from a stable checkout."
-    )
+if ($VerifySourceContract) {
+    $sourceContractAfter = New-OpenWydWindowsSourceContractFromManifest `
+        -Manifest $sourceContractBefore `
+        -RepoRoot $RepoRoot `
+        -ToolsRoot $ToolsRoot
+    if (
+        -not ([string]$sourceContractBefore.digest).Equals(
+            [string]$sourceContractAfter.digest,
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        $metadata.sourceContract.status = "changed-during-build"
+        $metadata | ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath $metadataPath -Encoding UTF8
+        throw (
+            "Source inputs or toolchain changed while MSBuild was running. " +
+            "The output is not certified; rebuild from a stable checkout."
+        )
+    }
+    $verifiedContractManifestSha256 = (
+        Get-FileHash -LiteralPath $sourceContractPath -Algorithm SHA256
+    ).Hash
+    if (
+        -not $verifiedContractManifestSha256.Equals(
+            $sourceContractManifestSha256,
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        $metadata.sourceContract.status = "manifest-changed-during-build"
+        $metadata | ConvertTo-Json -Depth 8 |
+            Set-Content -LiteralPath $metadataPath -Encoding UTF8
+        throw "Windows source-contract manifest changed while MSBuild was running."
+    }
+    $metadata.sourceContract.status = "verified-after-build"
 }
-$verifiedContractManifestSha256 = (
-    Get-FileHash -LiteralPath $sourceContractPath -Algorithm SHA256
-).Hash
-if (
-    -not $verifiedContractManifestSha256.Equals(
-        $sourceContractManifestSha256,
-        [StringComparison]::OrdinalIgnoreCase
-    )
-) {
-    $metadata.sourceContract.status = "manifest-changed-during-build"
-    $metadata | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $metadataPath -Encoding UTF8
-    throw "Windows source-contract manifest changed while MSBuild was running."
-}
-$metadata.sourceContract.status = "verified-after-build"
 
 $outputExe = Join-Path $outDir "WYD.exe"
 Assert-File $outputExe "Built Win32 client"
@@ -648,11 +729,13 @@ if ($machine -ne 0x014C) {
 
 $outputFile = Get-Item -LiteralPath $outputExe
 $outputSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $outputExe).Hash
-$provenanceBindingSha256 = Get-OpenWydWindowsProvenanceBindingSha256 `
-    -ExecutableSha256 $outputSha256 `
-    -ExecutableSize $outputFile.Length `
-    -ContractDigest ([string]$sourceContractBefore.digest) `
-    -ContractManifestSha256 $sourceContractManifestSha256
+$provenanceBindingSha256 = if ($VerifySourceContract) {
+    Get-OpenWydWindowsProvenanceBindingSha256 `
+        -ExecutableSha256 $outputSha256 `
+        -ExecutableSize $outputFile.Length `
+        -ContractDigest ([string]$sourceContractBefore.digest) `
+        -ContractManifestSha256 $sourceContractManifestSha256
+} else { $null }
 $metadata.output = [ordered]@{
     executable = $outputExe
     size = $outputFile.Length
@@ -661,11 +744,16 @@ $metadata.output = [ordered]@{
     objectCount = @(
         Get-ChildItem -LiteralPath $intDir -Filter "*.obj" -File -Recurse -ErrorAction SilentlyContinue
     ).Count
-    sourceContractDigest = [string]$sourceContractBefore.digest
-    sourceContractManifestSha256 = $sourceContractManifestSha256
+    sourceContractDigest = if ($VerifySourceContract) {
+        [string]$sourceContractBefore.digest
+    } else { $null }
+    sourceContractManifestSha256 = if ($VerifySourceContract) {
+        $sourceContractManifestSha256
+    } else { $null }
     provenanceBindingSha256 = $provenanceBindingSha256
 }
-$metadata.sourceBuildCertified = $true
+$metadata.sourceBuildVerified = $true
+$metadata.sourceBuildCertified = $VerifySourceContract.IsPresent
 $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
 
 Write-Host "Build succeeded: $outputExe"

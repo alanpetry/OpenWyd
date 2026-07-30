@@ -23,9 +23,45 @@ DEFINES = (
     "-DWIN32",
     "-D_WINDOWS",
     "-DNDEBUG",
+    "-DOPENWYD_LAB=1",
     "-D_CRT_SECURE_NO_WARNINGS",
     "-D_WINSOCK_DEPRECATED_NO_WARNINGS",
 )
+
+
+def resolve_emxx() -> str:
+    override = os.environ.get("OPENWYD_EMXX")
+    if override:
+        override_path = Path(override).expanduser()
+        if override_path.is_file():
+            return str(override_path.resolve())
+        override_on_path = shutil.which(override)
+        if override_on_path:
+            return str(Path(override_on_path).resolve())
+        raise FileNotFoundError(
+            f"OPENWYD_EMXX does not name an executable: {override}"
+        )
+
+    on_path = shutil.which("em++")
+    if on_path:
+        return str(Path(on_path).resolve())
+
+    emsdk = os.environ.get("EMSDK")
+    if emsdk:
+        emscripten_root = (
+            Path(emsdk).expanduser()
+            / "upstream"
+            / "emscripten"
+        )
+        for name in ("em++.exe", "em++.bat", "em++"):
+            candidate = emscripten_root / name
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+    # Keep contract-only tests and diagnostics importable before emsdk is
+    # activated. A real compile will fail with the platform's normal
+    # executable-not-found error and its full command will remain visible.
+    return "em++"
 
 
 def parse_vcxproj_sources(vcxproj: Path) -> list[Path]:
@@ -41,7 +77,7 @@ def parse_vcxproj_sources(vcxproj: Path) -> list[Path]:
 def compile_arguments(repo_root: Path, optimization_flag: str) -> list[str]:
     compat_include = repo_root / "webclient/client-wasm/compat/include"
     return [
-        "em++",
+        resolve_emxx(),
         "-std=c++17",
         optimization_flag,
         "-c",
@@ -69,7 +105,13 @@ def _sha256_file(path: Path) -> str:
 
 @lru_cache(maxsize=1)
 def compiler_identity() -> dict[str, Any]:
-    executable_text = shutil.which("em++")
+    command = resolve_emxx()
+    command_path = Path(command).expanduser()
+    executable_text = (
+        str(command_path.resolve())
+        if command_path.is_file()
+        else shutil.which(command)
+    )
     executable = (
         Path(executable_text).resolve()
         if executable_text
@@ -79,7 +121,7 @@ def compiler_identity() -> dict[str, Any]:
     if executable is not None:
         try:
             result = subprocess.run(
-                ["em++", "--version"],
+                [command, "--version"],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

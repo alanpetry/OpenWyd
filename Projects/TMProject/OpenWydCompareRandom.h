@@ -3,7 +3,8 @@
 #include <cstdint>
 
 #if defined(__EMSCRIPTEN__) || \
-	(defined(OPENWYD_COMPARE) && defined(_DEBUG))
+	(defined(OPENWYD_COMPARE) && defined(_DEBUG)) || \
+	defined(OPENWYD_LAB)
 
 // The original Win32 client uses the Microsoft CRT linear-congruential
 // generator. Keep the transition as a pure constexpr operation so both the
