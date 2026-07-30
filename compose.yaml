@@ -15,6 +15,7 @@ services:
       dockerfile: docker/server.Dockerfile
       args:
         OPENWYD_BUILD_JOBS: "${OPENWYD_BUILD_JOBS:-2}"
+        OPENWYD_SANITIZE: "${OPENWYD_SANITIZE:-OFF}"
     environment:
       <<: *server-environment
     working_dir: /opt/openwyd/Server/DBSRV/Run

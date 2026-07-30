@@ -4,6 +4,7 @@ FROM debian:bookworm AS build
 
 ARG TARGETARCH
 ARG OPENWYD_BUILD_JOBS=2
+ARG OPENWYD_SANITIZE=OFF
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -23,6 +24,7 @@ RUN --mount=type=cache,id=openwyd-server-ccache-${TARGETARCH},target=/root/.cach
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DOPENWYD_BUILD_SERVERS=ON \
+        -DOPENWYD_SANITIZE="${OPENWYD_SANITIZE}" \
     && cmake --build /build --parallel "${OPENWYD_BUILD_JOBS}"
 
 FROM debian:bookworm-slim AS runtime
@@ -30,6 +32,8 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libstdc++6 \
+        libasan8 \
+        libubsan1 \
         tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 openwyd
