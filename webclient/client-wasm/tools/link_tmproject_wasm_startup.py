@@ -1522,6 +1522,7 @@ def main() -> int:
         "_wyd_debug_last_critical_mob_x",
         "_wyd_debug_last_critical_mob_y",
         "_wyd_debug_selectserver_login",
+        "_wyd_public_demo_unlock_select_character",
         "_wyd_socket_last_host",
         "_wyd_socket_last_proxy_url",
         "_wyd_socket_last_port",

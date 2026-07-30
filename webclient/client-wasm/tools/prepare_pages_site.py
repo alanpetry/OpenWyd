@@ -22,7 +22,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="refresh" content="0; url=./startup_harness.html?mode=play&state=7&logical=800x600&fit=actual&fieldMode=real&autoboot=1&autostart=1" />
+  <meta http-equiv="refresh" content="0; url=./startup_harness.html?mode=play&demo=1&state=7&logical=800x600&fit=actual&fieldMode=real&autoboot=1&autostart=1" />
   <title>OpenWyd</title>
 </head>
 <body>

@@ -784,7 +784,8 @@ int CFileDB::ProcessMessage(char *Msg, int conn)
 
 			DBGetSelChar(&selchar, &pAccountList[Idx].File);
 
-			pAccountList[Idx].SecurePass = -1;
+			pAccountList[Idx].SecurePass =
+				IsOpenWydPublicDemoAccount(m->AccountName) ? 1 : -1;
 
 			MSG_DBCNFAccountLogin sm;
 

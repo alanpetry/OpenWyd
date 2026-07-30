@@ -237,7 +237,47 @@
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
     const publicPlayMode = query.get('mode') === 'play';
+    const publicDemoMode = query.get('demo') === '1';
     const LAST_STATE_STORAGE_KEY = 'openwyd.lastState';
+    const DEMO_ACCOUNT_STORAGE_KEY = 'openwyd.publicDemoAccount.v1';
+    const DEMO_TOKEN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const randomDemoToken = (length) => {
+      const bytes = new Uint8Array(length);
+      if (window.crypto?.getRandomValues) {
+        window.crypto.getRandomValues(bytes);
+      } else {
+        for (let i = 0; i < bytes.length; i += 1) {
+          bytes[i] = Math.floor(Math.random() * 256);
+        }
+      }
+      return Array.from(bytes, value => DEMO_TOKEN_ALPHABET[value % DEMO_TOKEN_ALPHABET.length]).join('');
+    };
+    const readOrCreateDemoCredentials = () => {
+      try {
+        const stored = JSON.parse(window.localStorage?.getItem(DEMO_ACCOUNT_STORAGE_KEY) || 'null');
+        if (stored && /^DEMO[A-Z2-9]{8}$/.test(stored.account) &&
+            /^[A-Z2-9]{11}$/.test(stored.password)) {
+          return stored;
+        }
+      } catch {
+        // A fresh demo account is enough when storage is unavailable or corrupt.
+      }
+
+      const credentials = {
+        account: `DEMO${randomDemoToken(8)}`,
+        password: randomDemoToken(11)
+      };
+      try {
+        window.localStorage?.setItem(DEMO_ACCOUNT_STORAGE_KEY, JSON.stringify(credentials));
+      } catch {
+        // Private browsing can reject storage; this session can still log in.
+      }
+      return credentials;
+    };
+    const demoCredentials = publicDemoMode ? readOrCreateDemoCredentials() : null;
+    let demoLoginSubmitted = false;
+    let demoLoginSubmittedFrame = 0;
+    let demoSelectionUnlocked = false;
     const screenStates = {
       none: -1,
       field: 0,
@@ -274,6 +314,7 @@
       }
     };
     const resolveInitialState = () => {
+      if (publicDemoMode) return screenStates.selectserver;
       if (query.has('state') && isValidState(queryState)) return queryState;
       if (query.has('screen') && Object.prototype.hasOwnProperty.call(screenStates, queryScreen)) return screenStates[queryScreen];
       const stored = readStoredState();
@@ -304,9 +345,9 @@
       fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
       logicalSize: parseSize(query.get('logical')) || parseSize(query.get('canvas')) || { width: 800, height: 600 },
       socketProxyUrl: query.get('socketProxy') || defaultSocketProxyUrl,
-      debugHost: query.get('host') || '',
-      debugAccount: query.get('account') || 'ADMIN',
-      debugPassword: query.get('password') || 'admin'
+      debugHost: query.get('host') || (demoCredentials ? 'tmsrv' : ''),
+      debugAccount: demoCredentials?.account || query.get('account') || 'ADMIN',
+      debugPassword: demoCredentials?.password || query.get('password') || 'admin'
     };
     screenSelect.value = String(autoConfig.state);
     socketProxyInput.value = autoConfig.socketProxyUrl;
@@ -315,7 +356,7 @@
     debugPasswordInput.value = autoConfig.debugPassword;
     if (publicPlayMode) {
       document.body.classList.add('play', 'loading');
-      document.title = 'OpenWyd Field Preview';
+      document.title = publicDemoMode ? 'OpenWyd Demo' : 'OpenWyd Field Preview';
     } else if (autoConfig.layout === 'capture') {
       document.body.classList.add('capture');
     }
@@ -743,6 +784,34 @@
         setStatus(`auto tick stopped rc=${rc}`);
         return;
       }
+      if (publicDemoMode) {
+        const info = readStateDebug();
+        if (info.gameState === screenStates.selectchar) {
+          if (!demoSelectionUnlocked &&
+              typeof Module._wyd_public_demo_unlock_select_character === 'function') {
+            demoSelectionUnlocked = Module._wyd_public_demo_unlock_select_character() === 1;
+          }
+          if (demoSelectionUnlocked) {
+            hideLoadingOverlay();
+            canvasEl.focus();
+            setStatus('demo account ready');
+          }
+        } else if (!demoLoginSubmitted &&
+                   info.gameState === screenStates.selectserver &&
+                   (autoTickFrames % 15) === 1) {
+          const loginResult = window.runDummyLogin();
+          if (loginResult) {
+            demoLoginSubmitted = true;
+            demoLoginSubmittedFrame = autoTickFrames;
+            setLoadingStatus('Entrando na demonstração...');
+          }
+        } else if (demoLoginSubmitted &&
+                   info.gameState === screenStates.selectserver &&
+                   autoTickFrames - demoLoginSubmittedFrame > 600) {
+          window.location.reload();
+          return;
+        }
+      }
       if ((autoTickFrames % 120) === 0) {
         setStatus(`auto tick running frame=${autoTickFrames}`);
       }
@@ -1031,7 +1100,11 @@
           }
           if (autoConfig.autostart) {
             window.startAutoTick();
-            hideLoadingOverlay();
+            if (publicDemoMode) {
+              setLoadingStatus('Criando sua conta de demonstração...');
+            } else {
+              hideLoadingOverlay();
+            }
           } else {
             setStatus('runtime initialized; autostart disabled');
             hideLoadingOverlay();

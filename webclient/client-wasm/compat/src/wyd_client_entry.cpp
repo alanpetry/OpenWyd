@@ -453,6 +453,25 @@ extern "C" int wyd_debug_selectserver_login(const char* account, const char* pas
   return select_server->OnControlEvent(B_LOGIN_OK, 0);
 }
 
+extern "C" int wyd_public_demo_unlock_select_character() {
+  if (!g_pObjectManager) return 0;
+  TMScene* scene = g_pObjectManager->GetCurrentScene();
+  if (!scene || scene->GetSceneType() != ESCENE_TYPE::ESCENE_SELCHAR) return 0;
+
+  auto* select_character = static_cast<TMSelectCharScene*>(scene);
+  g_AccountLock = 1;
+  if (select_character->m_pAccountLockDlg) {
+    select_character->m_pAccountLockDlg->SetVisible(0);
+  }
+  if (select_character->m_pAccountLock) {
+    select_character->m_pAccountLock->SetVisible(0);
+  }
+  if (select_character->m_pInputPWPanel) {
+    select_character->m_pInputPWPanel->SetVisible(0);
+  }
+  return 1;
+}
+
 extern "C" int wyd_start_client() {
   wchar_t empty_cmdline[] = L"";
   return wWinMain(reinterpret_cast<HINSTANCE>(1), nullptr, empty_cmdline, 1);
