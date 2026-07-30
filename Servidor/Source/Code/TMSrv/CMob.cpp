@@ -504,7 +504,7 @@ int CMob::SetSegment()
 		else
 			SegmentProgress = SegmentProgress - 1;
 		
-		if (SegmentProgress == -1)
+		if (SegmentProgress < 0)
 		{
 			if (RouteType == 0)
 			{
@@ -527,23 +527,25 @@ int CMob::SetSegment()
 			}
 			else if (RouteType == 3)
 			{
+				SegmentProgress = 0;
 				iterator = 2;
 				break;
 			}
 
 			else if (RouteType == 4)
 			{
+				SegmentProgress = 0;
 				Log("SetSegment SegmentProgress -1 but route type 4", MOB.MobName, 0);
 				break;
 			}
 			continue;
 		}
 
-		if (SegmentProgress == 5)
+		if (SegmentProgress >= MAX_SEGMENT)
 		{
 			if (RouteType == 0)
 			{
-				SegmentProgress = 4;
+				SegmentProgress = MAX_SEGMENT - 1;
 				Mode = 4;
 				MOB.BaseScore.Merchant = MOB.Merchant;
 				int len = strlen(Route);
@@ -572,13 +574,14 @@ int CMob::SetSegment()
 			
 			if (RouteType == 1)
 			{
+				SegmentProgress = MAX_SEGMENT - 1;
 				iterator = 2;
 				break;
 			}
 
 			if (RouteType == 2 || RouteType == 3)
 			{
-				SegmentProgress = 4;
+				SegmentProgress = MAX_SEGMENT - 1;
 				SegmentDirection = 1;
 				continue;
 			}

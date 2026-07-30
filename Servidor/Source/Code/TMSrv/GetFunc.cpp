@@ -1748,9 +1748,13 @@ void GetAttack(int mob, int target, MSG_AttackOne *sm)
 			}
 		}
 		int rand_ = rand() % 100;
-		if (pMob[mob].MOB.SkillBar[3] != 255 && rand_ >= 25 && rand_ <= 64)
+		const int skill0 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[0]);
+		const int skill1 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[1]);
+		const int skill2 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[2]);
+		const int skill3 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[3]);
+		if (skill3 < MAX_SKILLINDEX && rand_ >= 25 && rand_ <= 64)
 		{
-			int skillb3 = pMob[mob].MOB.SkillBar[3];
+			int skillb3 = skill3;
 
 			int insttype = g_pSpell[skillb3].InstanceType;
 
@@ -1786,26 +1790,26 @@ void GetAttack(int mob, int target, MSG_AttackOne *sm)
 				}
 			}
 		}
-		if (pMob[mob].MOB.SkillBar[0] == 255 || rand_ < 0 || rand_ > 49)
+		if (skill0 >= MAX_SKILLINDEX || rand_ < 0 || rand_ > 49)
 		{
-			if (pMob[mob].MOB.SkillBar[1] == 255 || rand_ < 50 || rand_ > 84)
+			if (skill1 >= MAX_SKILLINDEX || rand_ < 50 || rand_ > 84)
 			{
-				if (pMob[mob].MOB.SkillBar[2] != 255 && rand_ >= 85 && rand_ <= 99)
+				if (skill2 < MAX_SKILLINDEX && rand_ >= 85 && rand_ <= 99)
 				{
-					Resist = g_pSpell[pMob[mob].MOB.SkillBar[2]].InstanceType - 2;
-					sm->SkillIndex = pMob[mob].MOB.SkillBar[2];
+					Resist = g_pSpell[skill2].InstanceType - 2;
+					sm->SkillIndex = skill2;
 				}
 			}
 			else
 			{
-				Resist = g_pSpell[pMob[mob].MOB.SkillBar[1]].InstanceType - 2;
-				sm->SkillIndex = pMob[mob].MOB.SkillBar[1];
+				Resist = g_pSpell[skill1].InstanceType - 2;
+				sm->SkillIndex = skill1;
 			}
 		}
 		else
 		{
-			Resist = g_pSpell[pMob[mob].MOB.SkillBar[0]].InstanceType - 2;
-			sm->SkillIndex = pMob[mob].MOB.SkillBar[0];
+			Resist = g_pSpell[skill0].InstanceType - 2;
+			sm->SkillIndex = skill0;
 		}
 	}
 
@@ -2070,9 +2074,13 @@ void GetAttackArea(int mob, MSG_Attack *sm)
 				}
 			}
 			int rand_ = rand() % 100;
-			if (pMob[mob].MOB.SkillBar[3] != 255 && rand_ >= 25 && rand_ <= 64)
+			const int skill0 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[0]);
+			const int skill1 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[1]);
+			const int skill2 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[2]);
+			const int skill3 = static_cast<unsigned char>(pMob[mob].MOB.SkillBar[3]);
+			if (skill3 < MAX_SKILLINDEX && rand_ >= 25 && rand_ <= 64)
 			{
-				int skillb3 = pMob[mob].MOB.SkillBar[3];
+				int skillb3 = skill3;
 
 				int insttype = g_pSpell[skillb3].InstanceType;
 
@@ -2108,26 +2116,26 @@ void GetAttackArea(int mob, MSG_Attack *sm)
 					}
 				}
 			}
-			if (pMob[mob].MOB.SkillBar[0] == 255 || rand_ < 0 || rand_ > 49)
+			if (skill0 >= MAX_SKILLINDEX || rand_ < 0 || rand_ > 49)
 			{
-				if (pMob[mob].MOB.SkillBar[1] == 255 || rand_ < 50 || rand_ > 84)
+				if (skill1 >= MAX_SKILLINDEX || rand_ < 50 || rand_ > 84)
 				{
-					if (pMob[mob].MOB.SkillBar[2] != 255 && rand_ >= 85 && rand_ <= 99)
+					if (skill2 < MAX_SKILLINDEX && rand_ >= 85 && rand_ <= 99)
 					{
-						Resist = g_pSpell[pMob[mob].MOB.SkillBar[2]].InstanceType - 2;
-						sm->SkillIndex = pMob[mob].MOB.SkillBar[2];
+						Resist = g_pSpell[skill2].InstanceType - 2;
+						sm->SkillIndex = skill2;
 					}
 				}
 				else
 				{
-					Resist = g_pSpell[pMob[mob].MOB.SkillBar[1]].InstanceType - 2;
-					sm->SkillIndex = pMob[mob].MOB.SkillBar[1];
+					Resist = g_pSpell[skill1].InstanceType - 2;
+					sm->SkillIndex = skill1;
 				}
 			}
 			else
 			{
-				Resist = g_pSpell[pMob[mob].MOB.SkillBar[0]].InstanceType - 2;
-				sm->SkillIndex = pMob[mob].MOB.SkillBar[0];
+				Resist = g_pSpell[skill0].InstanceType - 2;
+				sm->SkillIndex = skill0;
 			}
 		}
 
