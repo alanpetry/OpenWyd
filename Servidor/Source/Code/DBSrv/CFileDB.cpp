@@ -14,6 +14,7 @@
 #include "CReadFiles.h"
 #include "../Basedef.h"
 #include "../ConfigIni.h"
+#include "../ItemEffect.h"
 
 #ifdef OPENWYD_HEADLESS
 #include "openwyd_env.h"
@@ -59,6 +60,231 @@ static BOOL IsOpenWydPublicDemoAccount(const char* account)
 	return FALSE;
 #endif
 }
+
+#ifdef OPENWYD_HEADLESS
+namespace
+{
+constexpr int kOpenWydDemoGold = 1000000000;
+constexpr unsigned char kOpenWydDemoSanc15 = 250;
+constexpr unsigned int kOpenWydDemoAllSkills = 0x40FFFFFFu;
+
+struct OpenWydDemoLoadout
+{
+	short armor[4];
+	short weapon;
+	short alternateWeapon1;
+	short alternateWeapon2;
+	short ring;
+	short stone;
+	unsigned char primaryEffect;
+	unsigned char primaryValue;
+	unsigned char armorPowerEffect;
+	unsigned char armorPowerValue;
+	short statStr;
+	short statInt;
+	short statDex;
+	short statCon;
+};
+
+constexpr OpenWydDemoLoadout kOpenWydDemoLoadouts[MAX_CLASS] =
+{
+	// TK Trans full strength: Melpomene, Hrotti, Kaumodaki/Gaoth.
+	{{1230, 1231, 1232, 1233}, 3765, 3785, 3605, 643, 762, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 700, 1200},
+	// Foema magic: Potamides, Dordje, Rithil/Gae Bulg.
+	{{1365, 1366, 1367, 1368}, 3733, 3729, 3665, 642, 764, EF_INT, 120, EF_MAGIC, 14, 0, 4792, 0, 1600},
+	// BeastMaster Nature full strength: Driade, Lupercus, Gae Bulg/Kaumodaki.
+	{{1515, 1516, 1517, 1518}, 3645, 3665, 3785, 643, 762, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 500, 1400},
+	// Huntress Survival full dexterity: Urania, Eithna, Kenten/Lupercus.
+	{{1665, 1666, 1667, 1668}, 3625, 3705, 3645, 643, 762, EF_DEX, 120, EF_DAMAGE, 42, 0, 0, 4392, 2000}
+};
+
+STRUCT_ITEM OpenWydDemoItem(short index, unsigned char effect1 = 0, unsigned char value1 = 0,
+	unsigned char effect2 = 0, unsigned char value2 = 0,
+	unsigned char effect3 = 0, unsigned char value3 = 0)
+{
+	STRUCT_ITEM item{};
+	item.sIndex = index;
+	item.stEffect[0].cEffect = effect1;
+	item.stEffect[0].cValue = value1;
+	item.stEffect[1].cEffect = effect2;
+	item.stEffect[1].cValue = value2;
+	item.stEffect[2].cEffect = effect3;
+	item.stEffect[2].cValue = value3;
+	return item;
+}
+
+STRUCT_ITEM OpenWydDemoRefinedItem(short index, unsigned char effect2, unsigned char value2,
+	unsigned char effect3, unsigned char value3)
+{
+	return OpenWydDemoItem(index, EF_SANC, kOpenWydDemoSanc15, effect2, value2, effect3, value3);
+}
+
+STRUCT_ITEM OpenWydDemoStack(short index, unsigned char amount)
+{
+	STRUCT_ITEM item{};
+	item.sIndex = index;
+	BASE_SetItemAmount(&item, amount);
+	return item;
+}
+
+STRUCT_ITEM OpenWydDemoMount(short index)
+{
+	STRUCT_ITEM item{};
+	item.sIndex = index;
+	item.stEffect[0].sValue = 20000;      // HP
+	item.stEffect[1].cEffect = 120;       // maximum adult-mount level
+	item.stEffect[1].cValue = 60;         // maximum vitality
+	item.stEffect[2].cEffect = 100;       // fully fed
+	item.stEffect[2].cValue = 1;
+	return item;
+}
+
+STRUCT_ITEM OpenWydDemoFairy(short index)
+{
+	// Date-backed fairies are deliberately long-lived in the public test environment.
+	return OpenWydDemoItem(index, EF_WDAY, 255, EF_HOUR, 23, EF_MIN, 59);
+}
+
+void OpenWydDemoSetStats(STRUCT_MOB* mob, int cls, const OpenWydDemoLoadout& loadout)
+{
+	mob->BaseScore.Level = MAX_CLEVEL;
+	mob->BaseScore.Ac = 1004;
+	mob->BaseScore.Damage = 400;
+	mob->BaseScore.Str = static_cast<short>(BaseSIDCHM[cls][0] + loadout.statStr);
+	mob->BaseScore.Int = static_cast<short>(BaseSIDCHM[cls][1] + loadout.statInt);
+	mob->BaseScore.Dex = static_cast<short>(BaseSIDCHM[cls][2] + loadout.statDex);
+	mob->BaseScore.Con = static_cast<short>(BaseSIDCHM[cls][3] + loadout.statCon);
+
+	for (int i = 0; i < 4; ++i)
+		mob->BaseScore.Special[i] = 200;
+
+	mob->CurrentScore = mob->BaseScore;
+	mob->Exp = g_pNextLevel_2[MAX_CLEVEL];
+	mob->Coin = kOpenWydDemoGold;
+	mob->LearnedSkill = kOpenWydDemoAllSkills;
+	mob->LearnedSkill2 = 0;
+	mob->ScoreBonus = 0;
+	mob->SpecialBonus = 55;
+	mob->SkillBonus = 0;
+}
+
+void OpenWydDemoSetEquipment(STRUCT_MOB* mob, STRUCT_MOBExtra* extra, int cls,
+	const OpenWydDemoLoadout& loadout)
+{
+	memset(mob->Equip, 0, sizeof(mob->Equip));
+
+	mob->Equip[0].sIndex = static_cast<short>(extra->MortalFace + 5 + cls);
+	mob->Equip[0].stEffect[1].cEffect = 98;
+	mob->Equip[0].stEffect[1].cValue = 3;
+	mob->Equip[0].stEffect[2].cEffect = 106;
+	mob->Equip[0].stEffect[2].cValue = static_cast<unsigned char>(extra->MortalFace);
+
+	mob->Equip[1] = OpenWydDemoRefinedItem(3507, loadout.armorPowerEffect,
+		loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
+	for (int i = 0; i < 4; ++i)
+	{
+		mob->Equip[i + 2] = OpenWydDemoRefinedItem(loadout.armor[i], loadout.armorPowerEffect,
+			loadout.armorPowerValue, EF_HPADD, 70);
+	}
+
+	const unsigned char weaponPower = (loadout.armorPowerEffect == EF_MAGIC) ? 36 : 81;
+	mob->Equip[6] = OpenWydDemoRefinedItem(loadout.weapon, loadout.armorPowerEffect,
+		weaponPower, loadout.primaryEffect, loadout.primaryValue);
+	mob->Equip[8] = OpenWydDemoRefinedItem(loadout.ring, loadout.armorPowerEffect,
+		loadout.armorPowerValue, EF_HPADD, 70);
+	mob->Equip[9] = OpenWydDemoRefinedItem(570, loadout.armorPowerEffect,
+		loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
+	mob->Equip[10] = OpenWydDemoRefinedItem(599, EF_RESISTALL, 10, EF_HPADD, 70);
+	mob->Equip[11] = OpenWydDemoRefinedItem(loadout.stone, loadout.armorPowerEffect,
+		loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
+	mob->Equip[13] = OpenWydDemoFairy(3915); // Golden Fairy
+	mob->Equip[14] = OpenWydDemoMount(2380); // Red Dragon level 120
+	mob->Equip[15] = OpenWydDemoRefinedItem(3199, loadout.armorPowerEffect,
+		loadout.armorPowerValue, EF_HPADD, 70);
+}
+
+void OpenWydDemoSetInventory(STRUCT_MOB* mob, const OpenWydDemoLoadout& loadout)
+{
+	memset(mob->Carry, 0, sizeof(mob->Carry));
+	mob->Carry[0] = OpenWydDemoStack(4097, 120); // Powerful HP/MP potion
+	mob->Carry[1] = OpenWydDemoStack(404, 250);  // Ultra healing potion
+	mob->Carry[2] = OpenWydDemoStack(409, 250);  // Ultra mana potion
+	mob->Carry[3] = OpenWydDemoStack(411, 250);  // Return scroll
+	mob->Carry[4] = OpenWydDemoStack(776, 250);  // Portal scroll
+	mob->Carry[5] = OpenWydDemoStack(699, 250);  // Teleport scroll
+	mob->Carry[6] = OpenWydDemoStack(4148, 50);  // Celestial/Sub-Celestial switch
+	mob->Carry[7] = OpenWydDemoStack(4141, 250); // Lactolerium 100
+	mob->Carry[8] = OpenWydDemoRefinedItem(loadout.alternateWeapon1, loadout.armorPowerEffect,
+		(loadout.armorPowerEffect == EF_MAGIC) ? 36 : 81, loadout.primaryEffect, loadout.primaryValue);
+	mob->Carry[9] = OpenWydDemoRefinedItem(loadout.alternateWeapon2, loadout.armorPowerEffect,
+		(loadout.armorPowerEffect == EF_MAGIC) ? 36 : 81, loadout.primaryEffect, loadout.primaryValue);
+	mob->Carry[10] = OpenWydDemoMount(2388); // Sleipnir
+	mob->Carry[11] = OpenWydDemoMount(2389); // Black Panther
+	mob->Carry[12] = OpenWydDemoFairy(3913); // Fairy with test/drop helpers
+}
+
+void ProvisionOpenWydPublicDemoCharacter(STRUCT_ACCOUNTFILE* account, int slot, int cls)
+{
+	if (account == nullptr || slot < 0 || slot >= MOB_PER_ACCOUNT || cls < 0 || cls >= MAX_CLASS)
+		return;
+
+	STRUCT_MOB* mob = &account->Char[slot];
+	STRUCT_MOBExtra* extra = &account->mobExtra[slot];
+	const OpenWydDemoLoadout& loadout = kOpenWydDemoLoadouts[cls];
+
+	extra->ClassMaster = CELESTIALCS;
+	extra->QuestInfo.Arch.Cristal = 4;
+	extra->QuestInfo.Celestial.ArchLevel = 5;
+	extra->QuestInfo.Celestial.CelestialLevel = MAX_CLEVEL;
+	extra->QuestInfo.Celestial.SubCelestialLevel = MAX_CLEVEL;
+	extra->QuestInfo.Celestial.Lv40 = 1;
+	extra->QuestInfo.Celestial.Lv90 = 1;
+	extra->QuestInfo.Celestial.Add120 = 1;
+	extra->QuestInfo.Celestial.Add150 = 1;
+	extra->QuestInfo.Celestial.Add180 = 1;
+	extra->QuestInfo.Celestial.Add200 = 1;
+	extra->QuestInfo.Celestial.Arcana = 1;
+	extra->QuestInfo.Celestial.Reset = 3;
+
+	OpenWydDemoSetStats(mob, cls, loadout);
+	OpenWydDemoSetEquipment(mob, extra, cls, loadout);
+	OpenWydDemoSetInventory(mob, loadout);
+
+	mob->SPX = 2096;
+	mob->SPY = 2096;
+	mob->CurrentScore = mob->BaseScore;
+	BASE_GetHpMp(mob, extra);
+	mob->BaseScore.Hp = mob->BaseScore.MaxHp;
+	mob->BaseScore.Mp = mob->BaseScore.MaxMp;
+	mob->CurrentScore.Hp = mob->CurrentScore.MaxHp;
+	mob->CurrentScore.Mp = mob->CurrentScore.MaxMp;
+
+	// Preserve a complete, valid Sub-Celestial for the official Mysterious Stone handler.
+	extra->SaveCelestial[0].Class = cls;
+	extra->SaveCelestial[0].Exp = mob->Exp;
+	extra->SaveCelestial[0].SPX = mob->SPX;
+	extra->SaveCelestial[0].SPY = mob->SPY;
+	extra->SaveCelestial[0].BaseScore = mob->BaseScore;
+	extra->SaveCelestial[0].LearnedSkill = mob->LearnedSkill;
+	extra->SaveCelestial[0].ScoreBonus = mob->ScoreBonus;
+	extra->SaveCelestial[0].SpecialBonus = mob->SpecialBonus;
+	extra->SaveCelestial[0].SkillBonus = mob->SkillBonus;
+	extra->SaveCelestial[0].Soul = extra->Soul;
+	extra->SaveCelestial[1] = extra->SaveCelestial[0];
+
+	const unsigned char hotbar[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 22, 23};
+	memcpy(account->ShortSkill[slot], hotbar, sizeof(hotbar));
+	memcpy(extra->SaveCelestial[0].SkillBar2, hotbar, sizeof(hotbar));
+	memcpy(extra->SaveCelestial[1].SkillBar2, hotbar, sizeof(hotbar));
+
+	account->Coin = kOpenWydDemoGold;
+	printf("[public-demo] provisioned account=%s character=%s class=%d celestial=%d/%d gold=%d\n",
+		account->Info.AccountName, mob->MobName, cls,
+		extra->QuestInfo.Celestial.CelestialLevel,
+		extra->QuestInfo.Celestial.SubCelestialLevel, mob->Coin);
+}
+}
+#endif
 
 unsigned short	g_pGuildWar[65536] = {0,};
 unsigned short	g_pGuildAlly[65536] = {0,};
@@ -1055,6 +1281,11 @@ int CFileDB::ProcessMessage(char *Msg, int conn)
 			Extra->MortalFace = mob->Equip[0].sIndex;
 
 			memcpy(mob->MobName, m->MobName, NAME_LENGTH);
+
+#ifdef OPENWYD_HEADLESS
+			if (IsOpenWydPublicDemoAccount(pAccountList[Idx].File.Info.AccountName))
+				ProvisionOpenWydPublicDemoCharacter(&pAccountList[Idx].File, Slot, cls);
+#endif
 
 			ret = DBWriteAccount(&pAccountList[Idx].File);
 
