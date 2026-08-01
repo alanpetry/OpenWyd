@@ -70,6 +70,10 @@ bash webclient/client-wasm/tools/run_tmproject_wasm_startup_link.sh
 Then serve the repository over HTTP and open
 `webclient/client-wasm/build/link/startup_harness.html?state=0`.
 
+The exhaustive client-file audit is available in
+[docs/wasm-asset-checklist.md](docs/wasm-asset-checklist.md). Regenerate it
+without rebuilding the client with `npm --prefix webclient run audit:assets`.
+
 ### Contributing
 
 Keep changes faithful to the original client. Fix the platform bridge,
@@ -164,6 +168,11 @@ bash webclient/client-wasm/tools/run_tmproject_wasm_startup_link.sh
 
 Depois sirva o repositório por HTTP e abra
 `webclient/client-wasm/build/link/startup_harness.html?state=0`.
+
+O pente-fino exaustivo dos arquivos do cliente está em
+[docs/wasm-asset-checklist.md](docs/wasm-asset-checklist.md). Ele pode ser
+regenerado sem recompilar o cliente com
+`npm --prefix webclient run audit:assets`.
 
 ### Como contribuir
 

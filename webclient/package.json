@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "build:wasm": "./tools/build_wasm.sh",
+    "audit:assets": "python ./client-wasm/tools/audit_client_assets.py",
     "probe:runtime": "node ./tools/playwright_runtime_probe.mjs"
   },
   "keywords": [],
