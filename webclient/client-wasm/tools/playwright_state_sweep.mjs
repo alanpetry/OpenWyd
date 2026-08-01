@@ -100,6 +100,7 @@ async function main() {
     await page.goto(cfg.url, { waitUntil: 'load', timeout: cfg.timeoutMs });
     await page.waitForFunction(
       () => window.__runtimeReady === true || /runtime initialized/.test(document.getElementById('log')?.textContent || ''),
+      null,
       { timeout: cfg.timeoutMs }
     );
     await page.evaluate(() => {

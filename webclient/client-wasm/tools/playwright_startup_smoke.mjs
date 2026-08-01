@@ -1216,6 +1216,7 @@ try {
   result.step = "wait-runtime";
   await page.waitForFunction(
     () => window.__runtimeReady === true || /runtime initialized/.test(document.getElementById("log")?.textContent || ""),
+    null,
     { timeout: opts.timeoutMs },
   );
   await page.evaluate(() => {

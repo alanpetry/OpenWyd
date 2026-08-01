@@ -64,7 +64,10 @@ static BOOL IsOpenWydPublicDemoAccount(const char* account)
 #ifdef OPENWYD_HEADLESS
 namespace
 {
-constexpr int kOpenWydDemoGold = 1000000000;
+// The original HUD reserves ten characters for the formatted value.  Eight
+// digits plus the two thousands separators keep the public demo rich without
+// drawing over the coin icon.
+constexpr int kOpenWydDemoGold = 99999999;
 constexpr unsigned char kOpenWydDemoSanc15 = 250;
 constexpr unsigned int kOpenWydDemoAllSkills = 0x40FFFFFFu;
 
@@ -89,13 +92,13 @@ struct OpenWydDemoLoadout
 constexpr OpenWydDemoLoadout kOpenWydDemoLoadouts[MAX_CLASS] =
 {
 	// TK Trans full strength: Melpomene, Hrotti, Kaumodaki/Gaoth.
-	{{1230, 1231, 1232, 1233}, 3765, 3785, 3605, 643, 762, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 700, 1200},
+	{{1230, 1231, 1232, 1233}, 3765, 3785, 3605, 595, 1760, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 700, 1200},
 	// Foema magic: Potamides, Dordje, Rithil/Gae Bulg.
-	{{1365, 1366, 1367, 1368}, 3733, 3729, 3665, 642, 764, EF_INT, 120, EF_MAGIC, 14, 0, 4792, 0, 1600},
+	{{1365, 1366, 1367, 1368}, 3733, 3729, 3665, 594, 1761, EF_INT, 120, EF_MAGIC, 14, 0, 4792, 0, 1600},
 	// BeastMaster Nature full strength: Driade, Lupercus, Gae Bulg/Kaumodaki.
-	{{1515, 1516, 1517, 1518}, 3645, 3665, 3785, 643, 762, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 500, 1400},
+	{{1515, 1516, 1517, 1518}, 3645, 3665, 3785, 595, 1762, EF_STR, 120, EF_DAMAGE, 42, 4492, 0, 500, 1400},
 	// Huntress Survival full dexterity: Urania, Eithna, Kenten/Lupercus.
-	{{1665, 1666, 1667, 1668}, 3625, 3705, 3645, 643, 762, EF_DEX, 120, EF_DAMAGE, 42, 0, 0, 4392, 2000}
+	{{1665, 1666, 1667, 1668}, 3625, 3705, 3645, 595, 1763, EF_DEX, 120, EF_DAMAGE, 42, 0, 0, 4392, 2000}
 };
 
 STRUCT_ITEM OpenWydDemoItem(short index, unsigned char effect1 = 0, unsigned char value1 = 0,
@@ -131,7 +134,8 @@ STRUCT_ITEM OpenWydDemoMount(short index)
 {
 	STRUCT_ITEM item{};
 	item.sIndex = index;
-	item.stEffect[0].sValue = 20000;      // HP
+	// These maxima are the values used by the client's official mount table.
+	item.stEffect[0].sValue = (index == 2389) ? 10000 : 25000;
 	item.stEffect[1].cEffect = 120;       // maximum adult-mount level
 	item.stEffect[1].cValue = 60;         // maximum vitality
 	item.stEffect[2].cEffect = 100;       // fully fed
@@ -194,7 +198,7 @@ void OpenWydDemoSetEquipment(STRUCT_MOB* mob, STRUCT_MOBExtra* extra, int cls,
 		loadout.armorPowerValue, EF_HPADD, 70);
 	mob->Equip[9] = OpenWydDemoRefinedItem(570, loadout.armorPowerEffect,
 		loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
-	mob->Equip[10] = OpenWydDemoRefinedItem(599, EF_RESISTALL, 10, EF_HPADD, 70);
+	mob->Equip[10] = OpenWydDemoRefinedItem(1742, EF_RESISTALL, 10, EF_HPADD, 70); // Eternal Stone
 	mob->Equip[11] = OpenWydDemoRefinedItem(loadout.stone, loadout.armorPowerEffect,
 		loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
 	mob->Equip[13] = OpenWydDemoFairy(3915); // Golden Fairy
@@ -256,8 +260,10 @@ void ProvisionOpenWydPublicDemoCharacter(STRUCT_ACCOUNTFILE* account, int slot, 
 	BASE_GetHpMp(mob, extra);
 	mob->BaseScore.Hp = mob->BaseScore.MaxHp;
 	mob->BaseScore.Mp = mob->BaseScore.MaxMp;
-	mob->CurrentScore.Hp = mob->CurrentScore.MaxHp;
-	mob->CurrentScore.Mp = mob->CurrentScore.MaxMp;
+	// The game server applies equipment and percentage bonuses after loading the
+	// account.  Sentinels are clamped there to the final, equipment-adjusted max.
+	mob->CurrentScore.Hp = MAX_HP;
+	mob->CurrentScore.Mp = MAX_MP;
 
 	// Preserve a complete, valid Sub-Celestial for the official Mysterious Stone handler.
 	extra->SaveCelestial[0].Class = cls;
@@ -272,7 +278,9 @@ void ProvisionOpenWydPublicDemoCharacter(STRUCT_ACCOUNTFILE* account, int slot, 
 	extra->SaveCelestial[0].Soul = extra->Soul;
 	extra->SaveCelestial[1] = extra->SaveCelestial[0];
 
-	const unsigned char hotbar[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 22, 23};
+	const char primaryHotbar[4] = {0, 1, 2, 3};
+	const unsigned char hotbar[16] = {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+	memcpy(mob->SkillBar, primaryHotbar, sizeof(primaryHotbar));
 	memcpy(account->ShortSkill[slot], hotbar, sizeof(hotbar));
 	memcpy(extra->SaveCelestial[0].SkillBar2, hotbar, sizeof(hotbar));
 	memcpy(extra->SaveCelestial[1].SkillBar2, hotbar, sizeof(hotbar));
@@ -282,6 +290,54 @@ void ProvisionOpenWydPublicDemoCharacter(STRUCT_ACCOUNTFILE* account, int slot, 
 		account->Info.AccountName, mob->MobName, cls,
 		extra->QuestInfo.Celestial.CelestialLevel,
 		extra->QuestInfo.Celestial.SubCelestialLevel, mob->Coin);
+}
+
+bool UpgradeOpenWydPublicDemoAccount(STRUCT_ACCOUNTFILE* account)
+{
+	if (account == nullptr)
+		return false;
+
+	bool changed = false;
+	for (int slot = 0; slot < MOB_PER_ACCOUNT; ++slot)
+	{
+		STRUCT_MOB* mob = &account->Char[slot];
+		if (!mob->MobName[0] || mob->Class < 0 || mob->Class >= MAX_CLASS ||
+			mob->BaseScore.Level != MAX_CLEVEL || mob->LearnedSkill != kOpenWydDemoAllSkills)
+			continue;
+
+		const OpenWydDemoLoadout& loadout = kOpenWydDemoLoadouts[mob->Class];
+		const bool oldProvisioning = mob->Coin == 1000000000 || mob->Equip[10].sIndex == 599 ||
+			mob->Equip[11].sIndex == 762 || mob->Equip[11].sIndex == 764 ||
+			mob->Equip[8].sIndex == 642 || mob->Equip[8].sIndex == 643;
+		if (!oldProvisioning)
+			continue;
+
+		mob->Coin = kOpenWydDemoGold;
+		mob->Equip[8] = OpenWydDemoRefinedItem(loadout.ring, loadout.armorPowerEffect,
+			loadout.armorPowerValue, EF_HPADD, 70);
+		mob->Equip[10] = OpenWydDemoRefinedItem(1742, EF_RESISTALL, 10, EF_HPADD, 70);
+		mob->Equip[11] = OpenWydDemoRefinedItem(loadout.stone, loadout.armorPowerEffect,
+			loadout.armorPowerValue, loadout.primaryEffect, loadout.primaryValue);
+		mob->Equip[14] = OpenWydDemoMount(2380);
+		if (mob->Carry[10].sIndex == 2388)
+			mob->Carry[10] = OpenWydDemoMount(2388);
+		if (mob->Carry[11].sIndex == 2389)
+			mob->Carry[11] = OpenWydDemoMount(2389);
+
+		const char primaryHotbar[4] = {0, 1, 2, 3};
+		const unsigned char hotbar[16] = {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+		memcpy(mob->SkillBar, primaryHotbar, sizeof(primaryHotbar));
+		memcpy(account->ShortSkill[slot], hotbar, sizeof(hotbar));
+		memcpy(account->mobExtra[slot].SaveCelestial[0].SkillBar2, hotbar, sizeof(hotbar));
+		memcpy(account->mobExtra[slot].SaveCelestial[1].SkillBar2, hotbar, sizeof(hotbar));
+		mob->CurrentScore.Hp = MAX_HP;
+		mob->CurrentScore.Mp = MAX_MP;
+		changed = true;
+	}
+
+	if (changed)
+		account->Coin = kOpenWydDemoGold;
+	return changed;
 }
 }
 #endif
@@ -886,6 +942,15 @@ int CFileDB::ProcessMessage(char *Msg, int conn)
 				AddAccount(m->AccountName, m->AccountPassword, empty, 0, 0, empty, empty, empty, 0);
 				ret = DBReadAccount(&file);
 			}
+
+#ifdef OPENWYD_HEADLESS
+			if (ret != 0 && IsOpenWydPublicDemoAccount(m->AccountName) &&
+				UpgradeOpenWydPublicDemoAccount(&file))
+			{
+				DBWriteAccount(&file);
+				printf("[public-demo] upgraded account=%s provisioning data\n", m->AccountName);
+			}
+#endif
 
 			if(ret == 0)
 			{
