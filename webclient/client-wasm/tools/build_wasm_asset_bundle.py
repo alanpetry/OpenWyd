@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -23,12 +24,13 @@ from build_gdi_font_atlas import (  # noqa: E402
     MANIFEST_NAME,
     build_gdi_font_atlas,
 )
-from link_tmproject_wasm_startup import read_preload_entries  # noqa: E402
+from preload_manifest import read_preload_entries  # noqa: E402
 
 
-ASSET_STATE_SCHEMA_VERSION = 1
+ASSET_STATE_SCHEMA_VERSION = 2
 BOOTSTRAP_NAME = "openwyd_assets.js"
 STATE_NAME = "openwyd_assets.state.json"
+HASH_CACHE_SCHEMA_VERSION = 1
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -124,7 +126,94 @@ def _absolute_packager_entry(repo_root: Path, entry: str) -> str:
     return f"{escaped_source}@{destination}"
 
 
-def bundle_is_available(link_dir: Path) -> bool:
+def _asset_content_sha256(
+    repo_root: Path,
+    entries: Sequence[str],
+    packager: Path,
+    *,
+    cache_path: Path | None = None,
+    trust_cache: bool = True,
+) -> str:
+    """Hash the exact virtual filesystem payload and its destination names."""
+
+    digest = hashlib.sha256()
+    digest.update(b"openwyd-wasm-assets-v2\0")
+    for tool in (Path(__file__).resolve(), packager.resolve()):
+        digest.update(tool.name.encode("utf-8"))
+        with tool.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    cached_files: dict[str, object] = {}
+    if trust_cache and cache_path is not None:
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            if cached.get("schema_version") == HASH_CACHE_SCHEMA_VERSION:
+                cached_files = cached.get("files", {})
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+    updated_files: dict[str, object] = {}
+    file_digests: dict[Path, str] = {}
+    for entry in entries:
+        source, separator, destination = entry.partition("@")
+        source_path = Path(source)
+        if not source_path.is_absolute():
+            source_path = repo_root / source_path
+        source_path = source_path.resolve()
+        try:
+            cache_key = source_path.relative_to(repo_root).as_posix()
+        except ValueError:
+            cache_key = source_path.as_posix()
+        stat = source_path.stat()
+        cached_file = cached_files.get(cache_key)
+        file_sha256 = None
+        if isinstance(cached_file, dict):
+            candidate = cached_file.get("sha256")
+            if (
+                cached_file.get("size") == stat.st_size
+                and cached_file.get("mtime_ns") == stat.st_mtime_ns
+                and isinstance(candidate, str)
+                and len(candidate) == 64
+            ):
+                file_sha256 = candidate
+        if file_sha256 is None:
+            file_sha256 = file_digests.get(source_path)
+        if file_sha256 is None:
+            file_digest = hashlib.sha256()
+            with source_path.open("rb") as stream:
+                for chunk in iter(
+                    lambda: stream.read(4 * 1024 * 1024),
+                    b"",
+                ):
+                    file_digest.update(chunk)
+            file_sha256 = file_digest.hexdigest()
+        file_digests[source_path] = file_sha256
+        updated_files[cache_key] = {
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": file_sha256,
+        }
+        virtual_path = destination if separator else source_path.name
+        encoded_path = virtual_path.replace("\\", "/").encode("utf-8")
+        digest.update(len(encoded_path).to_bytes(4, "little"))
+        digest.update(encoded_path)
+        digest.update(stat.st_size.to_bytes(8, "little"))
+        digest.update(bytes.fromhex(file_sha256))
+    if cache_path is not None:
+        _atomic_write_json(
+            cache_path,
+            {
+                "schema_version": HASH_CACHE_SCHEMA_VERSION,
+                "files": updated_files,
+            },
+        )
+    return digest.hexdigest()
+
+
+def bundle_is_available(
+    link_dir: Path,
+    *,
+    content_sha256: str | None = None,
+) -> bool:
     bootstrap = link_dir / BOOTSTRAP_NAME
     state_path = link_dir / STATE_NAME
     try:
@@ -135,6 +224,11 @@ def bundle_is_available(link_dir: Path) -> bool:
     data = state.get("data")
     return (
         bootstrap.is_file()
+        and state.get("schema_version") == ASSET_STATE_SCHEMA_VERSION
+        and (
+            content_sha256 is None
+            or state.get("content_sha256") == content_sha256
+        )
         and isinstance(loader, str)
         and isinstance(data, str)
         and (link_dir / loader).is_file()
@@ -153,7 +247,28 @@ def build_asset_bundle(
     manifest_path = manifest_path.resolve()
     link_dir = link_dir.resolve()
     link_dir.mkdir(parents=True, exist_ok=True)
-    if bundle_is_available(link_dir) and not force:
+    entries = [
+        *read_preload_entries(repo_root, manifest_path),
+        *_gdi_entries(repo_root),
+    ]
+    packager = _file_packager(repo_root)
+    content_sha256 = _asset_content_sha256(
+        repo_root,
+        entries,
+        packager,
+        cache_path=(
+            repo_root
+            / "webclient/client-wasm/build/cache/asset-content-hashes.json"
+        ),
+        trust_cache=not force,
+    )
+    if (
+        bundle_is_available(
+            link_dir,
+            content_sha256=content_sha256,
+        )
+        and not force
+    ):
         state = json.loads(
             (link_dir / STATE_NAME).read_text(encoding="utf-8")
         )
@@ -163,14 +278,9 @@ def build_asset_bundle(
         )
         return state
 
-    entries = [
-        *read_preload_entries(repo_root, manifest_path),
-        *_gdi_entries(repo_root),
-    ]
-    build_id = str(time.time_ns())
+    build_id = content_sha256
     data_name = f"openwyd_assets.{build_id}.data"
     loader_name = f"openwyd_assets.{build_id}.js"
-    packager = _file_packager(repo_root)
     started = time.perf_counter()
     with tempfile.TemporaryDirectory(
         prefix=".openwyd-assets-",
@@ -209,17 +319,19 @@ def build_asset_bundle(
         os.replace(staged_data, link_dir / data_name)
         os.replace(staged_loader, link_dir / loader_name)
 
+    data_path = link_dir / data_name
     bootstrap = (
         "/* Generated atomically by build_wasm_asset_bundle.py. */\n"
+        f"window.__openwydAssetDataBytes = {data_path.stat().st_size};\n"
         "document.write("
         f"'<script src=\"./{loader_name}\"><\\/script>'"
         ");\n"
     )
     _atomic_write_text(link_dir / BOOTSTRAP_NAME, bootstrap)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
-    data_path = link_dir / data_name
     state: dict[str, object] = {
         "schema_version": ASSET_STATE_SCHEMA_VERSION,
+        "content_sha256": content_sha256,
         "manifest": manifest_path.relative_to(repo_root).as_posix(),
         "loader": loader_name,
         "data": data_name,

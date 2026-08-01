@@ -682,6 +682,11 @@ class WasmLinkFreshnessTests(unittest.TestCase):
                 ),
                 mock.patch.object(
                     LINKER,
+                    "build_gdi_font_atlas_preload",
+                    return_value=[],
+                ),
+                mock.patch.object(
+                    LINKER,
                     "capture_startup_link_contract",
                     return_value={"fingerprint": "stable"},
                 ),
@@ -755,6 +760,11 @@ class WasmLinkFreshnessTests(unittest.TestCase):
                 mock.patch.object(
                     LINKER,
                     "read_preload_entries",
+                    return_value=[],
+                ),
+                mock.patch.object(
+                    LINKER,
+                    "build_gdi_font_atlas_preload",
                     return_value=[],
                 ),
                 mock.patch.object(
@@ -842,6 +852,11 @@ class WasmLinkFreshnessTests(unittest.TestCase):
                 mock.patch.object(
                     LINKER,
                     "read_preload_entries",
+                    return_value=[],
+                ),
+                mock.patch.object(
+                    LINKER,
+                    "build_gdi_font_atlas_preload",
                     return_value=[],
                 ),
                 mock.patch.object(

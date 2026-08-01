@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preload" as="image" href="./openwyd_loading.png" fetchpriority="high" />
   <link rel="icon" href="data:," />
   <title>WYD TMProject WASM Startup Harness</title>
   <style>
@@ -174,16 +175,79 @@
       position: absolute;
       inset: 0;
       align-items: center;
-      justify-content: center;
-      padding: 24px;
+      justify-content: flex-end;
+      padding: 0 24px 42px;
       box-sizing: border-box;
-      background: #070707;
-      color: #d5e8ff;
-      font-family: monospace;
-      font-size: 14px;
+      overflow: hidden;
+      background: #070707 url('./openwyd_loading.png') center center / cover no-repeat;
+      color: #f4ead0;
+      font-family: Tahoma, Arial, sans-serif;
+      font-size: 13px;
       text-align: center;
       line-height: 1.5;
       z-index: 10;
+    }
+    .loading-overlay::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 42%, rgba(0, 0, 0, 0.82) 100%),
+        radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.42) 100%);
+      pointer-events: none;
+    }
+    .loading-panel {
+      position: relative;
+      width: min(520px, calc(100% - 24px));
+      padding: 13px 18px 11px;
+      box-sizing: border-box;
+      border: 1px solid rgba(204, 166, 100, 0.72);
+      border-radius: 3px;
+      background: linear-gradient(
+        to bottom,
+        rgba(29, 24, 20, 0.91),
+        rgba(9, 8, 7, 0.95)
+      );
+      box-shadow:
+        0 0 0 1px rgba(15, 10, 7, 0.88),
+        0 8px 28px rgba(0, 0, 0, 0.62),
+        inset 0 1px rgba(255, 236, 194, 0.18);
+    }
+    .loading-message {
+      margin-bottom: 7px;
+      color: #fff3d3;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      text-shadow: 0 1px 2px #000;
+    }
+    .loading-progress {
+      position: relative;
+      height: 10px;
+      overflow: hidden;
+      border: 1px solid #130e09;
+      border-radius: 2px;
+      background: #080706;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+    }
+    .loading-progress-fill {
+      display: block;
+      width: 2%;
+      height: 100%;
+      background: linear-gradient(
+        to bottom,
+        #f2d08d 0%,
+        #b67a2f 45%,
+        #744116 100%
+      );
+      box-shadow: 0 0 8px rgba(236, 178, 80, 0.7);
+      transition: width 140ms ease-out;
+    }
+    .loading-detail {
+      min-height: 16px;
+      margin-top: 5px;
+      color: #c9baa0;
+      font-size: 11px;
+      text-shadow: 0 1px 1px #000;
     }
     body.play.loading .loading-overlay {
       display: flex;
@@ -261,7 +325,16 @@
       <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
       <textarea id="wyd-text-input" aria-hidden="true" autocomplete="off" autocapitalize="off"
         autocorrect="off" spellcheck="false" tabindex="-1"></textarea>
-      <div id="loading-overlay" class="loading-overlay">Loading OpenWyd Field preview...</div>
+      <div id="loading-overlay" class="loading-overlay" role="status" aria-live="polite">
+        <div class="loading-panel">
+          <div id="loading-message" class="loading-message">Preparando o mundo de OpenWyd...</div>
+          <div id="loading-progress" class="loading-progress" role="progressbar"
+            aria-label="Carregamento" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span id="loading-progress-fill" class="loading-progress-fill"></span>
+          </div>
+          <div id="loading-detail" class="loading-detail">Verificando arquivos salvos...</div>
+        </div>
+      </div>
     </div>
   </div>
   <script>
@@ -271,6 +344,10 @@
     const canvasEl = document.getElementById('canvas');
     const textInputEl = document.getElementById('wyd-text-input');
     const loadingOverlayEl = document.getElementById('loading-overlay');
+    const loadingMessageEl = document.getElementById('loading-message');
+    const loadingProgressEl = document.getElementById('loading-progress');
+    const loadingProgressFillEl = document.getElementById('loading-progress-fill');
+    const loadingDetailEl = document.getElementById('loading-detail');
     const displayControlsEl = document.getElementById('display-controls');
     const displayResolutionEl = document.getElementById('display-resolution');
     const displayFitEl = document.getElementById('display-fit');
@@ -454,14 +531,76 @@
       document.body.classList.add('capture');
     }
 
-    const setLoadingStatus = (message) => {
-      if (publicPlayMode && loadingOverlayEl) {
-        loadingOverlayEl.textContent = message || 'Loading OpenWyd Field preview...';
+    let loadingPercent = 0;
+    const setLoadingProgress = (percent) => {
+      loadingPercent = Math.max(loadingPercent, Math.min(100, Math.round(percent)));
+      loadingProgressFillEl.style.width = `${Math.max(2, loadingPercent)}%`;
+      loadingProgressEl.setAttribute('aria-valuenow', String(loadingPercent));
+    };
+
+    const formatLoadingBytes = (bytes) => {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let value = bytes;
+      let unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
       }
+      return `${value.toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`;
+    };
+
+    const setLoadingStatus = (message) => {
+      if (!publicPlayMode || !loadingOverlayEl) return;
+      const raw = String(message || '');
+      const download = raw.match(/Downloading data\.\.\. \((\d+)\/(\d+)\)/);
+      if (download) {
+        const loaded = Number(download[1]);
+        const reportedTotal = Number(download[2]);
+        const total = Number(window.__openwydAssetDataBytes) || reportedTotal;
+        const percent = total > 0 ? loaded * 94 / total : 2;
+        setLoadingProgress(percent);
+        loadingMessageEl.textContent = 'Baixando os arquivos do mundo...';
+        loadingDetailEl.textContent = total > 0
+          ? `${formatLoadingBytes(loaded)} de ${formatLoadingBytes(total)} · ${Math.round(loaded * 100 / total)}%`
+          : 'Conectando ao servidor de arquivos...';
+        return;
+      }
+      if (/Downloading data|Downloading/.test(raw)) {
+        const fromCache = Object.values(window.Module?.preloadResults || {})
+          .some(result => result && result.fromCache);
+        setLoadingProgress(fromCache ? 94 : Math.max(loadingPercent, 2));
+        loadingMessageEl.textContent = fromCache
+          ? 'Carregando os arquivos salvos neste navegador...'
+          : 'Preparando os arquivos do mundo...';
+        loadingDetailEl.textContent = fromCache
+          ? 'Cache local encontrado; nenhum download completo é necessário.'
+          : 'O primeiro acesso pode levar um pouco mais de tempo.';
+        return;
+      }
+      const dependencies = raw.match(/\((\d+) runtime dependencies remaining\)/);
+      if (dependencies) {
+        setLoadingProgress(96);
+        loadingMessageEl.textContent = 'Montando o mundo de OpenWyd...';
+        loadingDetailEl.textContent = `${dependencies[1]} componentes restantes`;
+        return;
+      }
+      if (/Criando sua conta/.test(raw)) {
+        setLoadingProgress(98);
+        loadingMessageEl.textContent = 'Criando sua conta de demonstração...';
+        loadingDetailEl.textContent = 'Preparando seus personagens e equipamentos.';
+        return;
+      }
+      setLoadingProgress(96);
+      loadingMessageEl.textContent = 'Iniciando o cliente...';
+      loadingDetailEl.textContent = 'Aguarde só mais um instante.';
     };
 
     const hideLoadingOverlay = () => {
-      if (publicPlayMode) document.body.classList.remove('loading');
+      if (publicPlayMode) {
+        setLoadingProgress(100);
+        document.body.classList.remove('loading');
+      }
     };
 
     const syncCanvasSize = () => {
@@ -1183,11 +1322,11 @@
       canvas: canvasEl,
       wydSocketProxyUrl: autoConfig.socketProxyUrl,
       setStatus: (message) => {
-        setLoadingStatus(message || 'Loading OpenWyd Field preview...');
+        setLoadingStatus(message);
       },
       monitorRunDependencies: (left) => {
         setLoadingStatus(left > 0
-          ? `Loading OpenWyd Field preview (${left} runtime dependencies remaining)...`
+          ? `Loading OpenWyd Field preview (${left} runtime dependencies remaining)`
           : 'Starting OpenWyd Field preview...');
       },
       print: (txt) => write(`[stdout] ${txt}`),
