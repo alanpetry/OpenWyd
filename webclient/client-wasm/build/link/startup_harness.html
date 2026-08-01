@@ -532,10 +532,37 @@
     }
 
     let loadingPercent = 0;
+    let loadingDownloadComplete = false;
+    let loadingDependencyCount = 0;
+    let loadingDependencyMaximum = 0;
     const setLoadingProgress = (percent) => {
       loadingPercent = Math.max(loadingPercent, Math.min(100, Math.round(percent)));
       loadingProgressFillEl.style.width = `${Math.max(2, loadingPercent)}%`;
       loadingProgressEl.setAttribute('aria-valuenow', String(loadingPercent));
+    };
+
+    const setLoadingDependencies = (left) => {
+      loadingDependencyCount = Math.max(0, Number(left) || 0);
+      loadingDependencyMaximum = Math.max(loadingDependencyMaximum, loadingDependencyCount);
+
+      // The file packager registers every virtual file before it has decided
+      // whether the data comes from IndexedDB or the network.  Showing that
+      // initial dependency count as 96% made the bar jump before the download.
+      if (!loadingDownloadComplete) return;
+
+      if (loadingDependencyCount > 0) {
+        const completed = loadingDependencyMaximum > 0
+          ? 1 - loadingDependencyCount / loadingDependencyMaximum
+          : 0;
+        setLoadingProgress(94 + completed * 4);
+        loadingMessageEl.textContent = 'Montando o mundo de OpenWyd...';
+        loadingDetailEl.textContent = `${loadingDependencyCount} componentes restantes`;
+        return;
+      }
+
+      setLoadingProgress(98);
+      loadingMessageEl.textContent = 'Iniciando o cliente...';
+      loadingDetailEl.textContent = 'Aguarde só mais um instante.';
     };
 
     const formatLoadingBytes = (bytes) => {
@@ -564,25 +591,33 @@
         loadingDetailEl.textContent = total > 0
           ? `${formatLoadingBytes(loaded)} de ${formatLoadingBytes(total)} · ${Math.round(loaded * 100 / total)}%`
           : 'Conectando ao servidor de arquivos...';
+        if (total > 0 && loaded >= total) {
+          loadingDownloadComplete = true;
+          setLoadingDependencies(loadingDependencyCount);
+        }
         return;
       }
       if (/Downloading data|Downloading/.test(raw)) {
         const fromCache = Object.values(window.Module?.preloadResults || {})
           .some(result => result && result.fromCache);
-        setLoadingProgress(fromCache ? 94 : Math.max(loadingPercent, 2));
-        loadingMessageEl.textContent = fromCache
-          ? 'Carregando os arquivos salvos neste navegador...'
-          : 'Preparando os arquivos do mundo...';
-        loadingDetailEl.textContent = fromCache
-          ? 'Cache local encontrado; nenhum download completo é necessário.'
-          : 'O primeiro acesso pode levar um pouco mais de tempo.';
+        if (fromCache) {
+          loadingDownloadComplete = true;
+          setLoadingProgress(loadingDependencyCount > 0 ? 94 : 98);
+          loadingMessageEl.textContent = 'Carregando os arquivos salvos neste navegador...';
+          loadingDetailEl.textContent = 'Cache local encontrado; nenhum download completo é necessário.';
+          if (loadingDependencyCount > 0) setLoadingDependencies(loadingDependencyCount);
+        } else if (loadingDownloadComplete) {
+          setLoadingDependencies(loadingDependencyCount);
+        } else {
+          setLoadingProgress(Math.max(loadingPercent, 2));
+          loadingMessageEl.textContent = 'Preparando os arquivos do mundo...';
+          loadingDetailEl.textContent = 'O primeiro acesso pode levar um pouco mais de tempo.';
+        }
         return;
       }
       const dependencies = raw.match(/\((\d+) runtime dependencies remaining\)/);
       if (dependencies) {
-        setLoadingProgress(96);
-        loadingMessageEl.textContent = 'Montando o mundo de OpenWyd...';
-        loadingDetailEl.textContent = `${dependencies[1]} componentes restantes`;
+        setLoadingDependencies(Number(dependencies[1]));
         return;
       }
       if (/Criando sua conta/.test(raw)) {
@@ -1325,9 +1360,7 @@
         setLoadingStatus(message);
       },
       monitorRunDependencies: (left) => {
-        setLoadingStatus(left > 0
-          ? `Loading OpenWyd Field preview (${left} runtime dependencies remaining)`
-          : 'Starting OpenWyd Field preview...');
+        setLoadingDependencies(left);
       },
       print: (txt) => write(`[stdout] ${txt}`),
       printErr: (txt) => write(`[stderr] ${txt}`, 'err'),
