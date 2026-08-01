@@ -2717,9 +2717,17 @@ int CFileDB::CreateCharacter(char *ac, char *ch)
 		return FALSE;
 
 	char First[128];
+	char directory[128];
 	char temp[128];
 
 	BASE_GetFirstKey(check, First);
+
+	sprintf(directory, "./char/%s", First);
+	if (_mkdir(directory) != 0 && errno != EEXIST)
+	{
+		Log("err createchar directory", ch, 0);
+		return FALSE;
+	}
 
 	sprintf(temp, "./char/%s/%s", First, check);
 
