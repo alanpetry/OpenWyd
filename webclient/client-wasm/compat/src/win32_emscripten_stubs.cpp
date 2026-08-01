@@ -175,6 +175,11 @@ int AnsiCodepoint(unsigned char ch) {
   return static_cast<int>(ch);
 }
 
+int FloorDiv(int value, int divisor) {
+  return value >= 0 ? value / divisor
+                    : -static_cast<int>((-value + divisor - 1) / divisor);
+}
+
 // Returns rendered width.  Writes alpha-blended glyphs into dib->pixels.
 int RenderTextToDIB(DibSection* dib, int x, int y,
                     const char* text, int len,
@@ -183,8 +188,13 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
   EnsureFontRenderer();
   if (g_font_file_data.empty()) return 0;
 
-  float scale = stbtt_ScaleForPixelHeight(&g_font_stb,
+  const float scale = stbtt_ScaleForPixelHeight(&g_font_stb,
       static_cast<float>(std::abs(finfo ? finfo->height : 14)));
+  // stb_truetype does not execute Tahoma's native small-size hinting. Rendering
+  // at 3x and box-filtering back to the original metrics keeps the official
+  // face and dimensions while avoiding the jagged/noisy single-pixel edges.
+  constexpr int kFontOversample = 3;
+  const float render_scale = scale * static_cast<float>(kFontOversample);
   int ascent_f = 0, descent_f = 0, lg_f = 0;
   stbtt_GetFontVMetrics(&g_font_stb, &ascent_f, &descent_f, &lg_f);
   int baseline = static_cast<int>(std::round(ascent_f * scale));
@@ -200,24 +210,41 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
 
     int gw = 0, gh = 0, xoff = 0, yoff = 0;
     unsigned char* glyph = stbtt_GetCodepointBitmap(
-        &g_font_stb, 0, scale, codepoint, &gw, &gh, &xoff, &yoff);
+        &g_font_stb, 0, render_scale, codepoint, &gw, &gh, &xoff, &yoff);
     if (glyph) {
-      int dx = pen_x + xoff;
-      int dy = pen_y + yoff;
+      const int left = FloorDiv(xoff, kFontOversample);
+      const int top = FloorDiv(yoff, kFontOversample);
+      const int right = FloorDiv(xoff + gw - 1, kFontOversample);
+      const int bottom = FloorDiv(yoff + gh - 1, kFontOversample);
+      const int sample_count = kFontOversample * kFontOversample;
       uint8_t tr = static_cast<uint8_t>(text_color);
       uint8_t tg = static_cast<uint8_t>(text_color >> 8);
       uint8_t tb = static_cast<uint8_t>(text_color >> 16);
-      for (int row = 0; row < gh; ++row) {
-        for (int col = 0; col < gw; ++col) {
-          uint8_t a = glyph[row * gw + col];
-          if (a == 0) continue;
+      for (int row = top; row <= bottom; ++row) {
+        for (int col = left; col <= right; ++col) {
+          unsigned int coverage = 0;
+          for (int sy = 0; sy < kFontOversample; ++sy) {
+            const int source_y = row * kFontOversample + sy - yoff;
+            if (source_y < 0 || source_y >= gh) continue;
+            for (int sx = 0; sx < kFontOversample; ++sx) {
+              const int source_x = col * kFontOversample + sx - xoff;
+              if (source_x >= 0 && source_x < gw)
+                coverage += glyph[source_y * gw + source_x];
+            }
+          }
+          uint8_t a = static_cast<uint8_t>(
+              (coverage + static_cast<unsigned int>(sample_count / 2)) /
+              static_cast<unsigned int>(sample_count));
+          // Coverage this low becomes unstable after the A4 atlas conversion
+          // and is the source of the thin speckled row below some glyphs.
+          if (a < 8) continue;
           if (a == 255) {
-            PutDibPixel(dib, dx + col, dy + row, text_color);
+            PutDibPixel(dib, pen_x + col, pen_y + row, text_color);
           } else {
             uint8_t out_r = (uint8_t)((255u * a + tr * (255u - a)) / 255u);
             uint8_t out_g = (uint8_t)((255u * a + tg * (255u - a)) / 255u);
             uint8_t out_b = (uint8_t)((255u * a + tb * (255u - a)) / 255u);
-            PutDibPixel(dib, dx + col, dy + row,
+            PutDibPixel(dib, pen_x + col, pen_y + row,
                          ((uint32_t)a << 24) | ((uint32_t)out_b << 16) |
                          ((uint32_t)out_g << 8) | out_r);
           }

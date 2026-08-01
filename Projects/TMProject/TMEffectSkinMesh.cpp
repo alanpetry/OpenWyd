@@ -24,12 +24,15 @@ TMEffectSkinMesh::TMEffectSkinMesh(int nSkinMeshType, TMVector3 vecStart, TMVect
 	m_StartColor.r = 1.0f;
 	m_StartColor.g = 1.0f;
 	m_StartColor.b = 1.0f;
+	m_StartColor.a = 1.0f;
 	m_EndColor.r = 1.0f;
 	m_EndColor.g = 1.0f;
 	m_EndColor.b = 1.0f;
+	m_EndColor.a = 1.0f;
 	m_color.r = 1.0f;
 	m_color.g = 1.0f;
 	m_color.b = 1.0f;
+	m_color.a = 1.0f;
 	m_nFade = 0;
 	m_nLevel = nLevel;
 	m_pOwner = pOwner;
