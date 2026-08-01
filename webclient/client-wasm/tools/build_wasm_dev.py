@@ -22,7 +22,6 @@ if str(TOOLS_DIRECTORY) not in sys.path:
 
 from build_wasm_asset_bundle import (  # noqa: E402
     build_asset_bundle,
-    bundle_is_available,
 )
 
 
@@ -71,15 +70,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     started = time.perf_counter()
-    if args.force_assets or not bundle_is_available(link_dir):
-        build_asset_bundle(
-            repo_root=repo_root,
-            manifest_path=manifest,
-            link_dir=link_dir,
-            force=args.force_assets,
-        )
-    else:
-        print("[wasm-dev] assets=reused")
+    build_asset_bundle(
+        repo_root=repo_root,
+        manifest_path=manifest,
+        link_dir=link_dir,
+        force=args.force_assets,
+    )
 
     linker = TOOLS_DIRECTORY / "link_tmproject_wasm_startup.py"
     command = [

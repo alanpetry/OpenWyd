@@ -1458,23 +1458,29 @@ EM_JS(int, WydWebAudioResume, (), {
   return state.context.state === 'running' ? 1 : 0;
 });
 
-EM_JS(int, WydWebMusicPlay, (const void* data, int byte_length, int volume), {
-  if (!data || byte_length <= 0 || typeof Audio === 'undefined') return 0;
-  const bytes = HEAPU8.slice(data, data + byte_length);
-  const blob = new Blob([bytes], {type: 'audio/mpeg'});
-  const url = URL.createObjectURL(blob);
+EM_JS(int, WydWebMusicPlayPath, (const char* path, int volume), {
+  if (!path || typeof Audio === 'undefined' || typeof location === 'undefined') return 0;
+  let relativePath = UTF8ToString(path).split(String.fromCharCode(92)).join('/');
+  while (relativePath.startsWith('./')) relativePath = relativePath.slice(2);
+  while (relativePath.startsWith('/')) relativePath = relativePath.slice(1);
+  if (!relativePath || relativePath.includes('..')) return 0;
+
   const previous = Module.wydMusic || null;
   if (previous?.audio) {
     previous.audio.pause();
     previous.audio.removeAttribute('src');
   }
-  if (previous?.url) URL.revokeObjectURL(previous.url);
+  if (previous?.objectUrl && previous.url) URL.revokeObjectURL(previous.url);
 
+  const url = new URL(relativePath, location.href).href;
   const audio = new Audio(url);
   audio.loop = true;
   audio.preload = 'auto';
   audio.volume = volume <= -10000 ? 0 : Math.min(1, Math.max(0, Math.pow(10, volume / 2000)));
-  Module.wydMusic = {audio, url, volume: volume | 0};
+  Module.wydMusic = {audio, url, objectUrl: false, volume: volume | 0};
+  audio.addEventListener('error', () => {
+    console.error(`[openwyd-audio] could not stream ${relativePath}`);
+  }, {once: true});
   const start = () => audio.play().catch(() => {});
   start();
   if (typeof document !== 'undefined') {
@@ -12465,22 +12471,11 @@ extern "C" uint32_t wyd_audio_stop_calls() {
 
 extern "C" int wyd_audio_play_music_file(const char* path, int volume) {
   if (!path || !*path) return 0;
-  auto resolved = ResolveCaseInsensitivePath(path);
-  std::ifstream input(resolved, std::ios::binary);
-  if (!input) {
-    input.open(NormalizeWinPath(path), std::ios::binary);
-  }
-  TrackAssetFileOpen(path, input.good());
-  if (!input) return 0;
-
-  std::vector<unsigned char> bytes(
-      (std::istreambuf_iterator<char>(input)),
-      std::istreambuf_iterator<char>());
-  if (bytes.empty()) return 0;
-
   g_wydMusicVolume = volume;
   ++g_wydMusicPlayCalls;
-  return WydWebMusicPlay(bytes.data(), static_cast<int>(bytes.size()), volume);
+  const int started = WydWebMusicPlayPath(path, volume);
+  TrackAssetFileOpen(path, started != 0);
+  return started;
 }
 
 extern "C" int wyd_audio_stop_music() {

@@ -87,9 +87,9 @@ v769ClientRelease/Mesh/**/*.wys@/Mesh/
 v769ClientRelease/Mesh/**/*.dat@/Mesh/
 v769ClientRelease/Mesh/KK01bon@/Mesh/KK01bon
 
-# Audio assets used by startup scenes.
+# Sound effects are retained in the synchronous filesystem. MP3 music is
+# streamed from the same origin on demand and must not block initial startup.
 v769ClientRelease/Sound/**/*@/Sound/
-v769ClientRelease/music/**/*@/music/
 
 # Legacy D3D9 shader bytecode.
 v769ClientRelease/shader/skinmesh1.bin@/shader/skinmesh1.bin

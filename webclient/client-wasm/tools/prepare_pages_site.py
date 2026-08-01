@@ -8,6 +8,8 @@ import json
 import shutil
 from pathlib import Path
 
+from convert_wyt_to_png import convert_wyt_to_png
+
 
 STATIC_RUNTIME_FILES = (
     "startup_harness.html",
@@ -16,6 +18,7 @@ STATIC_RUNTIME_FILES = (
     "openwyd_assets.js",
     "openwyd_assets.state.json",
 )
+LOADING_ART_NAME = "openwyd_loading.png"
 
 INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -83,6 +86,11 @@ def main() -> int:
     parser.add_argument("--link-dir", type=Path, default=Path("webclient/client-wasm/build/link"))
     parser.add_argument("--out-dir", type=Path, default=Path("webclient/client-wasm/build/pages"))
     parser.add_argument("--max-bytes", type=int, default=900 * 1024 * 1024)
+    parser.add_argument(
+        "--loading-art",
+        type=Path,
+        help="Prebuilt official loading art; defaults to UI/newtitle.wyt",
+    )
     args = parser.parse_args()
 
     link_dir = args.link_dir.resolve()
@@ -111,6 +119,22 @@ def main() -> int:
         destination = out_dir / name
         shutil.copyfile(link_dir / name, destination)
         destination.chmod(0o644)
+        compressed = link_dir / f"{name}.gz"
+        if compressed.is_file():
+            compressed_destination = out_dir / compressed.name
+            shutil.copyfile(compressed, compressed_destination)
+            compressed_destination.chmod(0o644)
+    if args.loading_art:
+        loading_art = args.loading_art.resolve()
+        if not loading_art.is_file():
+            raise SystemExit(f"missing loading art: {loading_art}")
+        shutil.copyfile(loading_art, out_dir / LOADING_ART_NAME)
+    else:
+        repo_root = link_dir.parents[3]
+        loading_source = repo_root / "v769ClientRelease/UI/newtitle.wyt"
+        if not loading_source.is_file():
+            raise SystemExit(f"missing official loading art: {loading_source}")
+        convert_wyt_to_png(loading_source, out_dir / LOADING_ART_NAME)
     (out_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
 
