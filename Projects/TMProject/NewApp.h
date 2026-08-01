@@ -16,6 +16,8 @@ struct SaveUpdatAndConfig
     short Config[14];
 };
 
+static_assert(sizeof(SaveUpdatAndConfig) == 30, "Config.bin payload layout changed");
+
 class NewApp
 {
 public:

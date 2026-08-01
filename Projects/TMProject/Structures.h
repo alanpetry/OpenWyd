@@ -331,6 +331,8 @@ struct ResourceDef
 	int nNumber;
 };
 
+static_assert(sizeof(ResourceDef) == 52, "UI/RC.bin record layout changed");
+
 struct stMemo
 {
 	unsigned int dwColor;
@@ -366,6 +368,8 @@ struct stMobAni
 	IVector2 vecPos;
 };
 
+static_assert(sizeof(stMobAni) == 16, "UI/TimeTable.bin record layout changed");
+
 struct stDemoHuman
 {
 	int nFace;
@@ -385,6 +389,8 @@ struct stDemoHuman
 	int nHumanAni;
 };
 
+static_assert(sizeof(stDemoHuman) == 60, "UI/demo*.bin record layout changed");
+
 struct stDemoHuman2
 {
 	int nFace;
@@ -400,6 +406,8 @@ struct stDemoHuman2
 	int nAngle;
 	int nSpeed;
 };
+
+static_assert(sizeof(stDemoHuman2) == 48, "UI/EndDemo.bin record layout changed");
 
 struct stCurse
 {
@@ -424,6 +432,8 @@ struct ObjectFileItem
 	float fScaleH;
 	float fScaleV;
 };
+
+static_assert(sizeof(ObjectFileItem) == 36, "Env object record layout changed");
 
 struct stMinimapPos
 {

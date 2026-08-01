@@ -271,6 +271,8 @@ struct STRUCT_ITEMLIST
 	unsigned short UnkNewValues[4];
 };
 
+static_assert(sizeof(STRUCT_ITEMLIST) == 164, "ItemList.bin record layout changed");
+
 struct STRUCT_EXT1
 {
 	int Data[8];
@@ -330,7 +332,14 @@ struct STRUCT_SPELL
 	int AffectResist;
 	int Passive;
 	int ForceDamage;
+	// The official client table stores 104 bytes per spell.  These final two
+	// DWORDs are present in every record (the first is its one-based index) and
+	// must be retained even though this client does not otherwise consume them.
+	int SkillIndex;
+	int Reserved;
 };
+
+static_assert(sizeof(STRUCT_SPELL) == 104, "SkillData.bin record layout changed");
 
 struct STRUCT_INITITEM
 {
@@ -339,6 +348,8 @@ struct STRUCT_INITITEM
 	short sIndex;
 	short Rotate;
 };
+
+static_assert(sizeof(STRUCT_INITITEM) == 8, "InitItem.bin record layout changed");
 
 struct STRUCT_AIRMOVELIST
 {

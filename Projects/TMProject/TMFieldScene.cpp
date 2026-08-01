@@ -15470,41 +15470,7 @@ void TMFieldScene::InitBoard()
 
 int TMFieldScene::LoadMsgText(SListBox* pListBox, char* szFileName)
 {
-	FILE* fp = nullptr;
-	fopen_s(&fp, szFileName, "rt");
-
-	if (!fp)
-		return 0;
-	if (!pListBox)
-		return 0;
-
-	char szCol[7]{};
-
-	char szTemp[256]{};
-	char szText[256]{};
-
-	unsigned int dwCol = 0;
-
-	for (int i = 0; i < 100 && fgets(szTemp, 256, fp); ++i)
-	{
-		strncpy(szCol, szTemp, 6);
-		sscanf(szCol, "%x", &dwCol);
-
-		auto szRet = strstr(szTemp, "\n");
-		if (szRet)
-			szRet[0] = 0;
-
-		if (szTemp[6] == ' ')
-		{
-			sprintf(szText, "%s", &szTemp[6]);
-			pListBox->AddItem(new SListBoxItem(szText, dwCol | 0xFF000000, 0.0f, 0.0f, 400.0f, 16.0f, 0, 0x77777777, 1u, 0));
-		}
-	}
-	if (pListBox->m_pScrollBar)
-		pListBox->m_pScrollBar->SetCurrentPos(0);
-
-	fclose(fp);
-	return 1;
+	return TMScene::LoadMsgText(pListBox, szFileName);
 }
 
 void TMFieldScene::SetPosPKRun()
@@ -17356,7 +17322,7 @@ int TMFieldScene::OnKeyGuildOnOff(char iCharCode, int lParam)
 int TMFieldScene::OnKeyShortSkill(char iCharCode, int lParam)
 {
 	if ((iCharCode < '0' || iCharCode > '9') && iCharCode != '!' && iCharCode != '@' && 
-		iCharCode != '#' && iCharCode != '$' && iCharCode != '%' && iCharCode != '®' && 
+		iCharCode != '#' && iCharCode != '$' && iCharCode != '%' && iCharCode != static_cast<char>(0xA8) &&
 		iCharCode != '&' && iCharCode != '*' && iCharCode != '(' && iCharCode != ')')
 	{
 		return 0;
@@ -17393,7 +17359,7 @@ int TMFieldScene::OnKeyShortSkill(char iCharCode, int lParam)
 		case '%':
 			g_pObjectManager->m_cSelectShortSkill = 4;
 			break;
-		case '®':
+		case static_cast<char>(0xA8):
 			g_pObjectManager->m_cSelectShortSkill = 5;
 			break;
 		case '&':
@@ -20307,7 +20273,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 		if (pAttacker != m_pMyHuman || pAttack->FlagLocal == 1 && pAttacker == m_pMyHuman || !pAttack->FlagLocal && 
 			pAttacker == m_pMyHuman && (unsigned char)pAttack->Motion == 254)
 		{
-			if (pAttack->SkillIndex == 4) // PossuÌdo
+			if (pAttack->SkillIndex == 4) // Possu√≠do
 			{
 				pAttacker->m_cPunish = 1;
 				pAttacker->m_dwPunishedTime = g_pTimerManager->GetServerTime();
@@ -20330,7 +20296,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 					fAngle = atan2f(pTarget->m_vecPosition.x - pAttacker->m_vecPosition.x, pTarget->m_vecPosition.y - pAttacker->m_vecPosition.y) + D3DXToRadian(90);
 			}
 
-			if (pAttack->SkillIndex == 98) // Canh„o Superior
+			if (pAttack->SkillIndex == 98) // Canh√£o Superior
 				fAngle = atan2f((float)pAttack->TargetX - pAttacker->m_vecPosition.x, (float)pAttack->TargetY - pAttacker->m_vecPosition.y) + D3DXToRadian(90);
 			if (pAttack->DoubleCritical & 1)
 				pAttacker->m_bDoubleAttack = 1;
@@ -20400,7 +20366,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 				if (pEffect && m_pEffectContainer)
 					m_pEffectContainer->AddChild(pEffect);
 			}
-			else if (pAttack->SkillIndex == 3) // PerseguiÁ„o
+			else if (pAttack->SkillIndex == 3) // Persegui√ß√£o
 			{
 				if (pAttacker)
 				{
@@ -20427,7 +20393,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 					GetSoundAndPlay(151, 0, 0);
 				}
 			}
-			else if (pAttack->SkillIndex == 45) // Arma M·gica
+			else if (pAttack->SkillIndex == 45) // Arma M√°gica
 			{
 				float fY = (float)pAttack->TargetY + 0.5f;
 				TMVector3 vecTarget{ (float)pAttack->TargetX + 0.5f, (float)GroundGetMask(TMVector2((float)pAttack->TargetX + 0.5f, fY)) * 0.1f, fY };
@@ -20685,7 +20651,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 			{
 				GetSoundAndPlay(34, 0, 0);
 			}
-			else if (pAttack->SkillIndex == 77) // MeditaÁ„o
+			else if (pAttack->SkillIndex == 77) // Medita√ß√£o
 			{
 				GetSoundAndPlay(36, 0, 0);
 			}
@@ -20725,7 +20691,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 					}
 				}
 			}
-			else if (pAttack->SkillIndex == 86) // Explos„o EtÈrea
+			else if (pAttack->SkillIndex == 86) // Explos√£o Et√©rea
 			{
 				if (pAttacker)
 				{
@@ -20905,7 +20871,7 @@ int TMFieldScene::OnPacketAttack(MSG_STANDARD* pStd)
 
 				GetSoundAndPlay(1, 0, 0);
 			}
-			else if (pAttack->SkillIndex == 100) // RessureiÁ„o
+			else if (pAttack->SkillIndex == 100) // Ressurei√ß√£o
 			{
 				GetSoundAndPlay(156, 0, 0);
 			}

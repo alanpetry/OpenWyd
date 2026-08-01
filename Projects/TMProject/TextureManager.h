@@ -2,8 +2,12 @@
 
 constexpr auto MAX_UI_TEXTURE_SET_LIST = 600;
 constexpr auto MAX_UI_TEXTURE = 512;
-constexpr auto MAX_EFFECT_TEXTURE = 512;
-constexpr auto MAX_MODEL_TEXTURE = 2048;
+// These capacities are part of the on-disk catalog format.  The official
+// EffectTextureList contains 600 records and MeshTextureList contains 3000;
+// using the recovered source's older limits silently made valid catalog
+// entries unreachable (and left the backing arrays only partly initialized).
+constexpr auto MAX_EFFECT_TEXTURE = 600;
+constexpr auto MAX_MODEL_TEXTURE = 3000;
 constexpr auto MAX_ENV_TEXTURE = 512;
 constexpr auto MAX_DYNAMIC_TEXTURE = 72;
 
@@ -46,6 +50,8 @@ struct stTextureListInfo
 	unsigned int dwLastUsedTimeOld;
 	unsigned int dwShowTimeOld;
 };
+
+static_assert(sizeof(stTextureListInfo) == 528, "texture catalog record layout changed");
 
 class TextureManager
 {
@@ -107,17 +113,17 @@ public:
 	int m_nOldShadowX;
 	int m_nOldShadowY;
 	unsigned int m_LastLoadTime;
-	ControlTextureSet m_UITextureSetList[600];
-	stTextureListInfo m_stUITextureList[512];
-	stTextureListInfo m_stEffectTextureList[512];
-	stTextureListInfo m_stModelTextureList[3000];
-	stTextureListInfo m_stEnvTextureList[512];
-	IDirect3DTexture9* m_ppUITexture[512];
-	IDirect3DTexture9* m_ppEffectTexture[512];
-	IDirect3DTexture9* m_ppModelTexture[3000];
-	IDirect3DTexture9* m_ppEnvTexture[512];
-	IDirect3DTexture9* m_ppDynamicTexture[72];
-	unsigned int m_dwDynamicLastUsedTime[72];
+	ControlTextureSet m_UITextureSetList[MAX_UI_TEXTURE_SET_LIST];
+	stTextureListInfo m_stUITextureList[MAX_UI_TEXTURE];
+	stTextureListInfo m_stEffectTextureList[MAX_EFFECT_TEXTURE];
+	stTextureListInfo m_stModelTextureList[MAX_MODEL_TEXTURE];
+	stTextureListInfo m_stEnvTextureList[MAX_ENV_TEXTURE];
+	IDirect3DTexture9* m_ppUITexture[MAX_UI_TEXTURE];
+	IDirect3DTexture9* m_ppEffectTexture[MAX_EFFECT_TEXTURE];
+	IDirect3DTexture9* m_ppModelTexture[MAX_MODEL_TEXTURE];
+	IDirect3DTexture9* m_ppEnvTexture[MAX_ENV_TEXTURE];
+	IDirect3DTexture9* m_ppDynamicTexture[MAX_DYNAMIC_TEXTURE];
+	unsigned int m_dwDynamicLastUsedTime[MAX_DYNAMIC_TEXTURE];
 	IDirect3DTexture9* m_pAccumTexture;
 	IDirect3DSurface9* m_pAccumSurface;
 	IDirect3DTexture9* m_pRenderTexture;

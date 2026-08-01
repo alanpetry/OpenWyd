@@ -20,6 +20,76 @@
 #include "TMSnow.h"
 #include "TMRain.h"
 
+namespace
+{
+bool WydReadTextLines(const char* szFileName, std::vector<std::string>& lines)
+{
+	FILE* fp = nullptr;
+	fopen_s(&fp, szFileName, "rb");
+	if (!fp)
+		return false;
+
+	fseek(fp, 0, SEEK_END);
+	const long fileSize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	if (fileSize < 0)
+	{
+		fclose(fp);
+		return false;
+	}
+
+	std::vector<unsigned char> bytes(static_cast<size_t>(fileSize));
+	const size_t read = bytes.empty() ? 0 : fread(bytes.data(), 1, bytes.size(), fp);
+	fclose(fp);
+	if (read != bytes.size())
+		return false;
+
+	std::string line;
+	auto appendLine = [&]()
+	{
+		lines.push_back(line);
+		line.clear();
+	};
+
+	// Some official localized tables (notably UI/etc.txt) are UTF-16LE.
+	// The recovered fgets reader saw a NUL after every character. Convert only
+	// the encoding; the existing CP1252 UI and line interpretation stay intact.
+	if (bytes.size() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+	{
+		for (size_t i = 2; i + 1 < bytes.size(); i += 2)
+		{
+			const unsigned int code = bytes[i] | (static_cast<unsigned int>(bytes[i + 1]) << 8);
+			if (code == '\r')
+				continue;
+			if (code == '\n')
+			{
+				appendLine();
+				continue;
+			}
+			line.push_back(code <= 0xFF ? static_cast<char>(code) : '?');
+		}
+	}
+	else
+	{
+		for (unsigned char value : bytes)
+		{
+			if (value == '\r')
+				continue;
+			if (value == '\n')
+			{
+				appendLine();
+				continue;
+			}
+			line.push_back(static_cast<char>(value));
+		}
+	}
+
+	if (!line.empty())
+		appendLine();
+	return true;
+}
+}
+
 #if defined(__EMSCRIPTEN__)
 extern "C" unsigned int wyd_d3d9_get_debug_flags();
 extern "C" unsigned int wyd_debug_demo_camera_offset_enabled();
@@ -2780,21 +2850,19 @@ void TMScene::ReadCameraPos(const char* szFileName)
 
 int TMScene::LoadMsgText(SListBox* pListBox, const char* szFileName)
 {
-	FILE* fp{};
-
-	fopen_s(&fp, szFileName, "rt");
-
-	if (!fp)
+	if (!pListBox)
 		return 0;
 
-	if (!pListBox)
+	std::vector<std::string> lines;
+	if (!WydReadTextLines(szFileName, lines))
 		return 0;
 
 	char szText[256]{};
 	char szTemp[256]{};
 
-	for (int i = 0; i < 100 && fgets(szTemp, 256, fp); ++i)
+	for (size_t i = 0; i < 100 && i < lines.size(); ++i)
 	{
+		sprintf_s(szTemp, "%s", lines[i].c_str());
 		char szCol[7]{};
 
 		strncpy(szCol, szTemp, 6);
@@ -2803,12 +2871,7 @@ int TMScene::LoadMsgText(SListBox* pListBox, const char* szFileName)
 
 		sscanf(szCol, "%x", &dwCol);
 
-		char* szRet = strstr(szTemp, "\n");
-
-		if (szRet)
-			*szRet = 0;
-
-		if (szTemp[6] == 32)
+		if (strlen(szTemp) > 6 && szTemp[6] == 32)
 		{
 			sprintf_s(szText, "%s", &szTemp[6]);
 			
@@ -2829,7 +2892,6 @@ int TMScene::LoadMsgText(SListBox* pListBox, const char* szFileName)
 	if (pListBox->m_pScrollBar)
 		pListBox->m_pScrollBar->SetCurrentPos(0);
 
-	fclose(fp);
 	return 1;
 }
 

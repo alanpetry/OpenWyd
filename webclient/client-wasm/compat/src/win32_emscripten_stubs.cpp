@@ -1472,7 +1472,16 @@ EM_JS(int, WydWebMusicPlayPath, (const char* path, int volume), {
   }
   if (previous?.objectUrl && previous.url) URL.revokeObjectURL(previous.url);
 
-  const url = new URL(relativePath, location.href).href;
+  // The deploy image serves streamed music beside the harness.  The raw
+  // developer link directory intentionally keeps MP3s out of the 500+ MiB
+  // preload package, so resolve them directly from the source tree when that
+  // exact local harness path is being served.
+  const localLinkedHarness = location.pathname.toLowerCase().includes(
+      '/webclient/client-wasm/build/link/');
+  const defaultBase = localLinkedHarness
+    ? new URL('../../../../v769ClientRelease/', location.href).href
+    : location.href;
+  const url = new URL(relativePath, Module.wydMusicBaseUrl || defaultBase).href;
   const audio = new Audio(url);
   audio.loop = true;
   audio.preload = 'auto';
@@ -2200,7 +2209,7 @@ bool DecodeTGAtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint32_t
   if (width == 0 || height == 0) return false;
   if (grayscale) {
     if (bpp != 8 && bpp != 16) return false;
-  } else if (bpp != 24 && bpp != 32) {
+  } else if (bpp != 16 && bpp != 24 && bpp != 32) {
     return false;
   }
 
@@ -2230,6 +2239,21 @@ bool DecodeTGAtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint32_t
       const uint8_t intensity = pixel[0];
       const uint8_t alpha = (px_bytes == 2) ? pixel[1] : 0xFFu;
       write_pixel(sequential_index, intensity, intensity, intensity, alpha);
+    } else if (px_bytes == 2) {
+      // The two official UI textures hanui.wyt and joyui.wyt use TGA's
+      // A1R5G5B5 layout.  DirectX accepted this natively; retain the same bit
+      // interpretation when expanding it for WebGL.
+      const uint16_t packed = ReadLE16(pixel);
+      const uint8_t b5 = static_cast<uint8_t>(packed & 0x1Fu);
+      const uint8_t g5 = static_cast<uint8_t>((packed >> 5) & 0x1Fu);
+      const uint8_t r5 = static_cast<uint8_t>((packed >> 10) & 0x1Fu);
+      const uint8_t alpha = (packed & 0x8000u) != 0u ? 0xFFu : 0u;
+      write_pixel(
+          sequential_index,
+          static_cast<uint8_t>((b5 << 3) | (b5 >> 2)),
+          static_cast<uint8_t>((g5 << 3) | (g5 >> 2)),
+          static_cast<uint8_t>((r5 << 3) | (r5 >> 2)),
+          alpha);
     } else {
       const uint8_t alpha = (px_bytes == 4) ? pixel[3] : 0xFFu;
       write_pixel(sequential_index, pixel[0], pixel[1], pixel[2], alpha);

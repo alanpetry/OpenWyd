@@ -477,7 +477,7 @@ int TextureManager::LoadUITexture(int nIndex, int nSrcIndex)
 
 IDirect3DTexture9* TextureManager::GetUITexture(int nIndex, DWORD showTime)
 {
-	if (nIndex < 0 || nIndex > MAX_UI_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_UI_TEXTURE)
 		return nullptr;
 
 	if (m_ppUITexture[nIndex] != nullptr || LoadUITexture(nIndex, -1))
@@ -602,7 +602,7 @@ void TextureManager::ReleaseUITextureSetList()
 
 ControlTextureSet* TextureManager::GetUITextureSet(int nIndex)
 {
-	if (nIndex < 0 || nIndex > MAX_UI_TEXTURE_SET_LIST)
+	if (nIndex < 0 || nIndex >= MAX_UI_TEXTURE_SET_LIST)
 		return nullptr;
 
 	return &m_UITextureSetList[nIndex];
@@ -804,7 +804,7 @@ int TextureManager::LoadEffectTexture(int nIndex)
 
 IDirect3DTexture9* TextureManager::GetEffectTexture(int nIndex, DWORD showTime)
 {
-	if (nIndex < 0 || nIndex > MAX_EFFECT_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_EFFECT_TEXTURE)
 		return nullptr;
 
 	if (m_ppEffectTexture[nIndex] != nullptr || LoadEffectTexture(nIndex))
@@ -1037,7 +1037,7 @@ int TextureManager::LoadModelTexture(int nIndex)
 
 int TextureManager::IsValidModelTexture(int nIndex)
 {
-	if (nIndex < 0 || nIndex > MAX_MODEL_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_MODEL_TEXTURE)
 		return 0;
 
 	return m_ppModelTexture[nIndex] != nullptr;
@@ -1045,7 +1045,7 @@ int TextureManager::IsValidModelTexture(int nIndex)
 
 IDirect3DTexture9* TextureManager::GetModelTexture(int nIndex, DWORD showTime)
 {
-	if (nIndex < 0 || nIndex > MAX_MODEL_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_MODEL_TEXTURE)
 		return nullptr;
 
 	if (m_ppModelTexture[nIndex] != nullptr || LoadModelTexture(nIndex))
@@ -1073,7 +1073,7 @@ IDirect3DTexture9* TextureManager::GetModelTexture(char* szTextureName, DWORD sh
 		}
 	}
 
-	if (nIndex < 0 || nIndex > MAX_MODEL_TEXTURE || !bFind)
+	if (nIndex < 0 || nIndex >= MAX_MODEL_TEXTURE || !bFind)
 		return nullptr;
 
 	if (m_ppModelTexture[nIndex] != nullptr || LoadModelTexture(nIndex))
@@ -1295,7 +1295,7 @@ int TextureManager::LoadEnvTexture(int nIndex)
 
 IDirect3DTexture9* TextureManager::GetEnvTexture(int nIndex, DWORD showTime)
 {
-	if (nIndex < 0 || nIndex > MAX_ENV_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_ENV_TEXTURE)
 		return nullptr;
 
 	if (m_ppEnvTexture[nIndex] != nullptr || LoadEnvTexture(nIndex))
@@ -1318,7 +1318,7 @@ int TextureManager::InitDynamicTextureList()
 
 int TextureManager::IsValidDynamicTexture(int nIndex)
 {
-	if (nIndex < 0 || nIndex > MAX_DYNAMIC_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_DYNAMIC_TEXTURE)
 		return 0;
 
 	return m_ppDynamicTexture[nIndex] != nullptr;
@@ -1523,7 +1523,7 @@ int TextureManager::GenerateTexture(int nDestUIIndex, int nSrcUIIndex, int nDest
 
 IDirect3DTexture9* TextureManager::GetDynamicTexture(int nIndex)
 {
-	if (nIndex < 0 || nIndex > MAX_DYNAMIC_TEXTURE)
+	if (nIndex < 0 || nIndex >= MAX_DYNAMIC_TEXTURE)
 		return nullptr;
 
 	if (m_ppDynamicTexture[nIndex] != nullptr)
