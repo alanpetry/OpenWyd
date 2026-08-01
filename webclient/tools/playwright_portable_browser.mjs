@@ -45,5 +45,17 @@ export function portableChromiumExecutable() {
 
 export function chromiumLaunchOptions(extra = {}) {
   const executablePath = portableChromiumExecutable();
-  return executablePath ? { ...extra, executablePath } : { ...extra };
+  // CI, nested VMs and ARM Windows commonly expose no hardware WebGL context.
+  // Keep the visual probes deterministic by explicitly enabling ANGLE's
+  // software fallback; a caller may still append its own Chromium arguments.
+  const defaultArgs = [
+    "--enable-webgl",
+    "--ignore-gpu-blocklist",
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--autoplay-policy=no-user-gesture-required",
+  ];
+  const args = [...new Set([...defaultArgs, ...(extra.args || [])])];
+  const options = { ...extra, args };
+  return executablePath ? { ...options, executablePath } : options;
 }

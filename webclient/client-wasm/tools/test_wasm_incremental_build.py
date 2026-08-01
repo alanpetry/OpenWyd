@@ -138,7 +138,11 @@ class IncrementalWasmBuildTests(unittest.TestCase):
             (link_dir / "bundle.data").write_bytes(b"data")
             (link_dir / assets.STATE_NAME).write_text(
                 json.dumps(
-                    {"loader": "bundle.js", "data": "bundle.data"}
+                    {
+                        "schema_version": assets.ASSET_STATE_SCHEMA_VERSION,
+                        "loader": "bundle.js",
+                        "data": "bundle.data",
+                    }
                 ),
                 encoding="utf-8",
             )

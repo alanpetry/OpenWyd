@@ -23,6 +23,7 @@ if str(TOOLS_DIRECTORY) not in sys.path:
 from build_wasm_asset_bundle import (  # noqa: E402
     build_asset_bundle,
 )
+from convert_wyt_to_png import convert_wyt_to_png  # noqa: E402
 
 
 def _activate_local_emsdk(repo_root: Path) -> None:
@@ -30,6 +31,22 @@ def _activate_local_emsdk(repo_root: Path) -> None:
         candidate = repo_root.parent / ".tools/emsdk"
         if candidate.is_dir():
             os.environ["EMSDK"] = str(candidate.resolve())
+
+
+def _prepare_local_runtime_extras(repo_root: Path, link_dir: Path) -> None:
+    """Keep the raw linked harness self-contained without copying MP3 files."""
+
+    loading_source = repo_root / "v769ClientRelease/UI/newtitle.wyt"
+    loading_target = link_dir / "openwyd_loading.png"
+    if (
+        loading_source.is_file()
+        and (
+            not loading_target.is_file()
+            or loading_target.stat().st_mtime_ns < loading_source.stat().st_mtime_ns
+        )
+    ):
+        convert_wyt_to_png(loading_source, loading_target)
+        print(f"[wasm-dev] generated={loading_target.relative_to(repo_root)}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -90,6 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.action == "verify":
         command.extend(("--rebuild", "--link-opt-level", "O2"))
     subprocess.run(command, cwd=repo_root, check=True)
+    _prepare_local_runtime_extras(repo_root, link_dir)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     print(
         f"[wasm-dev] action={args.action} complete elapsed_ms={elapsed_ms}"

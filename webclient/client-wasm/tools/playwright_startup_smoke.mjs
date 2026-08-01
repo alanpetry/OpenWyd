@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import playwrightPkg from "../../node_modules/playwright/index.js";
 import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
 
@@ -917,7 +918,7 @@ if (opts.allStates) {
     const child = spawnSync(
       process.execPath,
       [
-        new URL(import.meta.url).pathname,
+        fileURLToPath(import.meta.url),
         ...passthrough,
         "--state",
         String(state),

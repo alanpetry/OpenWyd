@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -272,6 +273,27 @@ def _atomic_write_text(path: Path, text: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _validate_javascript_syntax(path: Path) -> None:
+    """Reject malformed EM_JS output before switching the atomic bootstrap."""
+
+    candidates: list[Path] = []
+    configured = os.environ.get("EMSDK_NODE")
+    if configured:
+        candidates.append(Path(configured))
+    discovered = shutil.which("node")
+    if discovered:
+        candidates.append(Path(discovered))
+    tools_root = TOOLS_DIRECTORY.parents[3] / ".tools" / "emsdk" / "node"
+    if tools_root.is_dir():
+        candidates.extend(sorted(tools_root.glob("*/bin/node.exe"), reverse=True))
+        candidates.extend(sorted(tools_root.glob("*/bin/node"), reverse=True))
+
+    node = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if node is None:
+        raise RuntimeError("Node.js is required to validate generated JavaScript")
+    subprocess.run([str(node), "--check", str(path)], check=True)
+
+
 def publish_incremental_code(
     staging_dir: Path,
     link_dir: Path,
@@ -282,6 +304,7 @@ def publish_incremental_code(
 
     staged_js = staging_dir / f"{build_name}.js"
     staged_wasm = staging_dir / f"{build_name}.wasm"
+    _validate_javascript_syntax(staged_js)
     published_js = link_dir / staged_js.name
     published_wasm = link_dir / staged_wasm.name
     os.replace(staged_wasm, published_wasm)
