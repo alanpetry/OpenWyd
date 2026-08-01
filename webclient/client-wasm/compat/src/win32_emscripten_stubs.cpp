@@ -2184,13 +2184,19 @@ bool DecodeTGAtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint32_t
   const uint8_t color_map_type = data[1];
   const uint8_t image_type = data[2];
   if (color_map_type != 0) return false;
-  if (image_type != 2 && image_type != 10) return false;
+  const bool grayscale = image_type == 3 || image_type == 11;
+  const bool rle = image_type == 10 || image_type == 11;
+  if (image_type != 2 && image_type != 3 && image_type != 10 && image_type != 11) return false;
 
   const uint16_t width = ReadLE16(data + 12);
   const uint16_t height = ReadLE16(data + 14);
   const uint8_t bpp = data[16];
   if (width == 0 || height == 0) return false;
-  if (bpp != 24 && bpp != 32) return false;
+  if (grayscale) {
+    if (bpp != 8 && bpp != 16) return false;
+  } else if (bpp != 24 && bpp != 32) {
+    return false;
+  }
 
   const bool top_origin = (data[17] & 0x20u) != 0;
   const size_t px_bytes = static_cast<size_t>(bpp / 8);
@@ -2213,15 +2219,22 @@ bool DecodeTGAtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint32_t
   const size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
   size_t written = 0;
 
-  if (image_type == 2) {
+  auto write_source_pixel = [&](size_t sequential_index, const uint8_t* pixel) {
+    if (grayscale) {
+      const uint8_t intensity = pixel[0];
+      const uint8_t alpha = (px_bytes == 2) ? pixel[1] : 0xFFu;
+      write_pixel(sequential_index, intensity, intensity, intensity, alpha);
+    } else {
+      const uint8_t alpha = (px_bytes == 4) ? pixel[3] : 0xFFu;
+      write_pixel(sequential_index, pixel[0], pixel[1], pixel[2], alpha);
+    }
+  };
+
+  if (!rle) {
     const size_t need = total * px_bytes;
     if (cursor + need > size) return false;
     for (size_t i = 0; i < total; ++i) {
-      const uint8_t b = data[cursor + i * px_bytes + 0];
-      const uint8_t g = data[cursor + i * px_bytes + 1];
-      const uint8_t r = data[cursor + i * px_bytes + 2];
-      const uint8_t a = (px_bytes == 4) ? data[cursor + i * px_bytes + 3] : 0xFFu;
-      write_pixel(i, b, g, r, a);
+      write_source_pixel(i, data + cursor + i * px_bytes);
     }
     *out_w = width;
     *out_h = height;
@@ -2233,24 +2246,16 @@ bool DecodeTGAtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint32_t
     const size_t run = static_cast<size_t>((packet & 0x7Fu) + 1u);
     if ((packet & 0x80u) != 0u) {
       if (cursor + px_bytes > size) return false;
-      const uint8_t b = data[cursor + 0];
-      const uint8_t g = data[cursor + 1];
-      const uint8_t r = data[cursor + 2];
-      const uint8_t a = (px_bytes == 4) ? data[cursor + 3] : 0xFFu;
+      const uint8_t* pixel = data + cursor;
       cursor += px_bytes;
       for (size_t i = 0; i < run && written < total; ++i, ++written) {
-        write_pixel(written, b, g, r, a);
+        write_source_pixel(written, pixel);
       }
     } else {
       const size_t block = run * px_bytes;
       if (cursor + block > size) return false;
       for (size_t i = 0; i < run && written < total; ++i, ++written) {
-        const size_t off = cursor + i * px_bytes;
-        const uint8_t b = data[off + 0];
-        const uint8_t g = data[off + 1];
-        const uint8_t r = data[off + 2];
-        const uint8_t a = (px_bytes == 4) ? data[off + 3] : 0xFFu;
-        write_pixel(written, b, g, r, a);
+        write_source_pixel(written, data + cursor + i * px_bytes);
       }
       cursor += block;
     }
