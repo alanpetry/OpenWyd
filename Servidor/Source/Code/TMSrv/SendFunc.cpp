@@ -1,5 +1,6 @@
 #include <memory>
 #include <cstdarg>
+#include <cstdio>
 #include "../Basedef.h"
 #include "SendFunc.h"
 #include "GetFunc.h"
@@ -278,12 +279,17 @@ void SendQuizMessage(int conn, char* Title, char* Answer0, char* Answer1, char* 
 	sm.Size = sizeof(MSG_Quiz);
 	sm.ID = conn;
 
-	memcpy(sm.Title, Title, sizeof(sm.Title));
-	memcpy(sm.Asws[0], &correct, sizeof(sm.Asws[0]));
-	memcpy(sm.Asws[1], Answer0, sizeof(sm.Asws[1]));
-	memcpy(sm.Asws[2], Answer1, sizeof(sm.Asws[2]));
-	memcpy(sm.Asws[3], Answer2, sizeof(sm.Asws[3]));
-	memcpy(sm.Asws[4], Answer3, sizeof(sm.Asws[4]));
+	// The original code copied the complete destination arrays from source
+	// pointers of unknown size.  In particular, Asws[0] copied 32 bytes from a
+	// single char and was an immediate out-of-bounds read under ASan.  Keep the
+	// wire layout and the legacy use of slot zero, but always emit terminated
+	// strings without reading beyond their source.
+	std::snprintf(sm.Title, sizeof(sm.Title), "%s", Title ? Title : "");
+	sm.Asws[0][0] = correct;
+	std::snprintf(sm.Asws[1], sizeof(sm.Asws[1]), "%s", Answer0 ? Answer0 : "");
+	std::snprintf(sm.Asws[2], sizeof(sm.Asws[2]), "%s", Answer1 ? Answer1 : "");
+	std::snprintf(sm.Asws[3], sizeof(sm.Asws[3]), "%s", Answer2 ? Answer2 : "");
+	std::snprintf(sm.Asws[4], sizeof(sm.Asws[4]), "%s", Answer3 ? Answer3 : "");
 	sm.Correct = correct;
 
 	pUser[conn].cSock.AddMessage((char*)&sm, sizeof(MSG_Quiz));

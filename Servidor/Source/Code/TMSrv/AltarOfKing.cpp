@@ -43,6 +43,12 @@ void startKing()
 			
 		}
 
+		// There is no remaining event today.  The legacy code continued with
+		// StartNum == 3 and read beyond Hour/Min, which also made the subsequent
+		// shift use arbitrary values on ARM64.
+		if (StartNum >= 3)
+			return;
+
 		if (notHour)
 			return;
 
@@ -69,12 +75,17 @@ void startKing()
 			SendNotice(temp);
 		}
 
-		if (timeinfo->tm_hour == altarKing.Hour[StartNum] && timeinfo->tm_min >= altarKing.Min[StartNum]
-			&& !StartAltarKing && altarKing.HourFinish != 1 << altarKing.Hour[StartNum])
+		const int eventHour = altarKing.Hour[StartNum];
+		if (eventHour < 0 || eventHour > 23)
+			return;
+		const int hourFinishMask = static_cast<int>(1u << eventHour);
+
+		if (timeinfo->tm_hour == eventHour && timeinfo->tm_min >= altarKing.Min[StartNum]
+			&& !StartAltarKing && altarKing.HourFinish != hourFinishMask)
 		{
 			StartAltarKing = TRUE;
 			altarKing.Notice = FALSE;
-			altarKing.HourFinish = 1 << altarKing.Hour[StartNum];
+			altarKing.HourFinish = hourFinishMask;
 			altarKing.nTimer = altarKing.Duration;
 			sprintf(temp, "Evento Altar of King Começou hr(s):[%d] min(s):[%d]", timeinfo->tm_hour, timeinfo->tm_min);
 			SendNotice(temp);
