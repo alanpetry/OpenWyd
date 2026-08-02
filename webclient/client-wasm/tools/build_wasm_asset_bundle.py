@@ -27,10 +27,102 @@ from build_gdi_font_atlas import (  # noqa: E402
 from preload_manifest import read_preload_entries  # noqa: E402
 
 
-ASSET_STATE_SCHEMA_VERSION = 2
+ASSET_STATE_SCHEMA_VERSION = 3
 BOOTSTRAP_NAME = "openwyd_assets.js"
 STATE_NAME = "openwyd_assets.state.json"
 HASH_CACHE_SCHEMA_VERSION = 1
+
+
+def _use_single_buffer_streaming_loader(loader_path: Path) -> None:
+    """Avoid file_packager's two-copy peak for very large monolithic data.
+
+    Emscripten 6 collects every response chunk and then allocates a second
+    contiguous buffer. The OpenWyd package is over 500 MB, so that transiently
+    requires more than 1 GB before the WASM heap and WebGL allocations. Fill
+    the final, exactly-sized package buffer as chunks arrive instead. The
+    package is still fetched and mounted in full before the client boots.
+    """
+
+    source = loader_path.read_text(encoding="utf-8")
+    original = """        const chunks = [];
+        const headers = response.headers;
+        const total = Number(headers.get('Content-Length') || packageSize);
+        let loaded = 0;
+
+        Module['setStatus'] && Module['setStatus']('Downloading data...');
+        const reader = response.body.getReader();
+
+        while (1) {
+          var {done, value} = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.length;
+          Module['dataFileDownloads'][packageName] = {loaded, total};
+
+          let totalLoaded = 0;
+          let totalSize = 0;
+
+          for (const download of Object.values(Module['dataFileDownloads'])) {
+            totalLoaded += download.loaded;
+            totalSize += download.total;
+          }
+
+          Module['setStatus'] && Module['setStatus'](`Downloading data... (${totalLoaded}/${totalSize})`);
+        }
+
+        const packageData = new Uint8Array(chunks.map((c) => c.length).reduce((a, b) => a + b, 0));
+        let offset = 0;
+        for (const chunk of chunks) {
+          packageData.set(chunk, offset);
+          offset += chunk.length;
+        }
+        return packageData.buffer;
+"""
+    replacement = """        const headers = response.headers;
+        const total = Number(headers.get('Content-Length') || packageSize);
+        let loaded = 0;
+
+        Module['setStatus'] && Module['setStatus']('Downloading data...');
+        if (!response.body) return response.arrayBuffer();
+        const reader = response.body.getReader();
+        const packageData = new Uint8Array(packageSize);
+
+        while (1) {
+          var {done, value} = await reader.read();
+          if (done) break;
+          if (loaded + value.length > packageData.length) {
+            throw new Error(`Asset package exceeded declared size: ${packageName}`);
+          }
+          packageData.set(value, loaded);
+          loaded += value.length;
+          Module['dataFileDownloads'][packageName] = {loaded, total};
+
+          let totalLoaded = 0;
+          let totalSize = 0;
+
+          for (const download of Object.values(Module['dataFileDownloads'])) {
+            totalLoaded += download.loaded;
+            totalSize += download.total;
+          }
+
+          Module['setStatus'] && Module['setStatus'](`Downloading data... (${totalLoaded}/${totalSize})`);
+        }
+
+        if (loaded !== packageData.length) {
+          throw new Error(`Asset package size mismatch: ${loaded}/${packageData.length}`);
+        }
+        return packageData.buffer;
+"""
+    if source.count(original) != 1:
+        raise RuntimeError(
+            "unsupported Emscripten file_packager streaming loader; "
+            "expected exactly one chunk-concatenation block"
+        )
+    loader_path.write_text(
+        source.replace(original, replacement),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -296,8 +388,6 @@ def build_asset_bundle(
                 for entry in entries
             ],
             f"--js-output={loader_name}",
-            "--use-preload-cache",
-            "--indexedDB-name=OPENWYD_PRELOAD_CACHE",
             "--no-node",
             "--quiet",
         ]
@@ -316,6 +406,7 @@ def build_asset_bundle(
             raise RuntimeError(
                 "file_packager completed without producing data and loader"
             )
+        _use_single_buffer_streaming_loader(staged_loader)
         os.replace(staged_data, link_dir / data_name)
         os.replace(staged_loader, link_dir / loader_name)
 

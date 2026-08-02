@@ -6,11 +6,12 @@ import { fileURLToPath } from "node:url";
 import playwrightPkg from "../../node_modules/playwright/index.js";
 import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
 
-const { chromium } = playwrightPkg;
+const { chromium, firefox } = playwrightPkg;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const baseUrl = process.argv[2] ||
   "http://127.0.0.1:8877/webclient/client-wasm/build/link/startup_harness.html";
 const qualityProfile = process.argv[3] || "auto";
+const browserName = process.argv[4] === "firefox" ? "firefox" : "chromium";
 const reportPath = path.join(
   repoRoot,
   "webclient/client-wasm/build/reports/optimized-view-smoke.json",
@@ -21,15 +22,24 @@ const screenshotPath = path.join(
 );
 const profilePath = path.join(
   repoRoot,
-  "webclient/client-wasm/build/reports/optimized-view-browser-profile",
+  `webclient/client-wasm/build/reports/optimized-view-${browserName}-profile-v2`,
 );
 
 fs.mkdirSync(profilePath, { recursive: true });
-const context = await chromium.launchPersistentContext(profilePath, chromiumLaunchOptions({
+const browserType = browserName === "firefox" ? firefox : chromium;
+const launchOptions = browserName === "firefox" ? {
+  headless: true,
+  firefoxUserPrefs: {
+    "webgl.disabled": false,
+    "webgl.force-enabled": true,
+  },
+} : chromiumLaunchOptions({ headless: true });
+const context = await browserType.launchPersistentContext(profilePath, {
+  ...launchOptions,
   headless: true,
   viewport: { width: 1280, height: 720 },
   deviceScaleFactor: 1,
-}));
+});
 const page = await context.newPage();
 const consoleErrors = [];
 const consoleLog = [];
@@ -53,6 +63,7 @@ const result = {
   ok: false,
   url: url.toString(),
   qualityProfile,
+  browserName,
   samples: [],
   consoleErrors,
   consoleLog,
@@ -65,6 +76,8 @@ async function sample(label) {
     const rect = canvas.getBoundingClientRect();
     const module = window.Module || {};
     const call = (name) => typeof module[name] === "function" ? module[name]() : null;
+    const packageResource = performance.getEntriesByType("resource")
+      .find((entry) => /openwyd_assets\..*\.data(?:$|\?)/.test(entry.name));
     const readCString = (pointer) => {
       if (!pointer || !module.HEAPU8) return "";
       let end = pointer;
@@ -99,8 +112,13 @@ async function sample(label) {
       },
       assets: {
         packageBytes: Number(window.__openwydAssetDataBytes) || 0,
-        preloadCached: Object.values(window.Module?.preloadResults || {})
-          .some((entry) => entry?.fromCache === true),
+        transferBytes: Number(packageResource?.transferSize) || 0,
+        encodedBytes: Number(packageResource?.encodedBodySize) || 0,
+        decodedBytes: Number(packageResource?.decodedBodySize) || 0,
+        httpCacheReused: Boolean(
+          packageResource && packageResource.transferSize === 0 &&
+          packageResource.decodedBodySize > 0
+        ),
       },
       navigationEntries: performance.getEntriesByType("navigation").length,
       href: location.href,
@@ -137,7 +155,10 @@ try {
     result.samples.every((entry) => (
     entry.runtime.optimized === 1 &&
     entry.runtime.webgl2 === 1 &&
-    entry.runtime.worldSamples >= (qualityProfile === "quality" || qualityProfile === "maximum" ? 2 : 1) &&
+    entry.runtime.worldSamples >= (
+      browserName === "chromium" &&
+      (qualityProfile === "quality" || qualityProfile === "maximum") ? 2 : 1
+    ) &&
     entry.runtime.gameState === 0 &&
     entry.runtime.glErrors === 0 &&
     entry.assets.packageBytes > 0 &&
