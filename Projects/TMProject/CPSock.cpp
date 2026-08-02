@@ -1159,7 +1159,10 @@ void CPSock::RefreshRecvBuffer()
 
 	if (left > 0 && left <= RECV_BUFFER_SIZE)
 	{
-		memcpy(pRecvBuffer, &pRecvBuffer[nProcPosition], left);
+		// Source and destination are ranges of the same allocation. memcpy has
+		// undefined behavior for overlap and corrupts packets on implementations
+		// that copy forward in larger chunks.
+		memmove(pRecvBuffer, &pRecvBuffer[nProcPosition], left);
 
 		nProcPosition = 0;
 		nRecvPosition -= left;
@@ -1170,9 +1173,12 @@ void CPSock::RefreshSendBuffer()
 {
 	int left = nSendPosition - nSentPosition;
 
-	if (left > 0 && left <= RECV_BUFFER_SIZE)
+	if (left > 0 && left <= SEND_BUFFER_SIZE)
 	{
-		memcpy(pSendBuffer, &pRecvBuffer[nSentPosition], left);
+		// Keep the unsent tail of the send buffer. The original transcription
+		// accidentally copied from pRecvBuffer, which replaces outgoing bytes
+		// with unrelated incoming traffic after any partial socket write.
+		memmove(pSendBuffer, &pSendBuffer[nSentPosition], left);
 
 		nSentPosition = 0;
 		nSendPosition -= left;
