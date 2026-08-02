@@ -32,7 +32,7 @@ RUN --mount=type=cache,id=openwyd-emscripten-system-${TARGETARCH},target=/emsdk/
         /src/webclient/client-wasm/build/generated/openwyd_loading.png \
     && find /src/webclient/client-wasm/build/link -type f \
         \( -name 'openwyd_assets.*.data' -o -name 'openwyd_assets.*.js' \) \
-        -size +1024c -exec gzip -1 -k -f '{}' \;
+        -size +1024c -exec gzip -6 -k -f '{}' \;
 
 FROM emscripten/emsdk:${EMSCRIPTEN_VERSION} AS wasm-build
 ARG TARGETARCH
@@ -62,7 +62,7 @@ RUN --mount=type=cache,id=openwyd-wasm-objects-${TARGETARCH},target=/src/webclie
         --loading-art /src/webclient/client-wasm/build/generated/openwyd_loading.png \
     && find /src/webclient/client-wasm/build/site -type f \
         \( -name '*.wasm' -o -name 'tmproject_startup.*.js' \) \
-        -size +1024c -exec gzip -1 -k -f '{}' \;
+        -size +1024c -exec gzip -6 -k -f '{}' \;
 
 FROM nginx:1.27-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
