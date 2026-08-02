@@ -232,12 +232,13 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
                 coverage += glyph[source_y * gw + source_x];
             }
           }
-          uint8_t a = static_cast<uint8_t>(
+          const uint8_t a = static_cast<uint8_t>(
               (coverage + static_cast<unsigned int>(sample_count / 2)) /
               static_cast<unsigned int>(sample_count));
-          // Coverage this low becomes unstable after the A4 atlas conversion
-          // and is the source of the thin speckled row below some glyphs.
-          if (a < 8) continue;
+          // Values below four A4 steps turn into the detached 1-3/15 grey
+          // dots visible below the final glyph. They carry too little
+          // coverage to describe an edge at the client's native font sizes.
+          if (a < 64) continue;
           if (a == 255) {
             PutDibPixel(dib, pen_x + col, pen_y + row, text_color);
           } else {
