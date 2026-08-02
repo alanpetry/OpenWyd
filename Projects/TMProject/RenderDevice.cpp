@@ -11,6 +11,7 @@
 #include "TMCamera.h"
 #include "TMMesh.h"
 #include "Basedef.h"
+#include "OpenWydOptimized.h"
 #if defined(OPENWYD_LAB)
 #include "OpenWydLab.h"
 #endif
@@ -71,6 +72,11 @@ RenderDevice::RenderDevice(DWORD dwScreenWidth, DWORD dwScreenHeight, DWORD dwBi
 
 	RenderDevice::m_fWidthRatio = (float)m_dwScreenWidth / 800.0f;
 	RenderDevice::m_fHeightRatio = (float)m_dwScreenHeight / 600.0f;
+	if (OpenWydOptimizedEnabled())
+	{
+		RenderDevice::m_fWidthRatio = OpenWydOptimizedUiScale();
+		RenderDevice::m_fHeightRatio = RenderDevice::m_fWidthRatio;
+	}
 
 	m_bSavage = 0;
 

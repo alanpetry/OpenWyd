@@ -23,6 +23,8 @@ extern "C" void wyd_debug_record_camera_now(TMCamera* pCamera);
 extern "C" int wyd_wasm_deferred_state_requested();
 extern "C" void wyd_wasm_clear_deferred_state_request();
 extern "C" unsigned int wyd_d3d9_get_debug_flags();
+extern "C" int wyd_d3d9_optimized_begin_world();
+extern "C" void wyd_d3d9_optimized_end_world_begin_ui();
 #endif
 #include <WinInet.h>
 #include "TMSkinMesh.h"
@@ -30,6 +32,7 @@ extern "C" unsigned int wyd_d3d9_get_debug_flags();
 #include "TMHuman.h"
 #include "TMFieldScene.h"
 #include "SControlContainer.h"
+#include "OpenWydOptimized.h"
 
 #if defined(OPENWYD_COMPARE) && defined(_DEBUG) && !defined(__EMSCRIPTEN__)
 #include "OpenWydCompare.h"
@@ -56,6 +59,15 @@ void WasmInitLog(const char* msg)
 #if defined(__EMSCRIPTEN__)
 void WasmApplyCanvasResolution(unsigned int& width, unsigned int& height, unsigned int& colorBit)
 {
+	if (OpenWydOptimizedEnabled())
+	{
+		const WydViewportMetrics& viewport = OpenWydOptimizedViewport();
+		width = static_cast<unsigned int>(viewport.cssWidth);
+		height = static_cast<unsigned int>(viewport.cssHeight);
+		colorBit = 32;
+		return;
+	}
+
 	int canvasWidth = 0;
 	int canvasHeight = 0;
 	if (emscripten_get_canvas_element_size("#canvas", &canvasWidth, &canvasHeight) != EMSCRIPTEN_RESULT_SUCCESS)
@@ -1013,6 +1025,9 @@ HRESULT NewApp::RenderScene()
 
 	m_pRenderDevice->SetViewPort(0, 0, m_dwScreenWidth, m_dwScreenHeight);
 
+#if defined(__EMSCRIPTEN__)
+	wyd_d3d9_optimized_begin_world();
+#endif
 	m_pRenderDevice->Lock(1);
 
 	TMCamera* pCamera = m_pObjectManager->m_pCamera;
@@ -1028,6 +1043,9 @@ HRESULT NewApp::RenderScene()
 	m_pRenderDevice->SetViewVector(pCamera->m_cameraPos, vecLookAt);
 	m_pRenderDevice->SetRenderStateBlock(1);
 	m_pObjectManager->RenderObject();
+#if defined(__EMSCRIPTEN__)
+	wyd_d3d9_optimized_end_world_begin_ui();
+#endif
 	m_pRenderDevice->SetRenderStateBlock(3);
 	m_pObjectManager->RenderControl();
 	m_pRenderDevice->Unlock(1);

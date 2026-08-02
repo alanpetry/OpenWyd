@@ -6,6 +6,7 @@
 #include "Basedef.h"
 #include "SControlContainer.h"
 #include "TMFieldScene.h"
+#include "OpenWydOptimized.h"
 
 unsigned int SControl::m_dwStaticID{ 0 };
 int SControl::m_nGridCellSize{ 35 };
@@ -30,11 +31,19 @@ SControl::SControl(float inPosX, float inPosY, float inWidth, float inHeight)
 
 	float fWidthRatio = (float)g_pDevice->m_dwScreenWidth / 800.0f;
 	float fHeightRatio = (float)g_pDevice->m_dwScreenHeight / 600.0f;
+	if (OpenWydOptimizedEnabled())
+	{
+		fWidthRatio = OpenWydOptimizedUiScale();
+		fHeightRatio = fWidthRatio;
+	}
 	m_nPosX = inPosX * fWidthRatio;
 	m_nPosY = inPosY * fHeightRatio;
 	m_nWidth = inWidth * fWidthRatio;
 	m_nHeight = inHeight * fHeightRatio;
 	m_dwUniqueID = SControl::m_dwStaticID++;
+	m_cOptimizedAnchorX = 0;
+	m_cOptimizedAnchorY = 0;
+	m_bOptimizedRootLayout = 0;
 }
 
 SControl::~SControl()
@@ -192,21 +201,29 @@ void SControl::SetCenterSize()
 
 void SControl::SetStickLeft()
 {
+	m_cOptimizedAnchorX = 0;
+	m_bOptimizedRootLayout = OpenWydOptimizedEnabled() ? 1 : m_bOptimizedRootLayout;
 	m_nPosX = 0.0f;
 }
 
 void SControl::SetStickRight()
 {
+	m_cOptimizedAnchorX = 2;
+	m_bOptimizedRootLayout = OpenWydOptimizedEnabled() ? 1 : m_bOptimizedRootLayout;
 	m_nPosX = (float)g_pDevice->m_dwScreenWidth - m_nWidth;
 }
 
 void SControl::SetStickTop()
 {
+	m_cOptimizedAnchorY = 0;
+	m_bOptimizedRootLayout = OpenWydOptimizedEnabled() ? 1 : m_bOptimizedRootLayout;
 	m_nPosY = 0.0f;
 }
 
 void SControl::SetStickBottom()
 {
+	m_cOptimizedAnchorY = 2;
+	m_bOptimizedRootLayout = OpenWydOptimizedEnabled() ? 1 : m_bOptimizedRootLayout;
 	m_nPosY = (float)g_pDevice->m_dwScreenHeight - m_nHeight;
 }
 

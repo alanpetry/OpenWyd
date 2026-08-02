@@ -28,12 +28,15 @@ empty methods, not an alternate implementation.
 | --- | --- | --- |
 | `Mission.cpp` | The Field opens it for the head-67 mission NPC and invokes `ResultItemListSet` and `DoCombine`. | Mission result/requirement grids, inventory transfer, text and combine packet preparation. |
 | `TMEffectFirework.cpp` | Instantiated by `TMHuman` and `TMScene`. | Particle creation, lifetime/update, rendering and custom firework decoding. |
+| `TMFieldScene::DrawCustomFireWork` and `TMHuman::OnPacketPremiumFireWork` | Field controls call the custom path, and packet `0x3CA` dispatches the premium path. | Decoding and drawing the custom/premium firework payload. No matching producer exists in the bundled TMSrv. |
 | `SControl.cpp` (`SReelPanel`) | Two instances are created by `TMFieldScene`. | Reel animation, stopping, result and jackpot update. |
 | `SControl.cpp` (`SButtonBox`) | Created by `TMFieldScene`. | Page-button construction and event wiring. |
 | `NewApp.cpp` web/board methods | Called from several Field actions. | External browser/board integration; no game rendering implementation is present. |
-| `TMFieldScene.cpp` Toto methods | The Field dispatches the Toto selection, buy and close controls. | Toto selection, purchase and close behaviour. |
+| `TMFieldScene.cpp` Toto methods | The Field dispatches the Toto selection, buy, close, tab-key and enter-key controls. | Toto selection, purchase, close and keyboard behaviour. |
 | `TMFieldScene.cpp` premium NPC click | Called for the premium-NPC mouse path. | Premium-NPC interaction. |
+| `TMFieldScene.cpp` packet handlers | Opcodes `0x105`, `0x106`, `0x1BF`, `0x1C1` and `0x2C8` dispatch to empty chat-parameter, gamble-result, array-request and automatic-kick handlers. | The packet-side UI/game response. None of these opcodes has a producer in the bundled TMSrv. |
 | `TMHuman.cpp` guild-battle HP methods | HP update paths call two of the three methods. | Guild-battle HP/life presentation; the original source itself labels the bodies empty. |
+| `TMObject::IsInCastleZone` | Called throughout target validation, combat and PvP checks. | The available source always returns false. `IsInCastleZone2` is implemented but has a different, narrow call surface. All checked client snapshots retain the same stub. |
 
 ## Server source gaps
 
@@ -47,6 +50,7 @@ same empty bodies.
 | `DBSrv/Server.cpp` (`ProcessMinTimer`) | Invoked by the DBSrv minute timer. | No minute-level DBSrv work is specified by the available source. |
 | `TMSrv/CMob.cpp` (`ProcessorSecTimer`) | Invoked for active mobs by the second timer. | Per-mob second-timer work; only a commented counter remains. |
 | `TMSrv/Server.cpp` (`ProcessBILLMessage`) | Reachable from the optional billing socket dispatcher. | External billing protocol handling. |
+| `TMSrv/Server.cpp` (`SendUpdateWoteBattle`) | Called by the data-server packet handler. | The body is entirely commented, so Wote battle updates are not sent. |
 
 `TMSrv/GuildHall.cpp` (`GuildLevelUp`, `TerritoryMob`) and
 `TMSrv/Server.cpp` (`WriteArmor`, `BuildList`) are also empty, but have no call

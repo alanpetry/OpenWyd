@@ -6,7 +6,9 @@
   "scripts": {
     "build:wasm": "./tools/build_wasm.sh",
     "audit:assets": "python ./client-wasm/tools/audit_client_assets.py",
-    "probe:runtime": "node ./tools/playwright_runtime_probe.mjs"
+    "probe:runtime": "node ./tools/playwright_runtime_probe.mjs",
+    "smoke:optimized": "node ./client-wasm/tools/optimized_view_smoke.mjs",
+    "smoke:optimized-matrix": "node ./client-wasm/tools/optimized_viewport_matrix_smoke.mjs"
   },
   "keywords": [],
   "author": "",

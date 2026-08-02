@@ -1,0 +1,12 @@
+{
+  "mode":"field","seed":769,"start_time_ms":10000,"tick_ms":50,
+  "actors":[{"id":1,"name":"ItemSpecial","x":2096,"y":2092,"class":0,"equip":[6,0,0,0,0,0,0,0]}],
+  "timeline":[
+    {"frame":1,"kind":"create_item","actor":0,"item":667,"x":2093,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":747,"x":2095,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":1727,"x":2097,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":1739,"x":2099,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":3310,"x":2101,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":5135,"x":2103,"y":2090}
+  ]
+}

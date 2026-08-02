@@ -30,12 +30,14 @@ INDEX_HTML = """<!doctype html>
     (() => {
       const resolutionKey = 'openwyd.displayResolution.v1';
       const fitKey = 'openwyd.displayFit.v1';
+      const displayModeKey = 'openwyd.displayMode.v2';
       const validResolutions = new Set([
         '640x480', '800x600', '1024x768', '1280x1024', '1600x1200'
       ]);
       const incoming = new URLSearchParams(window.location.search);
       let resolution = incoming.get('logical') || '';
       let fit = incoming.get('fit') || '';
+      let displayMode = incoming.get('displayMode') || incoming.get('display') || '';
       try {
         if (!validResolutions.has(resolution)) {
           resolution = window.localStorage.getItem(resolutionKey) || '';
@@ -43,20 +45,25 @@ INDEX_HTML = """<!doctype html>
         if (fit !== 'actual' && fit !== 'contain') {
           fit = window.localStorage.getItem(fitKey) || '';
         }
+        if (displayMode !== 'optimized' && displayMode !== 'legacy') {
+          displayMode = window.localStorage.getItem(displayModeKey) || '';
+        }
       } catch {
         // Storage is optional; the official 800x600 default remains available.
       }
       if (!validResolutions.has(resolution)) resolution = '800x600';
       if (fit !== 'actual' && fit !== 'contain') fit = 'actual';
+      if (displayMode !== 'optimized' && displayMode !== 'legacy') displayMode = 'optimized';
 
       const target = new URL('./startup_harness.html', window.location.href);
       const params = target.searchParams;
-      params.set('v', '3');
+      params.set('v', '4');
       params.set('mode', 'play');
       params.set('demo', '1');
       params.set('state', '7');
       params.set('logical', resolution);
       params.set('fit', fit);
+      params.set('displayMode', displayMode);
       params.set('fieldMode', 'real');
       params.set('autoboot', '1');
       params.set('autostart', '1');
@@ -64,7 +71,7 @@ INDEX_HTML = """<!doctype html>
     })();
   </script>
   <noscript>
-    <meta http-equiv="refresh" content="0; url=./startup_harness.html?v=3&amp;mode=play&amp;demo=1&amp;state=7&amp;logical=800x600&amp;fit=actual&amp;fieldMode=real&amp;autoboot=1&amp;autostart=1" />
+    <meta http-equiv="refresh" content="0; url=./startup_harness.html?v=4&amp;mode=play&amp;demo=1&amp;state=7&amp;displayMode=optimized&amp;logical=800x600&amp;fit=actual&amp;fieldMode=real&amp;autoboot=1&amp;autostart=1" />
   </noscript>
 </head>
 <body>
@@ -119,11 +126,12 @@ def main() -> int:
         destination = out_dir / name
         shutil.copyfile(link_dir / name, destination)
         destination.chmod(0o644)
-        compressed = link_dir / f"{name}.gz"
-        if compressed.is_file():
-            compressed_destination = out_dir / compressed.name
-            shutil.copyfile(compressed, compressed_destination)
-            compressed_destination.chmod(0o644)
+        for suffix in (".gz", ".br"):
+            compressed = link_dir / f"{name}{suffix}"
+            if compressed.is_file():
+                compressed_destination = out_dir / compressed.name
+                shutil.copyfile(compressed, compressed_destination)
+                compressed_destination.chmod(0o644)
     if args.loading_art:
         loading_art = args.loading_art.resolve()
         if not loading_art.is_file():

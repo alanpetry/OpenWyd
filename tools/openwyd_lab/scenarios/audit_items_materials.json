@@ -1,0 +1,12 @@
+{
+  "mode":"field","seed":769,"start_time_ms":10000,"tick_ms":50,
+  "actors":[{"id":1,"name":"ItemMaterials","x":2096,"y":2092,"class":0,"equip":[6,0,0,0,0,0,0,0]}],
+  "timeline":[
+    {"frame":1,"kind":"create_item","actor":0,"item":412,"x":2093,"y":2090,"data":[43,9]},
+    {"frame":1,"kind":"create_item","actor":0,"item":419,"x":2095,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":420,"x":2097,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":661,"x":2099,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":662,"x":2101,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":663,"x":2103,"y":2090}
+  ]
+}

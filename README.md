@@ -37,6 +37,20 @@ test environment and its server state may be reset during development.
 - Automated visual/runtime smoke tests cover startup, game states, input,
   WebGL errors, and Field performance probes.
 
+### Display modes
+
+The public build defaults to **Optimized** mode: WebGL2, a full-browser
+viewport, a full-resolution UI pass, 24-bit depth, MSAA/anisotropic quality
+profiles, and a presentation rate that can follow high-refresh displays while
+the original game simulation remains fixed at 60 Hz. **Legacy** mode remains
+available in Display Settings and preserves the original 800x600 rendering
+path for fidelity checks.
+
+Both modes mount the same complete official asset package before starting the
+client. There is no scene-by-scene or progressive asset loader. The first
+visit is large; the content-addressed browser cache and immutable compressed
+files make later visits reuse that complete package.
+
 This is active preservation and porting work. A visible scene is not yet a
 claim of complete visual or behavioral parity with the Windows client.
 
@@ -133,6 +147,20 @@ o desenvolvimento.
 - O mouse do navegador alimenta os caminhos originais de eventos e DirectInput.
 - Smokes automatizados cobrem startup, game states, input, erros WebGL e probes
   de performance do Field.
+
+### Modos de exibição
+
+A versão pública abre por padrão no modo **Otimizado**: WebGL2, viewport usando
+todo o navegador, passe de UI na resolução física, depth de 24 bits, perfis de
+MSAA/anisotropia e apresentação compatível com telas de alta frequência,
+mantendo a simulação original fixa em 60 Hz. O modo **Legado** continua
+disponível nas Configurações de Exibição e preserva o caminho original em
+800x600 para as verificações de fidelidade.
+
+Os dois modos montam o mesmo pacote completo de assets oficiais antes de
+iniciar o cliente. Não existe carregamento progressivo ou por cenário. O
+primeiro acesso é grande; nos seguintes, o cache content-addressed do navegador
+e os arquivos comprimidos imutáveis reutilizam o pacote completo.
 
 Este é um trabalho ativo de preservação e portabilidade. Uma cena visível não
 significa que a paridade visual ou comportamental com o cliente Windows já

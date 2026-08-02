@@ -107,6 +107,7 @@ namespace
 		Motion = 3,
 		Attack = 4,
 		Teleport = 5,
+		CreateItem = 6,
 	};
 
 #pragma pack(push, 1)
@@ -742,6 +743,23 @@ namespace
 			InjectPacket(objectManager, &packet.Header);
 			break;
 		}
+		case EventKind::CreateItem:
+		{
+			MSG_CreateItem packet{};
+			InitializePacket(packet, 0x26E, 30000);
+			packet.GridX = static_cast<unsigned short>(event.b);
+			packet.GridY = static_cast<unsigned short>(event.c);
+			packet.ItemID = static_cast<unsigned short>(20000 + event.a);
+			packet.Item.sIndex = static_cast<short>(event.a);
+			std::memcpy(packet.Item.stEffect, event.data, sizeof(packet.Item.stEffect));
+			packet.Rotate = 0;
+			packet.State = 0;
+			packet.Height = static_cast<char>(-204);
+			packet.Create = event.d != 0 ? 1 : 0;
+			packet.Owner = actor.id;
+			InjectPacket(objectManager, &packet.Header);
+			break;
+		}
 		default:
 			break;
 		}
@@ -799,6 +817,16 @@ namespace
 			g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_FIELD)
 		{
 			auto* field = static_cast<TMFieldScene*>(g_pCurrentScene);
+			if ((g_lab.header.flags & 0x100u) != 0u)
+			{
+				// Exercise the real quest UI event path without mouse input. The
+				// low two flag bits select one of the four official quest tabs.
+				field->OnControlEvent(1054273, 0);
+				static const unsigned int questButtons[4]{
+					1054259, 1054262, 1054265, 1054268};
+				field->OnControlEvent(
+					questButtons[g_lab.header.flags & 0x3u], 0);
+			}
 			if (kind == ScenarioKind::Isolated &&
 				field->m_pControlContainer)
 			{

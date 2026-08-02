@@ -212,6 +212,11 @@ extern "C" int wyd_tick_client() {
   return static_cast<int>(g_wyd_app->RunTick(&g_wyd_msg));
 }
 
+extern "C" int wyd_render_client() {
+  if (!g_wyd_app || !g_pObjectManager || !g_pCurrentScene) return -1;
+  return SUCCEEDED(g_wyd_app->RenderScene()) ? 1 : 0;
+}
+
 extern "C" int wyd_shutdown_client() {
   if (!g_wyd_app) return 0;
 
