@@ -32,6 +32,7 @@ EVENT_KINDS = {
     "motion": 3,
     "attack": 4,
     "teleport": 5,
+    "create_item": 6,
 }
 PIXEL_RMS_LIMIT = 12.0
 PIXEL_STRONG_PERCENT_LIMIT = 3.5
@@ -191,7 +192,14 @@ def _event_bytes(value: dict[str, Any]) -> bytes:
         data = [int(item) & 0xFF for item in value.get("data", [])]
     if kind == "attack":
         data = [int(value.get("target_actor", 0)) & 0xFF, *data]
-    if kind == "action":
+    if kind == "create_item":
+        fields = (
+            int(value["item"]),
+            int(value.get("x", 0)),
+            int(value.get("y", 0)),
+            int(value.get("create", 0)),
+        )
+    elif kind == "action":
         fields = (
             int(value.get("effect", 0)),
             int(value.get("x", 0)),

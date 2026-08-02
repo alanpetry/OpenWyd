@@ -1,0 +1,12 @@
+{
+  "mode":"field","seed":769,"start_time_ms":10000,"tick_ms":50,
+  "actors":[{"id":1,"name":"ItemOverlay","x":2096,"y":2092,"class":0,"equip":[6,0,0,0,0,0,0,0]}],
+  "timeline":[
+    {"frame":1,"kind":"create_item","actor":0,"item":5110,"x":2093,"y":2090,"data":[43,9]},
+    {"frame":1,"kind":"create_item","actor":0,"item":3980,"x":2095,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":4101,"x":2097,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":5316,"x":2099,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":5338,"x":2101,"y":2090},
+    {"frame":1,"kind":"create_item","actor":0,"item":1744,"x":2103,"y":2090}
+  ]
+}
