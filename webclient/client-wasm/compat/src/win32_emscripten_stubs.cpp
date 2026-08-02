@@ -7740,6 +7740,23 @@ D3DCOLORVALUE SelectMaterialSource(
   return material_color;
 }
 
+D3DXMATRIX BuildInverseTranspose(const D3DXMATRIX& matrix) {
+  D3DXMATRIX result = matrix;
+  D3DXMATRIX inverse{};
+  if (D3DXMatrixInverse(&inverse, nullptr, &matrix))
+    D3DXMatrixTranspose(&result, &inverse);
+  return result;
+}
+
+D3DXVECTOR3 TransformNormal3(
+    const D3DXVECTOR3& normal,
+    const D3DXMATRIX& matrix) {
+  return D3DXVECTOR3(
+      normal.x * matrix._11 + normal.y * matrix._21 + normal.z * matrix._31,
+      normal.x * matrix._12 + normal.y * matrix._22 + normal.z * matrix._32,
+      normal.x * matrix._13 + normal.y * matrix._23 + normal.z * matrix._33);
+}
+
 D3DXVECTOR3 TransformDirectionToView(const D3DVECTOR& direction) {
   return D3DXVECTOR3(
       direction.x * g_ffp_state.view._11 + direction.y * g_ffp_state.view._21 + direction.z * g_ffp_state.view._31,
@@ -7896,7 +7913,8 @@ void ApplyLegacyLightingToVertex(
   float r = material_emissive.r + material_ambient.r * global_ambient.r;
   float g = material_emissive.g + material_ambient.g * global_ambient.g;
   float b = material_emissive.b + material_ambient.b * global_ambient.b;
-  const D3DXVECTOR3 unit_cam_nrm = Normalize3(cam_nrm);
+  const D3DXVECTOR3 lighting_nrm =
+      g_wasm_d3d9_state.normalize_normals ? Normalize3(cam_nrm) : cam_nrm;
   UpdateDirectionalLightViewCache();
 
   for (size_t i = 0; i < g_wasm_d3d9_state.lights.size(); ++i) {
@@ -7904,7 +7922,7 @@ void ApplyLegacyLightingToVertex(
     const D3DLIGHT9& light = g_wasm_d3d9_state.lights[i];
     const D3DXVECTOR3* directional_to_light =
         light.Type == D3DLIGHT_DIRECTIONAL ? &g_directional_to_light_view[i] : nullptr;
-    AccumulateLight(light, cam_pos, unit_cam_nrm, directional_to_light, material_diffuse,
+    AccumulateLight(light, cam_pos, lighting_nrm, directional_to_light, material_diffuse,
                     material_ambient, material_specular, material.Power, specular_enable,
                     local_viewer, &r, &g, &b);
   }
@@ -7920,6 +7938,8 @@ bool DecodeVertexFromDeclaration(
     const DummyDirect3DVertexDeclaration9& decl,
     UINT palette_size,
     bool rgba_index_order,
+    const D3DXMATRIX& world_view,
+    const D3DXMATRIX& normal_matrix,
     FFPVertex* out_vertex) {
   if (!src || !out_vertex || stride == 0) return false;
 
@@ -8068,20 +8088,10 @@ bool DecodeVertexFromDeclaration(
       cam_nrm = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
     }
   } else {
-    D3DXMATRIX world_view{};
-    D3DXMatrixMultiply(
-        &world_view,
-        reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
-        reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
     D3DXVec3TransformCoord(&cam_pos, &decoded.position, &world_view);
-    D3DXVECTOR3 world_nrm{};
-    world_nrm.x = decoded.normal.x * g_ffp_state.world[0]._11 + decoded.normal.y * g_ffp_state.world[0]._21 + decoded.normal.z * g_ffp_state.world[0]._31;
-    world_nrm.y = decoded.normal.x * g_ffp_state.world[0]._12 + decoded.normal.y * g_ffp_state.world[0]._22 + decoded.normal.z * g_ffp_state.world[0]._32;
-    world_nrm.z = decoded.normal.x * g_ffp_state.world[0]._13 + decoded.normal.y * g_ffp_state.world[0]._23 + decoded.normal.z * g_ffp_state.world[0]._33;
-    cam_nrm.x = world_nrm.x * g_ffp_state.view._11 + world_nrm.y * g_ffp_state.view._21 + world_nrm.z * g_ffp_state.view._31;
-    cam_nrm.y = world_nrm.x * g_ffp_state.view._12 + world_nrm.y * g_ffp_state.view._22 + world_nrm.z * g_ffp_state.view._32;
-    cam_nrm.z = world_nrm.x * g_ffp_state.view._13 + world_nrm.y * g_ffp_state.view._23 + world_nrm.z * g_ffp_state.view._33;
-    D3DXVec3Normalize(&cam_nrm, &cam_nrm);
+    cam_nrm = TransformNormal3(decoded.normal, normal_matrix);
+    if (g_wasm_d3d9_state.normalize_normals)
+      D3DXVec3Normalize(&cam_nrm, &cam_nrm);
   }
 
   D3DXVECTOR4 clip{};
@@ -8240,6 +8250,12 @@ HRESULT BuildVerticesFromDeclarationStream(
 
   out_vertices->clear();
   out_vertices->reserve(vertex_count);
+  D3DXMATRIX world_view{};
+  D3DXMatrixMultiply(
+      &world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
+  const D3DXMATRIX normal_matrix = BuildInverseTranspose(world_view);
   for (UINT i = 0; i < vertex_count; ++i) {
     FFPVertex vertex{};
     if (!DecodeVertexFromDeclaration(
@@ -8248,6 +8264,8 @@ HRESULT BuildVerticesFromDeclarationStream(
             decl,
             palette_size,
             rgba_index_order,
+            world_view,
+            normal_matrix,
             &vertex)) {
       return D3DERR_INVALIDCALL;
     }
@@ -9187,6 +9205,7 @@ bool DecodeVertexFromFVF(
     UINT stride,
     DWORD fvf,
     const D3DXMATRIX& world_view,
+    const D3DXMATRIX& normal_matrix,
     const D3DXMATRIX& wvp,
     FFPVertex* out_vertex,
     bool* out_forced_screen_like,
@@ -9293,14 +9312,9 @@ bool DecodeVertexFromFVF(
 
     D3DXVec3TransformCoord(&cam_pos, &in, &world_view);
 
-    D3DXVECTOR3 world_nrm{};
-    world_nrm.x = normal.x * g_ffp_state.world[0]._11 + normal.y * g_ffp_state.world[0]._21 + normal.z * g_ffp_state.world[0]._31;
-    world_nrm.y = normal.x * g_ffp_state.world[0]._12 + normal.y * g_ffp_state.world[0]._22 + normal.z * g_ffp_state.world[0]._32;
-    world_nrm.z = normal.x * g_ffp_state.world[0]._13 + normal.y * g_ffp_state.world[0]._23 + normal.z * g_ffp_state.world[0]._33;
-    cam_nrm.x = world_nrm.x * g_ffp_state.view._11 + world_nrm.y * g_ffp_state.view._21 + world_nrm.z * g_ffp_state.view._31;
-    cam_nrm.y = world_nrm.x * g_ffp_state.view._12 + world_nrm.y * g_ffp_state.view._22 + world_nrm.z * g_ffp_state.view._32;
-    cam_nrm.z = world_nrm.x * g_ffp_state.view._13 + world_nrm.y * g_ffp_state.view._23 + world_nrm.z * g_ffp_state.view._33;
-    D3DXVec3Normalize(&cam_nrm, &cam_nrm);
+    cam_nrm = TransformNormal3(normal, normal_matrix);
+    if (g_wasm_d3d9_state.normalize_normals)
+      D3DXVec3Normalize(&cam_nrm, &cam_nrm);
   }
 
   out_vertex->x = clip_x;
@@ -10353,6 +10367,7 @@ HRESULT BuildVerticesFromLinearStream(
       reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
   D3DXMATRIX wvp{};
   D3DXMatrixMultiply(&wvp, &world_view, reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
+  const D3DXMATRIX normal_matrix = BuildInverseTranspose(world_view);
 
   out_vertices->clear();
   out_vertices->reserve(vertex_count);
@@ -10395,6 +10410,7 @@ HRESULT BuildVerticesFromLinearStream(
             stride,
             fvf,
             world_view,
+            normal_matrix,
             wvp,
             &v,
             &forced_screen_like,
