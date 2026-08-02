@@ -658,6 +658,11 @@ class Lab:
             "player_visible",
             "player_hidden",
             "player_has_skin",
+            "player_familiar_item",
+            "player_has_familiar",
+            "player_familiar_visible",
+            "player_familiar_has_skin",
+            "player_familiar_visibility_reason",
             "player_class",
             "player_motion",
             "player_skin_type",
@@ -673,8 +678,13 @@ class Lab:
             "player_skin_start_offset",
             "player_skin_tick_last",
             "player_skin_animation_base",
+            "player_pose_hash",
         ):
-            if int(native.get(key, -1)) != int(wasm.get(key, -2)):
+            if key.endswith("_hash"):
+                values_match = str(native.get(key, "")) == str(wasm.get(key, "!"))
+            else:
+                values_match = int(native.get(key, -1)) == int(wasm.get(key, -2))
+            if not values_match:
                 failures.append(
                     f"{key} differs: native={native.get(key)} wasm={wasm.get(key)}"
                 )

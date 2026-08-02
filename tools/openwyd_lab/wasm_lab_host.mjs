@@ -14,6 +14,7 @@ const controlDir = path.resolve(argument("--control-dir"));
 const requestPath = path.join(controlDir, "wasm-request.json");
 const responsePath = path.join(controlDir, "wasm-response.json");
 const readyPath = path.join(controlDir, "wasm-ready.json");
+const traceEnabled = process.env.OPENWYD_LAB_TRACE === "1";
 let lastGeneration = 0;
 let stopping = false;
 
@@ -116,7 +117,7 @@ async function executeShow(request) {
   });
   const scenario = fs.readFileSync(request.scenario);
   const result = await page.evaluate(
-    ({ bytes, frame }) => {
+    ({ bytes, frame, traceEnabled }) => {
       const data = Uint8Array.from(bytes);
       const pointer = Module._malloc(data.length);
       Module.HEAPU8.set(data, pointer);
@@ -130,6 +131,11 @@ async function executeShow(request) {
       }
       if (!Module._wyd_lab_show(frame)) {
         return { status: "show-rejected", result: -1 };
+      }
+      if (traceEnabled) {
+        Module._wyd_d3d9_set_detailed_telemetry(1);
+        Module._wyd_d3d9_trace_set_enabled(1);
+        Module._wyd_d3d9_trace_reset();
       }
       for (let tick = 0; tick < frame + 32; tick += 1) {
         const tickResult = Module._wyd_tick_client();
@@ -157,6 +163,11 @@ async function executeShow(request) {
         player_visible: Module._wyd_lab_player_visible(),
         player_hidden: Module._wyd_lab_player_hidden(),
         player_has_skin: Module._wyd_lab_player_has_skin(),
+        player_familiar_item: Module._wyd_lab_player_familiar_item(),
+        player_has_familiar: Module._wyd_lab_player_has_familiar(),
+        player_familiar_visible: Module._wyd_lab_player_familiar_visible(),
+        player_familiar_has_skin: Module._wyd_lab_player_familiar_has_skin(),
+        player_familiar_visibility_reason: Module._wyd_lab_player_familiar_visibility_reason(),
         player_class: Module._wyd_lab_player_class(),
         player_motion: Module._wyd_lab_player_motion(),
         player_skin_type: Module._wyd_lab_player_skin_type(),
@@ -178,6 +189,8 @@ async function executeShow(request) {
         player_skin_tick_last: Module._wyd_lab_player_skin_tick_last(),
         player_skin_animation_base:
           Module._wyd_lab_player_skin_animation_base(),
+        player_pose_hash: (Module._wyd_lab_player_pose_hash() >>> 0)
+          .toString(16).padStart(8, "0"),
         render_fps: Module._wyd_lab_render_fps(),
         camera_x: Module._wyd_lab_camera_x(),
         camera_y: Module._wyd_lab_camera_y(),
@@ -189,11 +202,21 @@ async function executeShow(request) {
         human_draws: Module._wyd_field_visual_human_draws(),
         asset_open_failures:
           Module._wyd_d3d9_asset_file_open_fail() >>> 0,
+        asset_open_failure_samples: Array.from(
+          { length: Module._wyd_d3d9_asset_file_open_fail_sample_count() >>> 0 },
+          (_, index) => Module.UTF8ToString(
+            Module._wyd_d3d9_asset_file_open_fail_sample(index),
+          ),
+        ),
         gl_error_total: Module._wyd_d3d9_gl_error_total() >>> 0,
+        trace_top: traceEnabled ? Array.from(
+          { length: Module._wyd_d3d9_trace_top_count() >>> 0 },
+          (_, index) => Module.UTF8ToString(Module._wyd_d3d9_trace_top_sample(index)),
+        ) : [],
         png: canvas.toDataURL("image/png"),
       };
     },
-    { bytes: [...scenario], frame: request.frame >>> 0 },
+    { bytes: [...scenario], frame: request.frame >>> 0, traceEnabled },
   );
   if (result.png) {
     const encoded = result.png.replace(/^data:image\/png;base64,/, "");

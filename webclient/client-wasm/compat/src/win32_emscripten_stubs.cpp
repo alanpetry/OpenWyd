@@ -1116,6 +1116,12 @@ int BytesPerPixelForFormat(D3DFORMAT format) {
 
 class DummyDirect3DTexture9;
 
+struct DecodedTextureMip {
+  uint32_t width = 0;
+  uint32_t height = 0;
+  std::vector<uint8_t> rgba;
+};
+
 class DummyDirect3DSurface9 final : public IDirect3DSurface9, private ComRefBase {
  public:
   DummyDirect3DSurface9() = default;
@@ -1242,9 +1248,15 @@ class DummyDirect3DPixelShader9 final : public IDirect3DPixelShader9, private Co
 
 class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase {
  public:
-  DummyDirect3DTexture9(UINT in_width, UINT in_height, D3DFORMAT in_format, D3DPOOL in_pool)
+  DummyDirect3DTexture9(
+      UINT in_width,
+      UINT in_height,
+      UINT in_mip_levels,
+      D3DFORMAT in_format,
+      D3DPOOL in_pool)
       : width(std::max<UINT>(1, in_width)),
         height(std::max<UINT>(1, in_height)),
+        mip_levels(in_mip_levels),
         format(in_format == D3DFMT_UNKNOWN ? D3DFMT_A8R8G8B8 : in_format),
         pool(in_pool) {
     bytes_per_pixel = BytesPerPixelForFormat(format);
@@ -1265,11 +1277,16 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
 
   UINT width = 1;
   UINT height = 1;
+  // D3DX uses zero to request the complete mip chain and one for a texture
+  // containing only its base level. Keep that distinction: repeat support is
+  // unrelated to whether sampling from mip levels is legal.
+  UINT mip_levels = 1;
   D3DFORMAT format = D3DFMT_A8R8G8B8;
   D3DPOOL pool = D3DPOOL_MANAGED;
   int bytes_per_pixel = 4;
   UINT pitch = 4;
   std::vector<uint8_t> pixels;
+  std::vector<DecodedTextureMip> embedded_mips;
   bool locked = false;
   GLuint gl_texture = 0;
   bool gl_dirty = true;
@@ -2404,6 +2421,82 @@ bool DecodeDDSDXTtoRGBA(const uint8_t* data, size_t size, uint32_t* out_w, uint3
   return true;
 }
 
+bool DecodeDDSDXTMipsToRGBA(
+    const uint8_t* data,
+    size_t size,
+    std::vector<DecodedTextureMip>* out_mips) {
+  if (!data || size < 128 || !out_mips || std::memcmp(data, "DDS ", 4) != 0) return false;
+
+  uint32_t width = ReadLE32(data + 16);
+  uint32_t height = ReadLE32(data + 12);
+  const uint32_t declared_mips = std::max<uint32_t>(1u, ReadLE32(data + 28));
+  const uint32_t fourcc = ReadLE32(data + 84);
+  const uint32_t kDXT1 = static_cast<uint32_t>('D') |
+                         (static_cast<uint32_t>('X') << 8) |
+                         (static_cast<uint32_t>('T') << 16) |
+                         (static_cast<uint32_t>('1') << 24);
+  const uint32_t kDXT3 = static_cast<uint32_t>('D') |
+                         (static_cast<uint32_t>('X') << 8) |
+                         (static_cast<uint32_t>('T') << 16) |
+                         (static_cast<uint32_t>('3') << 24);
+  if ((fourcc != kDXT1 && fourcc != kDXT3) || width == 0 || height == 0 ||
+      width > 8192 || height > 8192) {
+    return false;
+  }
+
+  const bool is_dxt1 = fourcc == kDXT1;
+  const size_t block_bytes = is_dxt1 ? 8u : 16u;
+  size_t cursor = 128u;
+  out_mips->clear();
+  out_mips->reserve(declared_mips);
+
+  for (uint32_t level = 0; level < declared_mips; ++level) {
+    const uint32_t bx_count = (width + 3u) / 4u;
+    const uint32_t by_count = (height + 3u) / 4u;
+    const size_t level_bytes = static_cast<size_t>(bx_count) * by_count * block_bytes;
+    if (cursor + level_bytes > size) {
+      out_mips->clear();
+      return false;
+    }
+
+    DecodedTextureMip mip;
+    mip.width = width;
+    mip.height = height;
+    mip.rgba.assign(static_cast<size_t>(width) * height * 4u, 0u);
+    const uint8_t* src = data + cursor;
+    for (uint32_t by = 0; by < by_count; ++by) {
+      for (uint32_t bx = 0; bx < bx_count; ++bx) {
+        uint8_t px[16][4]{};
+        if (is_dxt1) {
+          DecodeDXTColorBlock(src, px, true);
+        } else {
+          DecodeDXTColorBlock(src + 8, px, false);
+          for (int i = 0; i < 16; ++i) {
+            const uint8_t nibble = static_cast<uint8_t>((src[i / 2] >> ((i % 2) * 4)) & 0xFu);
+            px[i][3] = static_cast<uint8_t>((nibble << 4) | nibble);
+          }
+        }
+        for (uint32_t py = 0; py < 4; ++py) {
+          for (uint32_t pxi = 0; pxi < 4; ++pxi) {
+            const uint32_t x = bx * 4u + pxi;
+            const uint32_t y = by * 4u + py;
+            if (x >= width || y >= height) continue;
+            const size_t dst = (static_cast<size_t>(y) * width + x) * 4u;
+            const int block_i = static_cast<int>(py * 4u + pxi);
+            std::memcpy(mip.rgba.data() + dst, px[block_i], 4u);
+          }
+        }
+        src += block_bytes;
+      }
+    }
+    out_mips->push_back(std::move(mip));
+    cursor += level_bytes;
+    width = std::max<uint32_t>(1u, width / 2u);
+    height = std::max<uint32_t>(1u, height / 2u);
+  }
+  return !out_mips->empty();
+}
+
 bool DecodeTextureToRGBA(const void* src_data, size_t src_size, uint32_t* out_w, uint32_t* out_h, std::vector<uint8_t>* out_rgba) {
   if (!src_data || src_size == 0) return false;
   const auto* bytes = static_cast<const uint8_t*>(src_data);
@@ -3278,6 +3371,25 @@ BOOL TextOutA(HDC hdc, int x, int y, LPCSTR text, int count) {
   if (chars == 0) return TRUE;
 
   FontInfo* finfo = FontInfoFor(state->font);
+  if (state->bk_mode == OPAQUE) {
+    // TMFont2 reuses a DIB atlas and erases each line with an opaque run of
+    // spaces before drawing the new text.  The old stub ignored bk_mode, so
+    // the extra scanline copied by TMFont2 retained descenders from the
+    // previous string and showed up as a noisy underline in WebGL.
+    const int clear_width = MeasureTextWidth(text, chars, finfo);
+    const int clear_height = std::abs(finfo ? finfo->height : 14) + 1;
+    const int left = std::max(0, x);
+    const int top = std::max(0, y);
+    const int right = std::min(dib->width, x + clear_width);
+    const int bottom = std::min(dib->height, y + clear_height);
+    for (int row = top; row < bottom; ++row) {
+      std::fill_n(
+          dib->pixels + static_cast<size_t>(row) * static_cast<size_t>(dib->width) +
+              static_cast<size_t>(left),
+          std::max(0, right - left),
+          0u);
+    }
+  }
   uint32_t text_color = 0xFF000000u | static_cast<uint32_t>(state->text_color & 0x00FFFFFFu);
   RenderTextToDIB(dib, x, y, text, chars, finfo, text_color);
   return TRUE;
@@ -4630,7 +4742,7 @@ D3DXCOLOR* D3DXColorModulate(D3DXCOLOR* out, const D3DXCOLOR* c1, const D3DXCOLO
 HRESULT D3DXCreateTexture(IDirect3DDevice9*,
                           UINT Width,
                           UINT Height,
-                          UINT,
+                          UINT MipLevels,
                           DWORD,
                           D3DFORMAT Format,
                           D3DPOOL Pool,
@@ -4640,7 +4752,7 @@ HRESULT D3DXCreateTexture(IDirect3DDevice9*,
 
   const UINT w = (Width == 0 || Width == static_cast<UINT>(-1)) ? 64u : Width;
   const UINT h = (Height == 0 || Height == static_cast<UINT>(-1)) ? 64u : Height;
-  auto* tex = new DummyDirect3DTexture9(w, h, Format, Pool);
+  auto* tex = new DummyDirect3DTexture9(w, h, MipLevels, Format, Pool);
   if (!tex) return E_OUTOFMEMORY;
   *ppTexture = tex;
   return S_OK;
@@ -4651,7 +4763,7 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
                                             UINT SrcDataSize,
                                             UINT Width,
                                             UINT Height,
-                                            UINT,
+                                            UINT MipLevels,
                                             DWORD,
                                             D3DFORMAT Format,
                                             D3DPOOL Pool,
@@ -4669,6 +4781,7 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
   UINT decoded_w = 0;
   UINT decoded_h = 0;
   std::vector<uint8_t> decoded_rgba;
+  std::vector<DecodedTextureMip> decoded_mips;
 
   if (pSrcData && SrcDataSize > 0) {
     if (DecodeTextureToRGBA(
@@ -4678,6 +4791,12 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
         &decoded_h,
         &decoded_rgba)) {
       g_tex_decode_success += 1;
+      if (MipLevels > 1u) {
+        DecodeDDSDXTMipsToRGBA(
+            static_cast<const uint8_t*>(pSrcData),
+            static_cast<size_t>(SrcDataSize),
+            &decoded_mips);
+      }
     } else {
       g_tex_decode_fail += 1;
     }
@@ -4693,7 +4812,7 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
   const D3DFORMAT texture_format =
       (Format == D3DFMT_UNKNOWN) ? (force_opaque_format ? D3DFMT_X8R8G8B8 : D3DFMT_A8R8G8B8) : Format;
 
-  auto* tex = new DummyDirect3DTexture9(w, h, texture_format, Pool);
+  auto* tex = new DummyDirect3DTexture9(w, h, MipLevels, texture_format, Pool);
   if (!tex) return E_OUTOFMEMORY;
   if (pSrcData && SrcDataSize > 0 && !g_last_closed_debug_source_path.empty()) {
     tex->debug_source_path = g_last_closed_debug_source_path;
@@ -4703,6 +4822,11 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
   if (!decoded_rgba.empty() && decoded_w > 0 && decoded_h > 0) {
     ApplyColorKeyRGBA(&decoded_rgba, ColorKey);
     PackRGBAForTexture(decoded_rgba, decoded_w, decoded_h, tex);
+    if (!decoded_mips.empty()) {
+      decoded_mips.resize(std::min<size_t>(MipLevels, decoded_mips.size()));
+      for (DecodedTextureMip& mip : decoded_mips) ApplyColorKeyRGBA(&mip.rgba, ColorKey);
+      tex->embedded_mips = std::move(decoded_mips);
+    }
   } else {
     tex->gl_dirty = true;
   }
@@ -7788,7 +7912,10 @@ bool DecodeVertexFromDeclaration(
   if (decoded.influence_count > 1) {
     float explicit_sum = 0.0f;
     for (UINT i = 0; i + 1 < decoded.influence_count && i < 4; ++i) explicit_sum += decoded.weights[i];
-    const float inferred = std::max(0.0f, 1.0f - explicit_sum);
+    // skinmesh2/3/4 compute this with an ADD instruction and do not saturate
+    // it. Some legacy meshes intentionally contain explicit weights whose
+    // rounded sum is slightly above one, so the final influence is negative.
+    const float inferred = 1.0f - explicit_sum;
     decoded.weights[decoded.influence_count - 1] = inferred;
   } else {
     decoded.weights[0] = 1.0f;
@@ -7811,7 +7938,7 @@ bool DecodeVertexFromDeclaration(
     D3DXVECTOR3 accum_nrm(0.0f, 0.0f, 0.0f);
     for (UINT i = 0; i < decoded.influence_count && i < 4; ++i) {
       float w = decoded.weights[i];
-      if (w <= 1.0e-6f) continue;
+      if (std::fabs(w) <= 1.0e-6f) continue;
       const UINT bone_index = (palette_size > 0u) ? std::min<UINT>(decoded.indices[i], palette_size - 1u) : decoded.indices[i];
       const D3DXVECTOR3 bone_pos = TransformPositionBySkinMatrix(decoded.position, bone_index);
       const D3DXVECTOR3 bone_nrm = TransformNormalBySkinMatrix(decoded.normal, bone_index);
@@ -7872,8 +7999,57 @@ bool DecodeVertexFromDeclaration(
   out_vertex->cam_nrm_z = cam_nrm.z;
 
   if (use_skinning) {
+    constexpr uint64_t kSkinMesh1Hash = 0x1c5fbfa394385e90ull;
+    constexpr uint64_t kSkinMesh2Hash = 0x851b469b88956e6aull;
+    constexpr uint64_t kSkinMesh3Hash = 0x7502e7de3a0f9798ull;
+    constexpr uint64_t kSkinMesh4Hash = 0xc73a19e04a083e83ull;
+    constexpr uint64_t kSkinMesh5Hash = 0x64c1cfa12def9648ull;
+    constexpr uint64_t kSkinMesh6Hash = 0xe5a5dfb6b216f392ull;
+    constexpr uint64_t kSkinMesh7Hash = 0x2dd04e906789c060ull;
+    constexpr uint64_t kSkinMesh8Hash = 0xecfd7d76250484cbull;
+    const bool official_skinmesh_shader =
+        g_active_vs_hash == kSkinMesh1Hash ||
+        g_active_vs_hash == kSkinMesh2Hash ||
+        g_active_vs_hash == kSkinMesh3Hash ||
+        g_active_vs_hash == kSkinMesh4Hash ||
+        g_active_vs_hash == kSkinMesh5Hash ||
+        g_active_vs_hash == kSkinMesh6Hash ||
+        g_active_vs_hash == kSkinMesh7Hash ||
+        g_active_vs_hash == kSkinMesh8Hash;
+    const bool unlit_vegetation_shader =
+        g_active_vs_hash == kSkinMesh5Hash ||
+        g_active_vs_hash == kSkinMesh6Hash ||
+        g_active_vs_hash == kSkinMesh7Hash ||
+        g_active_vs_hash == kSkinMesh8Hash;
+
+    // All eight official skinmesh shaders generate the second texture
+    // coordinate from the normalized skinned normal and position. Shaders
+    // 1 uses material power (c0.y); shaders 2-8 use the time progress (c0.z).
+    // This coordinate drives the original equipment/vegetation overlay path.
+    if (official_skinmesh_shader) {
+      const float generated_uv_offset =
+          (g_active_vs_hash == kSkinMesh1Hash) ? ShaderConst(0u, 1) : ShaderConst(0u, 2);
+      out_vertex->u1 = cam_nrm.x + generated_uv_offset;
+      out_vertex->v1 = cam_pos.y + generated_uv_offset;
+    }
+
+    D3DXVECTOR3 lighting_nrm = cam_nrm;
+    if (decoded.influence_count > 1u && !unlit_vegetation_shader) {
+      // The official skinmesh2/3/4 vertex shaders transform the normalized
+      // blended normal by c92-c94 (the transposed inverse-view matrix) before
+      // evaluating c1.  Omitting this made multi-bone geometry such as capes,
+      // armour and mounts much brighter than the DirectX render.
+      lighting_nrm = D3DXVECTOR3(
+          cam_nrm.x * ShaderConst(92u, 0) + cam_nrm.y * ShaderConst(92u, 1) +
+              cam_nrm.z * ShaderConst(92u, 2),
+          cam_nrm.x * ShaderConst(93u, 0) + cam_nrm.y * ShaderConst(93u, 1) +
+              cam_nrm.z * ShaderConst(93u, 2),
+          cam_nrm.x * ShaderConst(94u, 0) + cam_nrm.y * ShaderConst(94u, 1) +
+              cam_nrm.z * ShaderConst(94u, 2));
+      lighting_nrm = Normalize3(lighting_nrm);
+    }
     const D3DXVECTOR3 light_dir = Normalize3(D3DXVECTOR3(ShaderConst(1u, 0), ShaderConst(1u, 1), ShaderConst(1u, 2)));
-    const float ndotl = std::max(0.0f, Dot3(cam_nrm, light_dir));
+    const float ndotl = std::max(0.0f, Dot3(lighting_nrm, light_dir));
     const float diff_r = ShaderConst(8u, 0);
     const float diff_g = ShaderConst(8u, 1);
     const float diff_b = ShaderConst(8u, 2);
@@ -7881,10 +8057,26 @@ bool DecodeVertexFromDeclaration(
     const float amb_r = ShaderConst(7u, 0);
     const float amb_g = ShaderConst(7u, 1);
     const float amb_b = ShaderConst(7u, 2);
-    const float lit_r = amb_r + diff_r * ndotl;
-    const float lit_g = amb_g + diff_g * ndotl;
-    const float lit_b = amb_b + diff_b * ndotl;
-    EncodeFloatColor(lit_r, lit_g, lit_b, diff_a > 0.0f ? diff_a : 1.0f, &out_vertex->r, &out_vertex->g, &out_vertex->b, &out_vertex->a);
+    const float amb_a = ShaderConst(7u, 3);
+    // skinmesh1-4 use c7 + max(N.L, 0) * c8. skinmesh5-8 (the
+    // vegetation family) deliberately ignore N.L and emit c7 + c8. This is
+    // taken directly from the shipped vs_1_1 bytecode; treating 5-8 as the
+    // character shader made grass much darker and denser in WebGL.
+    const float light_scale = unlit_vegetation_shader ? 1.0f : ndotl;
+    const float lit_r = amb_r + diff_r * light_scale;
+    const float lit_g = amb_g + diff_g * light_scale;
+    const float lit_b = amb_b + diff_b * light_scale;
+    // The original effect-skin path uses SRCALPHA/ONE for EF_BRIGHT.  On the
+    // reference D3D9 client these programmable-skin draws contribute their
+    // fully lit RGB (the iterated alpha is effectively opaque); propagating
+    // N.L into alpha applies the lighting term a second time in WebGL and
+    // makes familiars and mount glows several times too dark.
+    const bool additive_bright_skin =
+        g_wasm_d3d9_state.blend_enabled &&
+        g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
+        g_wasm_d3d9_state.dst_blend == D3DBLEND_ONE;
+    const float lit_a = additive_bright_skin ? 1.0f : (amb_a + diff_a * light_scale);
+    EncodeFloatColor(lit_r, lit_g, lit_b, lit_a, &out_vertex->r, &out_vertex->g, &out_vertex->b, &out_vertex->a);
   } else if (decoded.has_diffuse) {
     ARGBToRGBA8(decoded.diffuse, &out_vertex->r, &out_vertex->g, &out_vertex->b, &out_vertex->a);
   } else {
@@ -8243,8 +8435,8 @@ bool alphaTestPass(float a, float refv, int func) {
 }
 
 void main() {
-  vec4 texel0 = (uUseTexture0 != 0) ? texture2D(uSampler0, vUV0) : vec4(1.0);
-  vec4 texel1 = (uUseTexture1 != 0) ? texture2D(uSampler1, vUV1) : vec4(1.0);
+  vec4 texel0 = (uUseTexture0 != 0) ? texture2D(uSampler0, vUV0) : vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 texel1 = (uUseTexture1 != 0) ? texture2D(uSampler1, vUV1) : vec4(0.0, 0.0, 0.0, 1.0);
   bool forceOpaqueTextureAlpha = mod(floor(float(uDebugFlags) / 8.0), 2.0) >= 1.0;
   if (forceOpaqueTextureAlpha) {
     texel0.a = 1.0;
@@ -8519,7 +8711,9 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   const DWORD min_filter = g_ffp_state.sampler[stage][D3DSAMP_MINFILTER];
   const DWORD mag_filter = g_ffp_state.sampler[stage][D3DSAMP_MAGFILTER];
   const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
-  const GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, can_repeat);
+  const bool mipmaps_available =
+      tex->mip_levels != 1u && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
+  const GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
   const GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
 
   if (tex->gl_wrap_s != wrap_u) {
@@ -8540,6 +8734,58 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   }
 }
 
+bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
+  if (!tex || tex->pixels.empty()) return false;
+  if (tex->gl_texture == 0) {
+    glGenTextures(1, &tex->gl_texture);
+    tex->gl_dirty = true;
+  }
+  if (tex->gl_dirty) {
+    const bool use_embedded_mips =
+        g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u && !tex->embedded_mips.empty();
+    if (use_embedded_mips) {
+      for (size_t level = 0; level < tex->embedded_mips.size(); ++level) {
+        const DecodedTextureMip& mip = tex->embedded_mips[level];
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            static_cast<GLint>(level),
+            GL_RGBA,
+            static_cast<GLsizei>(mip.width),
+            static_cast<GLsizei>(mip.height),
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            mip.rgba.data());
+      }
+      glTexParameteri(
+          GL_TEXTURE_2D,
+          0x813D, // GL_TEXTURE_MAX_LEVEL (WebGL 2 / OpenGL ES 3)
+          static_cast<GLint>(tex->embedded_mips.size() - 1u));
+    } else {
+      std::vector<uint8_t> rgba;
+      BuildGLTextureRGBA(tex, &rgba);
+      if (rgba.empty()) return false;
+      glTexImage2D(
+          GL_TEXTURE_2D,
+          0,
+          GL_RGBA,
+          static_cast<GLsizei>(tex->width),
+          static_cast<GLsizei>(tex->height),
+          0,
+          GL_RGBA,
+          GL_UNSIGNED_BYTE,
+          rgba.data());
+      if (tex->mip_levels != 1u && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height)) {
+        glGenerateMipmap(GL_TEXTURE_2D);
+      }
+    }
+    tex->gl_dirty = false;
+    g_tex_upload_count += 1;
+  }
+
+  return true;
+}
+
 bool BindTextureStage(DWORD stage) {
   if (stage >= kMaxTextureStages) return false;
   auto* tex = AsTexture(g_ffp_state.textures[stage]);
@@ -8553,30 +8799,33 @@ bool BindTextureStage(DWORD stage) {
   glActiveTexture(GL_TEXTURE0 + stage);
   glBindTexture(GL_TEXTURE_2D, tex->gl_texture);
   ApplyTextureSamplerState(stage, tex);
-
-  if (tex->gl_dirty) {
-    std::vector<uint8_t> rgba;
-    BuildGLTextureRGBA(tex, &rgba);
-    if (rgba.empty()) return false;
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        static_cast<GLsizei>(tex->width),
-        static_cast<GLsizei>(tex->height),
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        rgba.data());
-    if (IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height)) {
-      glGenerateMipmap(GL_TEXTURE_2D);
-    }
-    tex->gl_dirty = false;
-    g_tex_upload_count += 1;
-  }
+  if (!UploadBoundTexture(tex)) return false;
 
   g_tex_draw_count += 1;
   return true;
+}
+
+extern "C" int wyd_d3d9_preupload_texture(IDirect3DBaseTexture9* texture) {
+  if (!EnsureWasmContext()) return 0;
+  auto* tex = AsTexture(texture);
+  if (!tex || tex->pixels.empty()) return 0;
+
+  GLint previous_active = GL_TEXTURE0;
+  GLint previous_binding = 0;
+  glGetIntegerv(GL_ACTIVE_TEXTURE, &previous_active);
+  glActiveTexture(GL_TEXTURE0);
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_binding);
+
+  if (tex->gl_texture == 0) {
+    glGenTextures(1, &tex->gl_texture);
+    tex->gl_dirty = true;
+  }
+  glBindTexture(GL_TEXTURE_2D, tex->gl_texture);
+  const bool uploaded = UploadBoundTexture(tex);
+
+  glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_binding));
+  glActiveTexture(static_cast<GLenum>(previous_active));
+  return uploaded ? 1 : 0;
 }
 
 DWORD StageStateValue(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD default_value) {
@@ -8666,12 +8915,17 @@ bool ApplyStageUniforms(
   }
 
   if (!has_texture) {
-    // D3D9 semantics: if no texture is set for the stage, texture arguments
-    // resolve to diffuse (not to previous stage current).
-    if ((color_arg1 & 0xFu) == D3DTA_TEXTURE) color_arg1 = D3DTA_DIFFUSE;
-    if ((color_arg2 & 0xFu) == D3DTA_TEXTURE) color_arg2 = D3DTA_DIFFUSE;
-    if ((alpha_arg1 & 0xFu) == D3DTA_TEXTURE) alpha_arg1 = D3DTA_DIFFUSE;
-    if ((alpha_arg2 & 0xFu) == D3DTA_TEXTURE) alpha_arg2 = D3DTA_DIFFUSE;
+    // Direct3D terminates the texture cascade when COLORARG1 selects a NULL
+    // texture. This is how the original client leaves stale stage operations
+    // behind safely when it calls SetTexture(stage, nullptr). For an active
+    // stage whose other color argument references that NULL texture, hardware
+    // supplies black; only ALPHAARG1 has the documented diffuse fallback.
+    if ((color_arg1 & 0xFu) == D3DTA_TEXTURE) {
+      color_op = D3DTOP_DISABLE;
+      alpha_op = D3DTOP_DISABLE;
+    } else if ((alpha_arg1 & 0xFu) == D3DTA_TEXTURE) {
+      alpha_arg1 = D3DTA_DIFFUSE;
+    }
   }
 
   if (color_op == D3DTOP_DISABLE) {
@@ -10149,7 +10403,10 @@ HRESULT WydD3D9Surface_UnlockRect(IDirect3DSurface9* surface) {
   auto* s = AsSurface(surface);
   if (!s) return D3DERR_INVALIDCALL;
   s->locked = false;
-  if (s->owner) s->owner->gl_dirty = true;
+  if (s->owner) {
+    s->owner->embedded_mips.clear();
+    s->owner->gl_dirty = true;
+  }
   return S_OK;
 }
 
@@ -10221,6 +10478,7 @@ HRESULT WydD3D9Texture_UnlockRect(IDirect3DTexture9* texture, UINT level) {
   auto* tex = AsTexture(texture);
   if (!tex) return D3DERR_INVALIDCALL;
   tex->locked = false;
+  tex->embedded_mips.clear();
   tex->gl_dirty = true;
   return S_OK;
 }

@@ -1767,6 +1767,10 @@ void ObjectManager::RenderObject()
 		g_pCurrentScene->m_pHumanContainer != nullptr)
 	{
 		OpenWydLabRenderSubtree(g_pCurrentScene->m_pHumanContainer);
+		// Character-owned familiars and attack visuals live in the official
+		// effect container, not under the human node. Keep those real effects in
+		// isolated captures while still omitting terrain and UI.
+		OpenWydLabRenderSubtree(g_pCurrentScene->m_pEffectContainer);
 		return;
 	}
 #endif

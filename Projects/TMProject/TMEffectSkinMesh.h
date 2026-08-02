@@ -14,6 +14,7 @@ public:
     virtual int InitObject(int bExpand);
     int Render() override;
     int FrameMove(unsigned int dwServerTime) override;
+    int IsVisible() override;
     void RestoreDeviceObjects() override;
     void InvalidateDeviceObjects() override;
     void InitPosition(float fX, float fY, float fZ) override;

@@ -1,0 +1,21 @@
+{
+  "mode": "field",
+  "seed": 769,
+  "start_time_ms": 10000,
+  "tick_ms": 50,
+  "camera": {"horizon": 0.78539818, "vertical": -0.78539818, "length": 7.5, "height": 0.4},
+  "actors": [
+    {
+      "id": 1,
+      "name": "OpenWYD",
+      "x": 2184,
+      "y": 2100,
+      "class": 0,
+      "equip": [6, 1417, 1230, 1230, 1230, 1230, 3605, 0]
+    }
+  ],
+  "timeline": [
+    {"frame": 1, "kind": "action", "actor": 0, "x": 2208, "y": 2100, "speed": 6,
+     "route": "666666666666666666666666"}
+  ]
+}

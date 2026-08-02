@@ -5,20 +5,25 @@
 #include "OpenWydLab.h"
 
 #include "Basedef.h"
+#include "CFrame.h"
+#include "MeshManager.h"
 #include "NewApp.h"
 #include "ObjectManager.h"
 #include "OpenWydCompareRandom.h"
 #include "RenderDevice.h"
 #include "SControlContainer.h"
 #include "TMCamera.h"
+#include "TMEffectSkinMesh.h"
 #include "TMFieldScene.h"
 #include "TMGlobal.h"
 #include "TMHuman.h"
+#include "TMMesh.h"
 #include "TMSkinMesh.h"
 #include "TimerManager.h"
 #include "TreeNode.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -46,6 +51,11 @@ extern "C"
 	int wyd_lab_player_visible();
 	int wyd_lab_player_hidden();
 	int wyd_lab_player_has_skin();
+	int wyd_lab_player_familiar_item();
+	int wyd_lab_player_has_familiar();
+	int wyd_lab_player_familiar_visible();
+	int wyd_lab_player_familiar_has_skin();
+	int wyd_lab_player_familiar_visibility_reason();
 	int wyd_lab_player_class();
 	int wyd_lab_player_motion();
 	int wyd_lab_player_skin_type();
@@ -63,6 +73,7 @@ extern "C"
 	unsigned int wyd_lab_player_skin_start_offset();
 	int wyd_lab_player_skin_tick_last();
 	int wyd_lab_player_skin_animation_base();
+	unsigned int wyd_lab_player_pose_hash();
 	float wyd_lab_render_fps();
 	float wyd_lab_camera_x();
 	float wyd_lab_camera_y();
@@ -914,6 +925,11 @@ namespace
 		std::fprintf(stream, "player_visible=%d\n", wyd_lab_player_visible());
 		std::fprintf(stream, "player_hidden=%d\n", wyd_lab_player_hidden());
 		std::fprintf(stream, "player_has_skin=%d\n", wyd_lab_player_has_skin());
+		std::fprintf(stream, "player_familiar_item=%d\n", wyd_lab_player_familiar_item());
+		std::fprintf(stream, "player_has_familiar=%d\n", wyd_lab_player_has_familiar());
+		std::fprintf(stream, "player_familiar_visible=%d\n", wyd_lab_player_familiar_visible());
+		std::fprintf(stream, "player_familiar_has_skin=%d\n", wyd_lab_player_familiar_has_skin());
+		std::fprintf(stream, "player_familiar_visibility_reason=%d\n", wyd_lab_player_familiar_visibility_reason());
 		std::fprintf(stream, "player_class=%d\n", wyd_lab_player_class());
 		std::fprintf(stream, "player_motion=%d\n", wyd_lab_player_motion());
 		std::fprintf(stream, "player_skin_type=%d\n", wyd_lab_player_skin_type());
@@ -931,6 +947,7 @@ namespace
 		std::fprintf(stream, "player_skin_start_offset=%u\n", wyd_lab_player_skin_start_offset());
 		std::fprintf(stream, "player_skin_tick_last=%d\n", wyd_lab_player_skin_tick_last());
 		std::fprintf(stream, "player_skin_animation_base=%d\n", wyd_lab_player_skin_animation_base());
+		std::fprintf(stream, "player_pose_hash=%08x\n", wyd_lab_player_pose_hash());
 		std::fprintf(stream, "render_fps=%.9g\n", wyd_lab_render_fps());
 		std::fprintf(stream, "camera_x=%.9g\n", wyd_lab_camera_x());
 		std::fprintf(stream, "camera_y=%.9g\n", wyd_lab_camera_y());
@@ -1369,6 +1386,58 @@ extern "C" int wyd_lab_player_has_skin()
 	return player && player->m_pSkinMesh ? 1 : 0;
 }
 
+extern "C" int wyd_lab_player_familiar_item()
+{
+	TMHuman* player = LabPlayer();
+	return player ? player->m_sFamiliar : 0;
+}
+
+extern "C" int wyd_lab_player_has_familiar()
+{
+	TMHuman* player = LabPlayer();
+	return player && player->m_pFamiliar ? 1 : 0;
+}
+
+extern "C" int wyd_lab_player_familiar_visible()
+{
+	TMHuman* player = LabPlayer();
+	return player && player->m_pFamiliar ? player->m_pFamiliar->m_bVisible : 0;
+}
+
+extern "C" int wyd_lab_player_familiar_has_skin()
+{
+	TMHuman* player = LabPlayer();
+	return player && player->m_pFamiliar && player->m_pFamiliar->m_pSkinMesh ? 1 : 0;
+}
+
+extern "C" int wyd_lab_player_familiar_visibility_reason()
+{
+	TMHuman* player = LabPlayer();
+	if (!player || !player->m_pFamiliar || !g_pMeshManager || !g_pObjectManager)
+		return 0;
+
+	TMEffectSkinMesh* familiar = player->m_pFamiliar;
+	TMMesh* mesh = g_pMeshManager->GetCommonMesh(familiar->m_dwObjType, 0, 3_min);
+	if (!mesh)
+		return -1;
+
+	TMCamera* camera = g_pObjectManager->m_pCamera;
+	if (!camera)
+		return -4;
+
+	D3DXVECTOR3 cameraPosition(camera->m_cameraPos.x, camera->m_cameraPos.z, camera->m_cameraPos.y);
+	D3DXVECTOR3 objectPosition(familiar->m_vecPosition.x, familiar->m_vecPosition.y, familiar->m_fHeight);
+	D3DXVECTOR3 toObject = objectPosition - cameraPosition;
+	if (mesh->m_fRadius >= D3DXVec3Length(&toObject))
+		return 2;
+
+	D3DXVECTOR3 cameraDirection(camera->m_vecCamDir.x, camera->m_vecCamDir.z, camera->m_vecCamDir.y);
+	if (D3DXVec3Dot(&toObject, &cameraDirection) <= 0.0f)
+		return -2;
+
+	return familiar->IsInView() ? 3 : -3;
+}
+
 extern "C" int wyd_lab_player_class()
 {
 	TMHuman* player = LabPlayer();
@@ -1483,6 +1552,63 @@ extern "C" int wyd_lab_player_skin_animation_base()
 	return player && player->m_pSkinMesh ?
 		player->m_pSkinMesh->m_nAniBaseIndex :
 		-1;
+}
+
+extern "C" unsigned int wyd_lab_player_pose_hash()
+{
+	TMHuman* player = LabPlayer();
+	if (!player || !player->m_pSkinMesh)
+		return 0;
+
+	// Quantize the final per-bone matrices so harmless libm rounding does not
+	// hide a real native/WASM pose difference. This hashes the data that is fed
+	// to skinning after the official animation and transition code has run.
+	std::uint32_t hash = kFnvOffset;
+	const int animation = player->m_pSkinMesh->m_nBoneAniIndex;
+	if (animation < 0 || animation >= MAX_BONE_ANIMATION_LIST)
+		return 0;
+	const std::size_t boneCount = std::min<std::size_t>(
+		MeshManager::m_BoneAnimationList[animation].numAniFrame,
+		MAX_FRAME_TO_ANIMATE);
+	for (std::size_t frame = 0; frame < boneCount; ++frame)
+	{
+		// Character ANI files deliberately fill non-animated attachment bones
+		// with the 0xCD debug sentinel. Native D3DX and libc handle arithmetic
+		// on those huge values differently, but the bones have no animated
+		// geometry. Exclude the sentinels and compare only matrices that can
+		// actually influence the rendered skin.
+		const D3DXMATRIX* source =
+			MeshManager::m_BoneAnimationList[animation].matAnimation +
+			frame + boneCount * player->m_pSkinMesh->m_nAniBaseIndex;
+		const float* sourceValues = reinterpret_cast<const float*>(source);
+		bool animated = true;
+		for (std::size_t value = 0; value < 16; ++value)
+		{
+			if (!std::isfinite(sourceValues[value]) ||
+				std::fabs(sourceValues[value]) > 1000.0f)
+			{
+				animated = false;
+				break;
+			}
+		}
+		if (!animated)
+			continue;
+
+		CFrame* bone = player->m_pSkinMesh->m_pframeToAnimate[frame];
+		if (!bone)
+			continue;
+
+		const std::uint32_t frameIndex = static_cast<std::uint32_t>(frame);
+		hash = Fnv1a(&frameIndex, sizeof(frameIndex), hash);
+		const float* matrix = reinterpret_cast<const float*>(&bone->m_matRot);
+		for (std::size_t value = 0; value < 16; ++value)
+		{
+			const std::int32_t quantized = static_cast<std::int32_t>(
+				std::lround(static_cast<double>(matrix[value]) * 1000.0));
+			hash = Fnv1a(&quantized, sizeof(quantized), hash);
+		}
+	}
+	return hash;
 }
 
 extern "C" float wyd_lab_render_fps()

@@ -22,9 +22,14 @@
 #include "TMDrop.h"
 #include "TMBike.h"
 #include "TMLog.h"
+#include "TMMesh.h"
+#include "MeshManager.h"
+#include "TextureManager.h"
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/console.h>
+
+extern "C" int wyd_d3d9_preupload_texture(IDirect3DBaseTexture9* texture);
 
 namespace {
 	int g_wasmObjectLoadCount = 0;
@@ -41,6 +46,47 @@ namespace {
 	void WasmObjectLog(const char* msg)
 	{
 		emscripten_console_log(msg);
+	}
+
+	void WasmPreloadFieldObjectAssets(TMObjectContainer* container)
+	{
+		if (!container || !g_pMeshManager || !g_pTextureManager)
+			return;
+
+		// The original client lazily materializes common meshes and textures when
+		// an object first enters the visual key. That is cheap on the native
+		// client, but decoding and uploading the same data during a WebGL frame
+		// makes grass and nearby props appear in small groups while walking. Do
+		// the work once while the map block itself is loading. Rendering, culling
+		// and object order remain entirely on the original path.
+		bool visited[MAX_COMMON_MESH]{};
+		for (int i = 0; i < container->m_nObjectIndex; ++i)
+		{
+			TMObject* object = container->m_pObjectList[i];
+			if (!object || object->m_dwObjType >= MAX_COMMON_MESH)
+				continue;
+
+			const unsigned int objectType = object->m_dwObjType;
+			if (visited[objectType])
+				continue;
+			visited[objectType] = true;
+
+			TMMesh* mesh = g_pMeshManager->GetCommonMesh((int)objectType, 0, 3_min);
+			if (!mesh)
+				continue;
+
+			for (unsigned int attr = 0; attr < mesh->m_dwAttCount && attr < 32; ++attr)
+			{
+				const int textureIndex = mesh->m_nTextureIndex[attr];
+				if (textureIndex < 0 || textureIndex >= MAX_MODEL_TEXTURE)
+					continue;
+
+				IDirect3DTexture9* texture =
+					g_pTextureManager->GetModelTexture(textureIndex, 3_min);
+				if (texture)
+					wyd_d3d9_preupload_texture(texture);
+			}
+		}
 	}
 } // namespace
 
@@ -1079,6 +1125,9 @@ int TMObjectContainer::Load(const char* szFileName)
 
 	if (buff)
 		free(buff);
+#if defined(__EMSCRIPTEN__)
+	WasmPreloadFieldObjectAssets(this);
+#endif
 	if (g_pCurrentScene->GetSceneType() != ESCENE_TYPE::ESCENE_FIELD
 		|| TMGround::m_nCheckSum[m_pGround->m_vecOffsetIndex.y + 32][m_pGround->m_vecOffsetIndex.x] == nCheckSum + m_pGround->m_vecOffsetIndex.x * m_pGround->m_vecOffsetIndex.y)
 	{

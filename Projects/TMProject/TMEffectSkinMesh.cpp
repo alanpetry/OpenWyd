@@ -253,6 +253,21 @@ int TMEffectSkinMesh::Render()
 	return 1;
 }
 
+int TMEffectSkinMesh::IsVisible()
+{
+	// Slot 331 is only a conservative culling proxy for these skinned effects.
+	// Some official data sets omit its tr0101.msa while retaining the real
+	// skinned effect geometry. In that case the GPU can safely clip the actual
+	// geometry; discarding it here would hide familiars and other skin effects.
+	if (g_pMeshManager->GetCommonMesh(m_dwObjType, 0, 3_min) == nullptr)
+	{
+		m_bVisible = m_pSkinMesh != nullptr ? 1 : 0;
+		return m_bVisible;
+	}
+
+	return TMObject::IsVisible();
+}
+
 int TMEffectSkinMesh::FrameMove(unsigned int dwServerTime)
 {
 	dwServerTime = g_pTimerManager->GetServerTime();
