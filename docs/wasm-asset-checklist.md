@@ -4,12 +4,12 @@
 
 ## Resumo
 
-- Arquivos verificados: **8549**
-- Arquivos físicos da distribuição: **8547** (nenhum omitido)
+- Arquivos verificados: **8550**
+- Arquivos físicos da distribuição: **8548** (nenhum omitido)
 - Arquivos do runtime WASM/stream/gerados: **8520**
-- Componentes Windows/launcher excluídos do VFS: **29**
-- Bytes verificados: **644,808,304**
-- Resultados: **{'EXCLUDED': 29, 'OK': 8435, 'WARNING': 85}**
+- Componentes Windows/launcher excluídos do VFS: **30**
+- Bytes verificados: **593,730,563**
+- Resultados: **{'EXCLUDED': 30, 'OK': 8435, 'WARNING': 85}**
 - Referências internas verificadas: **12840**
 - Referências ativas ausentes: **311**
 - Referências ausentes em catálogos legados inativos: **343**
@@ -50,6 +50,7 @@
 - [x] `excluded launcher asset` — 2 arquivo(s)
 - [x] `legacy RC` — 2 arquivo(s)
 - [x] `excluded legacy texture` — 1 arquivo(s)
+- [x] `excluded runtime log` — 1 arquivo(s)
 - [x] `excluded shell metadata` — 1 arquivo(s)
 - [x] `generated GDI atlas` — 1 arquivo(s)
 - [x] `height map` — 1 arquivo(s)
@@ -95,11 +96,11 @@
 - [x] `Projects/TMProject/NewApp.cpp:671` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, MusicConfig_Path, "rt");`
 - [x] `Projects/TMProject/NewApp.cpp:1097` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, szItemHelpFile, "rt");`
 - [x] `Projects/TMProject/ObjectManager.cpp:573` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, "UI\\selchar.txt", "rt");`
-- [x] `Projects/TMProject/ObjectManager.cpp:2120` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fpBin, "UI\\RC.bin", "rb");`
-- [x] `Projects/TMProject/ObjectManager.cpp:2133` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, "AniSound4.txt", "rt");`
+- [x] `Projects/TMProject/ObjectManager.cpp:2124` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fpBin, "UI\\RC.bin", "rb");`
+- [x] `Projects/TMProject/ObjectManager.cpp:2137` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, "AniSound4.txt", "rt");`
 - [x] `Projects/TMProject/OpenWydCompare.cpp:761` `ReadFile` — debug transport/artifact; not a game asset input; `if (!ReadFile(g_compare.pipe, buffer, requested, &received, nullptr))`
-- [x] `Projects/TMProject/OpenWydLab.cpp:864` `fopen_s` — debug transport/artifact; not a game asset input; `if (fopen_s(&stream, path.c_str(), "rb") != 0 || !stream)`
-- [x] `Projects/TMProject/OpenWydLab.cpp:899` `fopen_s` — debug transport/artifact; not a game asset input; `if (fopen_s(&stream, temporary.c_str(), "wb") != 0 || !stream)`
+- [x] `Projects/TMProject/OpenWydLab.cpp:875` `fopen_s` — debug transport/artifact; not a game asset input; `if (fopen_s(&stream, path.c_str(), "rb") != 0 || !stream)`
+- [x] `Projects/TMProject/OpenWydLab.cpp:910` `fopen_s` — debug transport/artifact; not a game asset input; `if (fopen_s(&stream, temporary.c_str(), "wb") != 0 || !stream)`
 - [x] `Projects/TMProject/RenderDevice.cpp:644` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fpFont, FontConfig_Path, "rt");`
 - [x] `Projects/TMProject/RenderDevice.cpp:1010` `_open` — runtime input loader or delegated file reader; `int handle = _open(szBinFile, _O_BINARY);`
 - [x] `Projects/TMProject/RenderDevice.cpp:1571` `_open` — runtime input loader or delegated file reader; `int fh = _open(szFileName, _O_BINARY);`
@@ -129,8 +130,8 @@
 - [x] `Projects/TMProject/TMLog.cpp:14` `fopen` — runtime input loader or delegated file reader; `fp = fopen(DirlogFile, "rb");`
 - [x] `Projects/TMProject/TMLog.cpp:23` `_open` — runtime input loader or delegated file reader; `g_hLogFile = _open(szLogFile, 33049, _S_IWRITE);`
 - [x] `Projects/TMProject/TMMesh.cpp:533` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, szFileName, "rb");`
-- [x] `Projects/TMProject/TMObjectContainer.cpp:134` `_open` — runtime input loader or delegated file reader; `int Handle = _open(szFileName, _O_BINARY);`
-- [x] `Projects/TMProject/TMObjectContainer.cpp:1132` `fopen_s` — write/output path; not a game asset input; `fopen_s(&fp, szFileName, "wb");`
+- [x] `Projects/TMProject/TMObjectContainer.cpp:180` `_open` — runtime input loader or delegated file reader; `int Handle = _open(szFileName, _O_BINARY);`
+- [x] `Projects/TMProject/TMObjectContainer.cpp:1181` `fopen_s` — write/output path; not a game asset input; `fopen_s(&fp, szFileName, "wb");`
 - [x] `Projects/TMProject/TMScene.cpp:28` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fp, szFileName, "rb");`
 - [x] `Projects/TMProject/TMScene.cpp:751` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fpBinary, szBinFileName, "rb");`
 - [x] `Projects/TMProject/TMScene.cpp:2837` `fopen_s` — runtime input loader or delegated file reader; `fopen_s(&fpBin, szBinFileName, "rb");`
@@ -174,6 +175,7 @@
 - [x] `EXCLUDED` `/__not_wasm__/mimetype` — 59 B; SHA-256 `d3fa026fce131ca3…`; `excluded launcher metadata`; legacy Windows/launcher component; intentionally absent from WASM VFS; C stdio text encoding=UTF-8 lines=1
 - [x] `EXCLUDED` `/__not_wasm__/ScreenShot/Thumbs.db` — 1241600 B; SHA-256 `6c81118a532e5409…`; `excluded shell metadata`; legacy Windows/launcher component; intentionally absent from WASM VFS; OLE compound-file signature verified
 - [x] `EXCLUDED` `/__not_wasm__/WYD.exe` — 4282368 B; SHA-256 `c248788036749d17…`; `excluded Windows binary`; legacy Windows/launcher component; intentionally absent from WASM VFS; valid MZ + PE envelope
+- [x] `EXCLUDED` `/__not_wasm__/WYD.log` — 25593 B; SHA-256 `4c373e7ceb43851d…`; `excluded runtime log`; legacy Windows/launcher component; intentionally absent from WASM VFS; C stdio text encoding=UTF-8 lines=290
 - [x] `EXCLUDED` `/__not_wasm__/WydConfig.exe` — 59392 B; SHA-256 `fbc76e2f8020993b…`; `excluded Windows binary`; legacy Windows/launcher component; intentionally absent from WASM VFS; valid MZ + PE envelope
 - [x] `EXCLUDED` `/__not_wasm__/WydConfig.swf` — 494726 B; SHA-256 `e893bc1c1519058d…`; `excluded launcher asset`; legacy Windows/launcher component; intentionally absent from WASM VFS; SWF signature=CWS version=14
 - [x] `EXCLUDED` `/__not_wasm__/WYDLauncher.exe` — 2871296 B; SHA-256 `8da1a95638cb9bb2…`; `excluded Windows binary`; legacy Windows/launcher component; intentionally absent from WASM VFS; valid MZ + PE envelope
@@ -7945,27 +7947,27 @@
 
 ### `music`
 
-- [x] `OK` `/music/CastleWar.mp3` — 6070964 B; SHA-256 `0035005b62c7f344…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=6070964
-- [x] `OK` `/music/dungeon01.mp3` — 4056819 B; SHA-256 `3a747b3870870175…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=4056819
-- [x] `OK` `/music/dungeon02.mp3` — 7131536 B; SHA-256 `4cbade3fe0d73765…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=7131536
-- [x] `OK` `/music/field01.mp3` — 4180953 B; SHA-256 `108a7f2877844534…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=4180953
-- [x] `OK` `/music/field02.mp3` — 9766768 B; SHA-256 `a2117fa8a014a60d…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=9766768
-- [x] `OK` `/music/field03.mp3` — 6530719 B; SHA-256 `323dc7c10ebcd7c9…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=6530719
-- [x] `OK` `/music/kepra.mp3` — 7382311 B; SHA-256 `4d14d224ebf83649…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=7382311
-- [x] `OK` `/music/KhepraBoss.mp3` — 5102344 B; SHA-256 `cc507b1d8d557908…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=5102344
-- [x] `OK` `/music/kingdom.mp3` — 7920434 B; SHA-256 `539e54d8af09b86d…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=7920434
-- [x] `OK` `/music/login.mp3` — 7195274 B; SHA-256 `c0b8ef11b0efc101…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=7195274
-- [x] `OK` `/music/town01.mp3` — 8306001 B; SHA-256 `4b2f6afd22111004…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=8306001
-- [x] `OK` `/music/town02.mp3` — 7356189 B; SHA-256 `75005ae20a8c959c…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=7356189
-- [x] `OK` `/music/town03.mp3` — 1442484 B; SHA-256 `c0f9a982355ea791…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1442484
+- [x] `OK` `/music/CastleWar.mp3` — 2777654 B; SHA-256 `d008c023f9624c65…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=2777654
+- [x] `OK` `/music/dungeon01.mp3` — 2151970 B; SHA-256 `bf4a2fc023023a5a…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=2151970
+- [x] `OK` `/music/dungeon02.mp3` — 1943826 B; SHA-256 `fcaabe09d1c4ba0d…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1943826
+- [x] `OK` `/music/field01.mp3` — 1354086 B; SHA-256 `15d3abb32009e3e3…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1354086
+- [x] `OK` `/music/field02.mp3` — 1889492 B; SHA-256 `d55ff3919d9ac8a5…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1889492
+- [x] `OK` `/music/field03.mp3` — 2064616 B; SHA-256 `af081e7d0b26906d…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=2064616
+- [x] `OK` `/music/kepra.mp3` — 2571329 B; SHA-256 `3d1f1f2a316bc86c…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=4096 bytes=2571329
+- [x] `OK` `/music/KhepraBoss.mp3` — 2246847 B; SHA-256 `283c9184477b9dae…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=2246847
+- [x] `OK` `/music/kingdom.mp3` — 1466368 B; SHA-256 `bda4b45184269342…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=458 bytes=1466368
+- [x] `OK` `/music/login.mp3` — 6205221 B; SHA-256 `a5f4def38a0760e4…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=408 bytes=6205221
+- [x] `OK` `/music/town01.mp3` — 1833485 B; SHA-256 `f7d6f400b1a38e85…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1833485
+- [x] `OK` `/music/town02.mp3` — 1739026 B; SHA-256 `413582a012efa8b7…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=1739026
+- [x] `OK` `/music/town03.mp3` — 3095544 B; SHA-256 `18223b73cc492d8b…`; `MP3`; NewApp music list and HTMLAudio bridge; HTMLAudio streamed MP3 first-frame=1024 bytes=3095544
 
 ### `Music.ini`
 
-- [x] `OK` `/Music.ini` — 298 B; SHA-256 `d47738b3dcf70e5d…`; `text`; original C stdio parser; C stdio text encoding=UTF-8 lines=9
+- [x] `OK` `/Music.ini` — 297 B; SHA-256 `7f80eb580ceed908…`; `text`; original C stdio parser; C stdio text encoding=UTF-8 lines=9
 
 ### `Music.txt`
 
-- [x] `OK` `/Music.txt` — 296 B; SHA-256 `49ceb258f9f2e50b…`; `text`; original C stdio parser; C stdio text encoding=UTF-8 lines=9
+- [x] `OK` `/Music.txt` — 295 B; SHA-256 `bf8af19fae9a610e…`; `text`; original C stdio parser; C stdio text encoding=UTF-8 lines=9
 
 ### `notice.txt`
 

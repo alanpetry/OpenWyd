@@ -595,6 +595,9 @@ def classify_and_validate(virtual: str, data: bytes) -> tuple[str, str, str]:
             if data[:8] != bytes.fromhex("d0cf11e0a1b11ae1"):
                 fail("invalid OLE compound-file signature")
             return "excluded shell metadata", "OLE compound-file signature verified", "EXCLUDED"
+        if suffix == ".log":
+            detail = validate_text(data, suffix)
+            return "excluded runtime log", detail, "EXCLUDED"
         if name == "hash":
             if len(data) != 32:
                 fail("Adobe AIR hash payload is not 32 bytes")

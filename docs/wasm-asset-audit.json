@@ -2,13 +2,13 @@
   "schema": 3,
   "manifest": "webclient/client-wasm/config/startup-preload-manifest.txt",
   "summary": {
-    "files": 8549,
-    "physical_release_files": 8547,
+    "files": 8550,
+    "physical_release_files": 8548,
     "wasm_runtime_files": 8520,
-    "excluded_platform_files": 29,
-    "bytes": 644808304,
+    "excluded_platform_files": 30,
+    "bytes": 593730563,
     "status": {
-      "EXCLUDED": 29,
+      "EXCLUDED": 30,
       "OK": 8435,
       "WARNING": 85
     },
@@ -33,6 +33,7 @@
       "excluded launcher asset": 2,
       "excluded launcher metadata": 8,
       "excluded legacy texture": 1,
+      "excluded runtime log": 1,
       "excluded shell metadata": 1,
       "fixed binary table": 24,
       "generated GDI atlas": 1,
@@ -192,8 +193,8 @@
     {
       "source": "v769ClientRelease/Music.txt",
       "virtual_path": "/Music.txt",
-      "size": 296,
-      "sha256": "49ceb258f9f2e50b5641b2af2e140c0fe5abb2ae28e1f696274fda98a605d1f6",
+      "size": 295,
+      "sha256": "bf8af19fae9a610e90a3462c387aae227701ac6324f5a97eac1beee88fc6b10d",
       "format": "text",
       "loader": "original C stdio parser",
       "status": "OK",
@@ -372,8 +373,8 @@
     {
       "source": "v769ClientRelease/Music.ini",
       "virtual_path": "/Music.ini",
-      "size": 298,
-      "sha256": "d47738b3dcf70e5dc8b2eb2989262b9d400686a4701150e51efe72c9e887619f",
+      "size": 297,
+      "sha256": "7f80eb580ceed90847fb666ec93a0724bdcde00ecb34757ff067fbecce9c0f90",
       "format": "text",
       "loader": "original C stdio parser",
       "status": "OK",
@@ -85112,132 +85113,132 @@
     {
       "source": "v769ClientRelease/music/CastleWar.mp3",
       "virtual_path": "/music/CastleWar.mp3",
-      "size": 6070964,
-      "sha256": "0035005b62c7f3447965bfe2796e1d6e9f23877622a062a493d6d1e0266f5009",
+      "size": 2777654,
+      "sha256": "d008c023f9624c655f02029045838c4e9869dfc8fdd6830492f21a28040f661b",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=6070964"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=2777654"
     },
     {
       "source": "v769ClientRelease/music/dungeon01.mp3",
       "virtual_path": "/music/dungeon01.mp3",
-      "size": 4056819,
-      "sha256": "3a747b3870870175e4959c9231ba4e7536ef4ce764129dff7481bc05697a031c",
+      "size": 2151970,
+      "sha256": "bf4a2fc023023a5a4d3ce3f2b364d313fbe11485bd3b33fce6ea5714a0837f57",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=4056819"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=2151970"
     },
     {
       "source": "v769ClientRelease/music/dungeon02.mp3",
       "virtual_path": "/music/dungeon02.mp3",
-      "size": 7131536,
-      "sha256": "4cbade3fe0d737657ed9173e813a7669a9ccf8413221353af43d053e23cc8965",
+      "size": 1943826,
+      "sha256": "fcaabe09d1c4ba0d37561a1c211ae7ef6c481762f71eda7f315f06ad61c3f52d",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=7131536"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1943826"
     },
     {
       "source": "v769ClientRelease/music/field01.mp3",
       "virtual_path": "/music/field01.mp3",
-      "size": 4180953,
-      "sha256": "108a7f28778445341b9219b94f09de78c167cba30be0f99f83c65a543deb9107",
+      "size": 1354086,
+      "sha256": "15d3abb32009e3e3e3971b9991f0b993e355e02d203b0287103777919772a45a",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=4180953"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1354086"
     },
     {
       "source": "v769ClientRelease/music/field02.mp3",
       "virtual_path": "/music/field02.mp3",
-      "size": 9766768,
-      "sha256": "a2117fa8a014a60d3bcf6dac2f7fed99895753125460ca385bd683d80fbca1e9",
+      "size": 1889492,
+      "sha256": "d55ff3919d9ac8a57fcc8926be250d45395ca64835ae762642be65554a892c9a",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=9766768"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1889492"
     },
     {
       "source": "v769ClientRelease/music/field03.mp3",
       "virtual_path": "/music/field03.mp3",
-      "size": 6530719,
-      "sha256": "323dc7c10ebcd7c909db9c2c544b62993132ff62c2e625d20bcb43a2571841df",
+      "size": 2064616,
+      "sha256": "af081e7d0b26906d5ee5ae961f336458f4bcaab06faabb6b94ab1b8844b7cb5d",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=6530719"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=2064616"
     },
     {
       "source": "v769ClientRelease/music/kepra.mp3",
       "virtual_path": "/music/kepra.mp3",
-      "size": 7382311,
-      "sha256": "4d14d224ebf83649df9fd1b033f3d75601b55698b1add45a4221d9eb3ab59e84",
+      "size": 2571329,
+      "sha256": "3d1f1f2a316bc86c5309c9a6f90a91a6c212300a7bae10a16449b92f09f6a2a0",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=7382311"
+      "detail": "HTMLAudio streamed MP3 first-frame=4096 bytes=2571329"
     },
     {
       "source": "v769ClientRelease/music/KhepraBoss.mp3",
       "virtual_path": "/music/KhepraBoss.mp3",
-      "size": 5102344,
-      "sha256": "cc507b1d8d557908913aa2bb814b83e494961a15b9287e5ebdf802b87a212ae1",
+      "size": 2246847,
+      "sha256": "283c9184477b9daee6c89ec93d228ae77356fcd0507ccc49f2e29a7b3e9d7829",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=5102344"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=2246847"
     },
     {
       "source": "v769ClientRelease/music/kingdom.mp3",
       "virtual_path": "/music/kingdom.mp3",
-      "size": 7920434,
-      "sha256": "539e54d8af09b86d1c176d1e9732ff73565c3de148d1311163cdcf387e6bf516",
+      "size": 1466368,
+      "sha256": "bda4b451842693422d3e50660a0d289ca88d0f8bf37f33958500c34c92e16b31",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=7920434"
+      "detail": "HTMLAudio streamed MP3 first-frame=458 bytes=1466368"
     },
     {
       "source": "v769ClientRelease/music/login.mp3",
       "virtual_path": "/music/login.mp3",
-      "size": 7195274,
-      "sha256": "c0b8ef11b0efc101380bab52eaeba2e2d3083a7379f91e50e5b899eb96a21b75",
+      "size": 6205221,
+      "sha256": "a5f4def38a0760e46b858a64c44202e2dbe9bf7c101fcce2df289f6682acef5c",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=7195274"
+      "detail": "HTMLAudio streamed MP3 first-frame=408 bytes=6205221"
     },
     {
       "source": "v769ClientRelease/music/town01.mp3",
       "virtual_path": "/music/town01.mp3",
-      "size": 8306001,
-      "sha256": "4b2f6afd22111004abf0c92c783d4d5e735cd1b382d0d08dc358aee6f15dc46f",
+      "size": 1833485,
+      "sha256": "f7d6f400b1a38e851c5c4b4c64b10f1f8e600a358591bc8c42e481e463abfc7a",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=8306001"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1833485"
     },
     {
       "source": "v769ClientRelease/music/town02.mp3",
       "virtual_path": "/music/town02.mp3",
-      "size": 7356189,
-      "sha256": "75005ae20a8c959ca5d733e2c72ba70852a44b11346dc013d275700aa125a583",
+      "size": 1739026,
+      "sha256": "413582a012efa8b728618f6f807942d75f108f570fa5d1139c24d52eb6746425",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=7356189"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1739026"
     },
     {
       "source": "v769ClientRelease/music/town03.mp3",
       "virtual_path": "/music/town03.mp3",
-      "size": 1442484,
-      "sha256": "c0f9a982355ea7917791b55ed0695eec951c2308c7f5b26020b86668c9401749",
+      "size": 3095544,
+      "sha256": "18223b73cc492d8b8a9618e80e649913556c57024550877dea0c7567ae3aaa42",
       "format": "MP3",
       "loader": "NewApp music list and HTMLAudio bridge",
       "status": "OK",
-      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=1442484"
+      "detail": "HTMLAudio streamed MP3 first-frame=1024 bytes=3095544"
     },
     {
       "source": "webclient/client-wasm/build/generated/gdi-font/openwyd_gdi_tahoma12_a4.bin",
@@ -85518,6 +85519,16 @@
       "loader": "legacy Windows/launcher component; intentionally absent from WASM VFS",
       "status": "EXCLUDED",
       "detail": "valid MZ + PE envelope"
+    },
+    {
+      "source": "v769ClientRelease/WYD.log",
+      "virtual_path": "/__not_wasm__/WYD.log",
+      "size": 25593,
+      "sha256": "4c373e7ceb43851d1b68dd4c17fbf9a7774f05e92bbdea3244f2f12b95bd77a8",
+      "format": "excluded runtime log",
+      "loader": "legacy Windows/launcher component; intentionally absent from WASM VFS",
+      "status": "EXCLUDED",
+      "detail": "C stdio text encoding=UTF-8 lines=290"
     },
     {
       "source": "v769ClientRelease/WydConfig.exe",
@@ -120797,7 +120808,7 @@
     },
     {
       "owner": "/music.txt:8",
-      "target": "/music/dungeon02.mp3",
+      "target": "/music/dungeon01.mp3",
       "status": "OK",
       "detail": "active music target packaged"
     },
@@ -162847,14 +162858,14 @@
     },
     {
       "source": "Projects/TMProject/ObjectManager.cpp",
-      "line": 2120,
+      "line": 2124,
       "call": "fopen_s",
       "role": "runtime input loader or delegated file reader",
       "snippet": "fopen_s(&fpBin, \"UI\\\\RC.bin\", \"rb\");"
     },
     {
       "source": "Projects/TMProject/ObjectManager.cpp",
-      "line": 2133,
+      "line": 2137,
       "call": "fopen_s",
       "role": "runtime input loader or delegated file reader",
       "snippet": "fopen_s(&fp, \"AniSound4.txt\", \"rt\");"
@@ -162868,14 +162879,14 @@
     },
     {
       "source": "Projects/TMProject/OpenWydLab.cpp",
-      "line": 864,
+      "line": 875,
       "call": "fopen_s",
       "role": "debug transport/artifact; not a game asset input",
       "snippet": "if (fopen_s(&stream, path.c_str(), \"rb\") != 0 || !stream)"
     },
     {
       "source": "Projects/TMProject/OpenWydLab.cpp",
-      "line": 899,
+      "line": 910,
       "call": "fopen_s",
       "role": "debug transport/artifact; not a game asset input",
       "snippet": "if (fopen_s(&stream, temporary.c_str(), \"wb\") != 0 || !stream)"
@@ -163085,14 +163096,14 @@
     },
     {
       "source": "Projects/TMProject/TMObjectContainer.cpp",
-      "line": 134,
+      "line": 180,
       "call": "_open",
       "role": "runtime input loader or delegated file reader",
       "snippet": "int Handle = _open(szFileName, _O_BINARY);"
     },
     {
       "source": "Projects/TMProject/TMObjectContainer.cpp",
-      "line": 1132,
+      "line": 1181,
       "call": "fopen_s",
       "role": "write/output path; not a game asset input",
       "snippet": "fopen_s(&fp, szFileName, \"wb\");"
