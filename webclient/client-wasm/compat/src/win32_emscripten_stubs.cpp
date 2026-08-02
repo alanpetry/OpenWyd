@@ -1138,6 +1138,7 @@ class DummyDirect3DSurface9 final : public IDirect3DSurface9, private ComRefBase
   UINT pitch = 4;
   std::vector<uint8_t> stand_alone_data;
   bool locked = false;
+  bool is_backbuffer = false;
 };
 
 class DummyDirect3DVertexBuffer9 final : public IDirect3DVertexBuffer9, private ComRefBase {
@@ -4847,12 +4848,115 @@ HRESULT D3DXCreateSprite(IDirect3DDevice9* device, ID3DXSprite** ppSprite) {
   return (*ppSprite) ? S_OK : E_OUTOFMEMORY;
 }
 
-HRESULT D3DXSaveSurfaceToFile(LPCSTR,
-                              D3DXIMAGE_FILEFORMAT,
-                              IDirect3DSurface9*,
+HRESULT D3DXSaveSurfaceToFile(LPCSTR filename,
+                              D3DXIMAGE_FILEFORMAT format,
+                              IDirect3DSurface9* surface,
                               const PALETTEENTRY*,
-                              const RECT*) {
-  return E_NOTIMPL;
+                              const RECT* source_rect) {
+  if (!filename || !surface) return D3DERR_INVALIDCALL;
+  if (format != D3DXIFF_BMP) return E_NOTIMPL;
+
+  auto* src = static_cast<DummyDirect3DSurface9*>(surface);
+  if (!src->is_backbuffer || src->width == 0u || src->height == 0u) {
+    return D3DERR_INVALIDCALL;
+  }
+
+  LONG left = 0;
+  LONG top = 0;
+  LONG right = static_cast<LONG>(src->width);
+  LONG bottom = static_cast<LONG>(src->height);
+  if (source_rect) {
+    left = std::max<LONG>(0, source_rect->left);
+    top = std::max<LONG>(0, source_rect->top);
+    right = std::min<LONG>(static_cast<LONG>(src->width), source_rect->right);
+    bottom = std::min<LONG>(static_cast<LONG>(src->height), source_rect->bottom);
+  }
+  if (right <= left || bottom <= top) return D3DERR_INVALIDCALL;
+
+  const uint32_t width = static_cast<uint32_t>(right - left);
+  const uint32_t height = static_cast<uint32_t>(bottom - top);
+  std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4u);
+
+  GLint previous_pack_alignment = 4;
+  glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadPixels(
+      left,
+      static_cast<GLint>(src->height) - bottom,
+      static_cast<GLsizei>(width),
+      static_cast<GLsizei>(height),
+      GL_RGBA,
+      GL_UNSIGNED_BYTE,
+      rgba.data());
+  glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+  if (glGetError() != GL_NO_ERROR) return E_FAIL;
+
+  const uint32_t row_bytes = ((width * 3u) + 3u) & ~3u;
+  const uint32_t pixel_bytes = row_bytes * height;
+  const uint32_t file_bytes = 14u + 40u + pixel_bytes;
+  std::vector<uint8_t> bmp(file_bytes, 0u);
+  const auto put16 = [&bmp](size_t offset, uint16_t value) {
+    bmp[offset + 0u] = static_cast<uint8_t>(value & 0xFFu);
+    bmp[offset + 1u] = static_cast<uint8_t>((value >> 8u) & 0xFFu);
+  };
+  const auto put32 = [&bmp](size_t offset, uint32_t value) {
+    bmp[offset + 0u] = static_cast<uint8_t>(value & 0xFFu);
+    bmp[offset + 1u] = static_cast<uint8_t>((value >> 8u) & 0xFFu);
+    bmp[offset + 2u] = static_cast<uint8_t>((value >> 16u) & 0xFFu);
+    bmp[offset + 3u] = static_cast<uint8_t>((value >> 24u) & 0xFFu);
+  };
+
+  bmp[0] = 'B';
+  bmp[1] = 'M';
+  put32(2u, file_bytes);
+  put32(10u, 54u);
+  put32(14u, 40u);
+  put32(18u, width);
+  put32(22u, height);  // positive height: rows are stored bottom-up
+  put16(26u, 1u);
+  put16(28u, 24u);
+  put32(34u, pixel_bytes);
+
+  for (uint32_t y = 0; y < height; ++y) {
+    const uint8_t* in = rgba.data() + static_cast<size_t>(y) * width * 4u;
+    uint8_t* out = bmp.data() + 54u + static_cast<size_t>(y) * row_bytes;
+    for (uint32_t x = 0; x < width; ++x) {
+      out[x * 3u + 0u] = in[x * 4u + 2u];
+      out[x * 3u + 1u] = in[x * 4u + 1u];
+      out[x * 3u + 2u] = in[x * 4u + 0u];
+    }
+  }
+
+  const std::string normalized = NormalizeWinPath(filename);
+  const std::filesystem::path output_path(normalized);
+  std::error_code directory_error;
+  if (output_path.has_parent_path()) {
+    std::filesystem::create_directories(output_path.parent_path(), directory_error);
+  }
+  FILE* fp = std::fopen(output_path.string().c_str(), "wb");
+  if (!fp) return E_FAIL;
+  const size_t written = std::fwrite(bmp.data(), 1u, bmp.size(), fp);
+  std::fclose(fp);
+  if (written != bmp.size()) return E_FAIL;
+
+  // MEMFS is not directly visible to the player. Mirror the original
+  // PrintScreen behavior by downloading the generated file as well.
+  EM_ASM({
+    try {
+      const path = UTF8ToString($0);
+      const bytes = FS.readFile(path);
+      const url = URL.createObjectURL(new Blob([bytes], {type: 'image/bmp'}));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = path.split('/').pop() || 'Capture.bmp';
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (_) {}
+  }, normalized.c_str());
+  return S_OK;
 }
 
 HRESULT D3DXCreateFont(...) {
@@ -5213,7 +5317,10 @@ bool EnsureWasmContext() {
   attrs.alpha = EM_FALSE;
   attrs.depth = EM_TRUE;
   attrs.stencil = EM_FALSE;
-  attrs.antialias = EM_TRUE;
+  // The original 800x600 baseline uses D3DMULTISAMPLE_NONE. Requesting MSAA
+  // unconditionally changed thin geometry (especially leaves and grass) and
+  // made native/WebGL pixel comparisons depend on browser sample count.
+  attrs.antialias = EM_FALSE;
   attrs.premultipliedAlpha = EM_FALSE;
   attrs.preserveDrawingBuffer = EM_FALSE;
   attrs.majorVersion = 2;
@@ -5627,6 +5734,9 @@ struct FFPVertex {
   float cam_nrm_x = 0.0f;
   float cam_nrm_y = 0.0f;
   float cam_nrm_z = 1.0f;
+  // Negative means that the fixed-function fog equation should be used.
+  // Legacy programmable shaders can provide their oFog result here.
+  float shader_fog_factor = -1.0f;
   uint8_t r = 255;
   uint8_t g = 255;
   uint8_t b = 255;
@@ -5660,6 +5770,7 @@ struct WasmFFPProgram {
   GLint attr_cam_pos = -1;
   GLint attr_cam_nrm = -1;
   GLint attr_color = -1;
+  GLint attr_shader_fog = -1;
   GLint uni_sampler0 = -1;
   GLint uni_sampler1 = -1;
   GLint uni_use_texture0 = -1;
@@ -8031,6 +8142,19 @@ bool DecodeVertexFromDeclaration(
           (g_active_vs_hash == kSkinMesh1Hash) ? ShaderConst(0u, 1) : ShaderConst(0u, 2);
       out_vertex->u1 = cam_nrm.x + generated_uv_offset;
       out_vertex->v1 = cam_pos.y + generated_uv_offset;
+
+      // skinmesh1-8 all write oFog explicitly:
+      //   min(max((c6.y - viewZ) * c6.z, c6.w), c6.x)
+      // D3D consumes that value even though FOGVERTEXMODE is NONE. The old
+      // WebGL path fell back to no fog in this state, making vegetation and
+      // distant skinned objects substantially darker and denser.
+      if (g_wasm_d3d9_state.fog_enable != 0u) {
+        out_vertex->shader_fog_factor = std::min(
+            ShaderConst(6u, 0u),
+            std::max(
+                (ShaderConst(6u, 1u) - cam_pos.z) * ShaderConst(6u, 2u),
+                ShaderConst(6u, 3u)));
+      }
     }
 
     D3DXVECTOR3 lighting_nrm = cam_nrm;
@@ -8247,6 +8371,7 @@ attribute vec2 aUV1;
 attribute vec3 aCamPos;
 attribute vec3 aCamNormal;
 attribute vec4 aColor;
+attribute float aShaderFog;
 uniform int uStage0TexcoordSet;
 uniform int uStage1TexcoordSet;
 uniform int uStage0TCIMode;
@@ -8324,7 +8449,7 @@ void main() {
   vUV0 = transformTexcoord(base0, uTexTransform0, uTexTransformFlags0);
   vUV1 = transformTexcoord(base1, uTexTransform1, uTexTransformFlags1);
   vColor = aColor;
-  vFogFactor = computeFogFactor(aCamPos);
+  vFogFactor = (aShaderFog >= 0.0) ? aShaderFog : computeFogFactor(aCamPos);
 }
 )GLSL";
 
@@ -8532,6 +8657,7 @@ void main() {
   g_ffp_program.attr_cam_pos = 3;
   g_ffp_program.attr_cam_nrm = 4;
   g_ffp_program.attr_color = 5;
+  g_ffp_program.attr_shader_fog = 6;
   g_ffp_program.uni_sampler0 = glGetUniformLocation(program, "uSampler0");
   g_ffp_program.uni_sampler1 = glGetUniformLocation(program, "uSampler1");
   g_ffp_program.uni_use_texture0 = glGetUniformLocation(program, "uUseTexture0");
@@ -9770,6 +9896,7 @@ void BindFFPProgramAndVertexInput() {
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_pos));
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_cam_nrm));
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_color));
+  glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_shader_fog));
 
   glVertexAttribPointer(
       static_cast<GLuint>(g_ffp_program.attr_pos),
@@ -9813,6 +9940,13 @@ void BindFFPProgramAndVertexInput() {
       GL_TRUE,
       sizeof(FFPVertex),
       reinterpret_cast<const void*>(offsetof(FFPVertex, r)));
+  glVertexAttribPointer(
+      static_cast<GLuint>(g_ffp_program.attr_shader_fog),
+      1,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(FFPVertex),
+      reinterpret_cast<const void*>(offsetof(FFPVertex, shader_fog_factor)));
   g_ffp_program.vertex_input_bound = true;
 }
 
@@ -10332,6 +10466,7 @@ HRESULT EnsureDefaultRenderSurfaces() {
     g_default_color_surface->height = height;
     g_default_color_surface->format = D3DFMT_X8R8G8B8;
     g_default_color_surface->pitch = width * 4;
+    g_default_color_surface->is_backbuffer = true;
     g_default_color_surface->stand_alone_data.resize(static_cast<size_t>(g_default_color_surface->pitch) * height, 0);
   }
 
