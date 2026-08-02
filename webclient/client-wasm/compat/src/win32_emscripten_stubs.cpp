@@ -13,13 +13,19 @@
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#include <GLES2/gl2.h>
+#include <GLES3/gl3.h>
 
 #ifndef GL_MIN
 #define GL_MIN 0x8007
 #endif
 #ifndef GL_MAX
 #define GL_MAX 0x8008
+#endif
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
+#ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 #endif
 
 #define STB_TRUETYPE_IMPLEMENTATION
@@ -57,6 +63,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+extern "C" int wyd_optimized_view_enabled();
+extern "C" int wyd_optimized_quality_profile();
+extern "C" int wyd_optimized_css_width();
+extern "C" int wyd_optimized_css_height();
+extern "C" float wyd_optimized_world_scale();
 
 namespace {
 
@@ -1296,6 +1308,7 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
   GLint gl_wrap_t = -1;
   GLint gl_min_filter = -1;
   GLint gl_mag_filter = -1;
+  GLfloat gl_anisotropy = -1.0f;
   std::string debug_source_path;
   uint32_t debug_category_flags = 0;
 };
@@ -5028,6 +5041,22 @@ struct WasmD3D9State {
 };
 
 WasmD3D9State g_wasm_d3d9_state;
+bool g_texture_anisotropy_supported = false;
+GLfloat g_texture_anisotropy_max = 1.0f;
+
+struct OptimizedWorldTarget {
+  GLuint draw_framebuffer = 0;
+  GLuint draw_color_renderbuffer = 0;
+  GLuint resolve_framebuffer = 0;
+  GLuint resolve_color_renderbuffer = 0;
+  GLuint depth_renderbuffer = 0;
+  int width = 0;
+  int height = 0;
+  int samples = 1;
+  bool active = false;
+};
+
+OptimizedWorldTarget g_optimized_world_target;
 std::array<D3DXVECTOR3, 8> g_directional_to_light_view{};
 bool g_directional_light_view_dirty = true;
 
@@ -5041,6 +5070,7 @@ struct WasmGLStateCache {
   Capability blend;
   Capability dither;
   Capability stencil_test;
+  Capability sample_alpha_to_coverage;
   bool depth_mask_valid = false;
   GLboolean depth_mask = GL_TRUE;
   bool depth_func_valid = false;
@@ -5069,6 +5099,8 @@ WasmGLStateCache::Capability* CachedCapability(GLenum capability) {
       return &g_gl_state_cache.dither;
     case GL_STENCIL_TEST:
       return &g_gl_state_cache.stencil_test;
+    case GL_SAMPLE_ALPHA_TO_COVERAGE:
+      return &g_gl_state_cache.sample_alpha_to_coverage;
     default:
       return nullptr;
   }
@@ -5321,9 +5353,17 @@ bool EnsureWasmContext() {
   // The original 800x600 baseline uses D3DMULTISAMPLE_NONE. Requesting MSAA
   // unconditionally changed thin geometry (especially leaves and grass) and
   // made native/WebGL pixel comparisons depend on browser sample count.
+  // The optimized path resolves a separately sized world framebuffer into
+  // the browser backbuffer before drawing the UI. WebGL2 forbids resolving a
+  // single-sample source into a multisampled default framebuffer, so MSAA is
+  // provided by the world target itself in profiles that request it instead
+  // of by implicit context samples.
   attrs.antialias = EM_FALSE;
   attrs.premultipliedAlpha = EM_FALSE;
   attrs.preserveDrawingBuffer = EM_FALSE;
+  attrs.powerPreference = wyd_optimized_view_enabled() != 0
+      ? EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE
+      : EM_WEBGL_POWER_PREFERENCE_DEFAULT;
   attrs.majorVersion = 2;
   attrs.minorVersion = 0;
 
@@ -5341,6 +5381,16 @@ bool EnsureWasmContext() {
   g_wasm_d3d9_state.webgl2 = webgl2;
   if (emscripten_webgl_make_context_current(ctx) != EMSCRIPTEN_RESULT_SUCCESS) return false;
   g_gl_state_cache = {};
+  g_texture_anisotropy_supported =
+      webgl2 &&
+      emscripten_webgl_enable_extension(ctx, "EXT_texture_filter_anisotropic") == EM_TRUE;
+  g_texture_anisotropy_max = 1.0f;
+  if (g_texture_anisotropy_supported) {
+    glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &g_texture_anisotropy_max);
+    if (!std::isfinite(g_texture_anisotropy_max) || g_texture_anisotropy_max < 1.0f) {
+      g_texture_anisotropy_max = 1.0f;
+    }
+  }
 
   int canvas_w = kDefaultWidth;
   int canvas_h = kDefaultHeight;
@@ -5372,10 +5422,28 @@ void ApplyViewport() {
   if (canvas_w <= 0) canvas_w = static_cast<int>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width));
   if (canvas_h <= 0) canvas_h = static_cast<int>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height));
 
-  const GLint vp_x = static_cast<GLint>(g_wasm_d3d9_state.viewport.X);
-  const GLsizei vp_w = static_cast<GLsizei>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width));
-  const GLsizei vp_h = static_cast<GLsizei>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height));
-  GLint vp_y = canvas_h - static_cast<GLint>(g_wasm_d3d9_state.viewport.Y) - static_cast<GLint>(vp_h);
+  const bool optimized = wyd_optimized_view_enabled() != 0;
+  const int logical_w = optimized ? std::max(1, wyd_optimized_css_width()) : canvas_w;
+  const int logical_h = optimized ? std::max(1, wyd_optimized_css_height()) : canvas_h;
+  const float scale_x = optimized
+      ? static_cast<float>(canvas_w) / static_cast<float>(logical_w)
+      : 1.0f;
+  const float scale_y = optimized
+      ? static_cast<float>(canvas_h) / static_cast<float>(logical_h)
+      : 1.0f;
+
+  const GLint vp_x = static_cast<GLint>(std::lround(
+      static_cast<float>(g_wasm_d3d9_state.viewport.X) * scale_x));
+  const long scaled_vp_w = std::lround(
+      static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)) * scale_x);
+  const long scaled_vp_h = std::lround(
+      static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)) * scale_y);
+  const GLsizei vp_w = static_cast<GLsizei>(std::max<long>(1, scaled_vp_w));
+  const GLsizei vp_h = static_cast<GLsizei>(std::max<long>(1, scaled_vp_h));
+  GLint vp_y = static_cast<GLint>(std::lround(
+      (static_cast<float>(logical_h) -
+       static_cast<float>(g_wasm_d3d9_state.viewport.Y) -
+       static_cast<float>(g_wasm_d3d9_state.viewport.Height)) * scale_y));
   if (vp_y < 0) vp_y = 0;
   glViewport(vp_x, vp_y, vp_w, vp_h);
 
@@ -5387,6 +5455,125 @@ void ApplyViewport() {
   if (max_z > 1.0f) max_z = 1.0f;
   if (max_z < min_z) std::swap(min_z, max_z);
   glDepthRangef(min_z, max_z);
+}
+
+void DestroyOptimizedWorldTarget() {
+  if (g_optimized_world_target.draw_color_renderbuffer != 0) {
+    glDeleteRenderbuffers(1, &g_optimized_world_target.draw_color_renderbuffer);
+  }
+  if (g_optimized_world_target.resolve_color_renderbuffer != 0) {
+    glDeleteRenderbuffers(1, &g_optimized_world_target.resolve_color_renderbuffer);
+  }
+  if (g_optimized_world_target.depth_renderbuffer != 0) {
+    glDeleteRenderbuffers(1, &g_optimized_world_target.depth_renderbuffer);
+  }
+  if (g_optimized_world_target.draw_framebuffer != 0 &&
+      g_optimized_world_target.draw_framebuffer !=
+          g_optimized_world_target.resolve_framebuffer) {
+    glDeleteFramebuffers(1, &g_optimized_world_target.draw_framebuffer);
+  }
+  if (g_optimized_world_target.resolve_framebuffer != 0) {
+    glDeleteFramebuffers(1, &g_optimized_world_target.resolve_framebuffer);
+  }
+  g_optimized_world_target = {};
+}
+
+int RequestedOptimizedWorldSamples() {
+  GLint maximum = 1;
+  glGetIntegerv(GL_MAX_SAMPLES, &maximum);
+  maximum = std::max(1, maximum);
+  int requested = 1;
+  switch (wyd_optimized_quality_profile()) {
+    case 0:
+      requested = wyd_optimized_world_scale() >= 0.95f ? 2 : 1;
+      break;
+    case 1:
+      requested = 1;
+      break;
+    case 2:
+      requested = 4;
+      break;
+    case 3:
+      requested = maximum;
+      break;
+    default:
+      break;
+  }
+  return std::max(1, std::min(requested, maximum));
+}
+
+bool EnsureOptimizedWorldTarget(int width, int height, int samples) {
+  width = std::max(1, width);
+  height = std::max(1, height);
+  samples = std::max(1, samples);
+  if (g_optimized_world_target.resolve_framebuffer != 0 &&
+      g_optimized_world_target.width == width &&
+      g_optimized_world_target.height == height &&
+      g_optimized_world_target.samples == samples) {
+    return true;
+  }
+
+  DestroyOptimizedWorldTarget();
+  glGenFramebuffers(1, &g_optimized_world_target.resolve_framebuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
+  glGenRenderbuffers(1, &g_optimized_world_target.resolve_color_renderbuffer);
+  glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.resolve_color_renderbuffer);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+  glFramebufferRenderbuffer(
+      GL_FRAMEBUFFER,
+      GL_COLOR_ATTACHMENT0,
+      GL_RENDERBUFFER,
+      g_optimized_world_target.resolve_color_renderbuffer);
+
+  bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+
+  if (samples > 1) {
+    glGenFramebuffers(1, &g_optimized_world_target.draw_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_optimized_world_target.draw_framebuffer);
+    glGenRenderbuffers(1, &g_optimized_world_target.draw_color_renderbuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.draw_color_renderbuffer);
+    glRenderbufferStorageMultisample(
+        GL_RENDERBUFFER, samples, GL_RGBA8, width, height);
+    glFramebufferRenderbuffer(
+        GL_FRAMEBUFFER,
+        GL_COLOR_ATTACHMENT0,
+        GL_RENDERBUFFER,
+        g_optimized_world_target.draw_color_renderbuffer);
+  } else {
+    g_optimized_world_target.draw_framebuffer =
+        g_optimized_world_target.resolve_framebuffer;
+  }
+
+  glGenRenderbuffers(1, &g_optimized_world_target.depth_renderbuffer);
+  glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.depth_renderbuffer);
+  const GLenum depth_format = wyd_optimized_quality_profile() == 1
+      ? GL_DEPTH_COMPONENT16
+      : GL_DEPTH_COMPONENT24;
+  if (samples > 1) {
+    glRenderbufferStorageMultisample(
+        GL_RENDERBUFFER, samples, depth_format, width, height);
+  } else {
+    glRenderbufferStorage(GL_RENDERBUFFER, depth_format, width, height);
+  }
+  glFramebufferRenderbuffer(
+      GL_FRAMEBUFFER,
+      GL_DEPTH_ATTACHMENT,
+      GL_RENDERBUFFER,
+      g_optimized_world_target.depth_renderbuffer);
+
+  complete = complete &&
+      glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (!complete) {
+    DestroyOptimizedWorldTarget();
+    return false;
+  }
+
+  g_optimized_world_target.width = width;
+  g_optimized_world_target.height = height;
+  g_optimized_world_target.samples = samples;
+  return true;
 }
 
 void TrackGLErrorsPostFrame();
@@ -5760,8 +5947,9 @@ struct WasmFFPProgram {
   };
 
   GLuint program = 0;
-  GLuint vbo = 0;
-  GLuint ibo = 0;
+  std::array<GLuint, 3> vbo{};
+  std::array<GLuint, 3> ibo{};
+  size_t dynamic_buffer_index = 0;
   bool program_bound = false;
   bool vertex_input_bound = false;
   bool index_buffer_bound = false;
@@ -7741,6 +7929,98 @@ D3DCOLORVALUE SelectMaterialSource(
   return material_color;
 }
 
+extern "C" int wyd_d3d9_optimized_begin_world() {
+  if (wyd_optimized_view_enabled() == 0 || !EnsureWasmContext() ||
+      !g_wasm_d3d9_state.webgl2) {
+    return 0;
+  }
+
+  if (g_ffp_program.ready) {
+    g_ffp_program.dynamic_buffer_index =
+        (g_ffp_program.dynamic_buffer_index + 1u) % g_ffp_program.vbo.size();
+    g_ffp_program.vertex_input_bound = false;
+    g_ffp_program.index_buffer_bound = false;
+  }
+
+  const float scale = std::max(0.5f, std::min(1.0f, wyd_optimized_world_scale()));
+  int canvas_w = 0;
+  int canvas_h = 0;
+  emscripten_get_canvas_element_size("#canvas", &canvas_w, &canvas_h);
+  const int world_w = std::max(1, static_cast<int>(std::lround(canvas_w * scale)));
+  const int world_h = std::max(1, static_cast<int>(std::lround(canvas_h * scale)));
+  const int samples = RequestedOptimizedWorldSamples();
+  if (!EnsureOptimizedWorldTarget(world_w, world_h, samples)) return 0;
+
+  glBindFramebuffer(GL_FRAMEBUFFER, g_optimized_world_target.draw_framebuffer);
+  glViewport(0, 0, world_w, world_h);
+  g_optimized_world_target.active = true;
+  return 1;
+}
+
+extern "C" void wyd_d3d9_optimized_end_world_begin_ui() {
+  if (!g_optimized_world_target.active) return;
+
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, false);
+
+  int canvas_w = 0;
+  int canvas_h = 0;
+  emscripten_get_canvas_element_size("#canvas", &canvas_w, &canvas_h);
+  canvas_w = std::max(1, canvas_w);
+  canvas_h = std::max(1, canvas_h);
+
+  if (g_optimized_world_target.samples > 1) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, g_optimized_world_target.draw_framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
+    glBlitFramebuffer(
+        0,
+        0,
+        g_optimized_world_target.width,
+        g_optimized_world_target.height,
+        0,
+        0,
+        g_optimized_world_target.width,
+        g_optimized_world_target.height,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST);
+  }
+
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  glBlitFramebuffer(
+      0,
+      0,
+      g_optimized_world_target.width,
+      g_optimized_world_target.height,
+      0,
+      0,
+      canvas_w,
+      canvas_h,
+      GL_COLOR_BUFFER_BIT,
+      GL_LINEAR);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  g_optimized_world_target.active = false;
+
+  glDepthMask(GL_TRUE);
+  glClearDepthf(1.0f);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  g_gl_state_cache = {};
+  ApplyViewport();
+  ApplyCullState();
+  SetCapabilityCached(GL_DEPTH_TEST, g_wasm_d3d9_state.z_enable);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(g_wasm_d3d9_state.z_write_enable ? GL_TRUE : GL_FALSE);
+  SetCapabilityCached(GL_BLEND, g_wasm_d3d9_state.blend_enabled);
+  ApplyBlendState();
+}
+
+extern "C" unsigned int wyd_d3d9_optimized_world_samples() {
+  return g_optimized_world_target.samples;
+}
+
+extern "C" unsigned int wyd_d3d9_is_webgl2() {
+  return g_wasm_d3d9_state.ctx > 0 && g_wasm_d3d9_state.webgl2 ? 1u : 0u;
+}
+
 D3DXMATRIX BuildInverseTranspose(const D3DXMATRIX& matrix) {
   D3DXMATRIX result = matrix;
   D3DXMATRIX inverse{};
@@ -8662,14 +8942,15 @@ void main() {
     return false;
   }
 
-  GLuint vbo = 0;
-  GLuint ibo = 0;
-  glGenBuffers(1, &vbo);
-  glGenBuffers(1, &ibo);
+  std::array<GLuint, 3> vbo{};
+  std::array<GLuint, 3> ibo{};
+  glGenBuffers(static_cast<GLsizei>(vbo.size()), vbo.data());
+  glGenBuffers(static_cast<GLsizei>(ibo.size()), ibo.data());
 
   g_ffp_program.program = program;
   g_ffp_program.vbo = vbo;
   g_ffp_program.ibo = ibo;
+  g_ffp_program.dynamic_buffer_index = 0;
   g_ffp_program.attr_pos = 0;
   g_ffp_program.attr_uv0 = 1;
   g_ffp_program.attr_uv1 = 2;
@@ -8858,8 +9139,16 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
   const bool mipmaps_available =
       tex->mip_levels != 1u && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
-  const GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
-  const GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
+  GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
+  GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
+  if (wyd_optimized_view_enabled() != 0 &&
+      (tex->debug_category_flags & kTexCatUi) != 0u) {
+    // RC textures were authored for integer 800x600 coordinates. Linear
+    // sampling avoids pixel stair-steps when the optimized UI is placed at a
+    // non-integer physical scale, while keeping the legacy sampler untouched.
+    gl_min_filter = GL_LINEAR;
+    gl_mag_filter = GL_LINEAR;
+  }
 
   if (tex->gl_wrap_s != wrap_u) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_u);
@@ -8876,6 +9165,21 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   if (tex->gl_mag_filter != gl_mag_filter) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_mag_filter);
     tex->gl_mag_filter = gl_mag_filter;
+  }
+  if (g_texture_anisotropy_supported && wyd_optimized_view_enabled() != 0) {
+    GLfloat requested = 8.0f;
+    switch (wyd_optimized_quality_profile()) {
+      case 1: requested = 4.0f; break;
+      case 2: requested = 16.0f; break;
+      case 3: requested = g_texture_anisotropy_max; break;
+      default: requested = 8.0f; break;
+    }
+    if ((tex->debug_category_flags & kTexCatUi) != 0u) requested = 1.0f;
+    requested = std::max(1.0f, std::min(requested, g_texture_anisotropy_max));
+    if (std::fabs(tex->gl_anisotropy - requested) > 0.01f) {
+      glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, requested);
+      tex->gl_anisotropy = requested;
+    }
   }
 }
 
@@ -9904,7 +10208,9 @@ void BindFFPProgramAndVertexInput() {
   }
   if (g_ffp_program.vertex_input_bound) return;
 
-  glBindBuffer(GL_ARRAY_BUFFER, g_ffp_program.vbo);
+  glBindBuffer(
+      GL_ARRAY_BUFFER,
+      g_ffp_program.vbo[g_ffp_program.dynamic_buffer_index]);
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_pos));
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv0));
   glEnableVertexAttribArray(static_cast<GLuint>(g_ffp_program.attr_uv1));
@@ -10159,6 +10465,12 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
       ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
       (g_wasm_d3d9_state.alpha_test_enable != 0) &&
       (g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS);
+  const bool optimized_alpha_to_coverage =
+      g_optimized_world_target.active &&
+      g_optimized_world_target.samples > 1 &&
+      alpha_test_enabled &&
+      !effective_blend_enabled;
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, optimized_alpha_to_coverage);
   if (alpha_test_enabled) g_draw_alpha_test_enabled += 1;
   else g_draw_alpha_test_disabled += 1;
   if (blend_enabled) g_draw_blend_enabled += 1;
@@ -10324,7 +10636,9 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
   }
 
   if (!g_ffp_program.index_buffer_bound) {
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ffp_program.ibo);
+    glBindBuffer(
+        GL_ELEMENT_ARRAY_BUFFER,
+        g_ffp_program.ibo[g_ffp_program.dynamic_buffer_index]);
     g_ffp_program.index_buffer_bound = true;
   }
   if (g_wasm_d3d9_state.webgl2) {

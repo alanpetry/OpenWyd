@@ -124,6 +124,13 @@
       image-rendering: pixelated;
       cursor: none;
     }
+    body.optimized #canvas {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      image-rendering: auto;
+    }
     .display-controls {
       display: none;
     }
@@ -143,6 +150,20 @@
       opacity: 0.72;
       transition: opacity 120ms ease;
     }
+    body.play .display-controls[open] { opacity: 1; }
+    .display-controls summary {
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+      color: #f4e3bd;
+    }
+    .display-controls summary::-webkit-details-marker { display: none; }
+    .display-settings {
+      display: grid;
+      min-width: 260px;
+      gap: 8px;
+      margin-top: 8px;
+    }
     body.play .display-controls:hover,
     body.play .display-controls:focus-within {
       opacity: 1;
@@ -158,6 +179,32 @@
       border-radius: 3px;
       background: #202020;
       font: inherit;
+    }
+    .display-controls input[type="range"] {
+      width: 112px;
+      accent-color: #b67a2f;
+    }
+    .display-controls button {
+      color: #eee;
+      border: 1px solid #65543b;
+      border-radius: 3px;
+      padding: 4px 7px;
+      background: #292118;
+      font: inherit;
+      cursor: pointer;
+    }
+    .display-section {
+      display: grid;
+      gap: 6px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    body.optimized #legacy-display-settings { display: none; }
+    body:not(.optimized) #optimized-display-settings { display: none; }
+    #optimized-metrics {
+      min-height: 14px;
+      color: #c9baa0;
+      font-size: 10px;
     }
     #wyd-text-input {
       position: fixed;
@@ -259,23 +306,59 @@
   </style>
 </head>
 <body>
-  <div id="display-controls" class="display-controls" aria-label="Opções de exibição">
-    <label>Resolução
-      <select id="display-resolution">
-        <option value="640x480">640×480</option>
-        <option value="800x600">800×600</option>
-        <option value="1024x768">1024×768</option>
-        <option value="1280x1024">1280×1024</option>
-        <option value="1600x1200">1600×1200</option>
-      </select>
-    </label>
-    <label>Exibição
-      <select id="display-fit">
-        <option value="actual">Tamanho original</option>
-        <option value="contain">Ampliar mantendo proporção</option>
-      </select>
-    </label>
-  </div>
+  <details id="display-controls" class="display-controls" aria-label="Opções de exibição">
+    <summary>Exibição &#9881;</summary>
+    <div class="display-settings">
+      <label>Modo
+        <select id="display-mode">
+          <option value="optimized">Otimizado</option>
+          <option value="legacy">Legado</option>
+        </select>
+      </label>
+      <div id="optimized-display-settings" class="display-section">
+        <label>Qualidade
+          <select id="optimized-quality">
+            <option value="auto">Automática</option>
+            <option value="performance">Desempenho</option>
+            <option value="quality">Qualidade</option>
+            <option value="maximum">Máxima</option>
+          </select>
+        </label>
+        <label>Interface
+          <input id="optimized-ui-scale" type="range" min="80" max="150" step="5" value="100" />
+          <span id="optimized-ui-scale-value">100%</span>
+        </label>
+        <label>FPS
+          <select id="optimized-fps">
+            <option value="auto">Automático</option>
+            <option value="60">60</option>
+            <option value="75">75</option>
+            <option value="120">120</option>
+            <option value="144">144</option>
+          </select>
+        </label>
+        <div id="optimized-metrics" aria-live="polite"></div>
+      </div>
+      <div id="legacy-display-settings" class="display-section">
+        <label>Resolução
+          <select id="display-resolution">
+            <option value="640x480">640×480</option>
+            <option value="800x600">800×600</option>
+            <option value="1024x768">1024×768</option>
+            <option value="1280x1024">1280×1024</option>
+            <option value="1600x1200">1600×1200</option>
+          </select>
+        </label>
+        <label>Exibição
+          <select id="display-fit">
+            <option value="actual">Tamanho original</option>
+            <option value="contain">Ampliar mantendo proporção</option>
+          </select>
+        </label>
+      </div>
+      <button id="fullscreen-btn" type="button">Tela cheia</button>
+    </div>
+  </details>
   <div class="layout">
     <div class="panel">
       <h3>TMProject Startup Harness (_wyd_start_client)</h3>
@@ -350,8 +433,15 @@
     const loadingProgressFillEl = document.getElementById('loading-progress-fill');
     const loadingDetailEl = document.getElementById('loading-detail');
     const displayControlsEl = document.getElementById('display-controls');
+    const displayModeEl = document.getElementById('display-mode');
     const displayResolutionEl = document.getElementById('display-resolution');
     const displayFitEl = document.getElementById('display-fit');
+    const optimizedQualityEl = document.getElementById('optimized-quality');
+    const optimizedUiScaleEl = document.getElementById('optimized-ui-scale');
+    const optimizedUiScaleValueEl = document.getElementById('optimized-ui-scale-value');
+    const optimizedFpsEl = document.getElementById('optimized-fps');
+    const optimizedMetricsEl = document.getElementById('optimized-metrics');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
     const bootBtn = document.getElementById('boot-btn');
     const tickBtn = document.getElementById('tick-btn');
     const tick120Btn = document.getElementById('tick120-btn');
@@ -369,6 +459,17 @@
     let lineCount = 0;
     let autoTickRunning = false;
     let autoTickFrames = 0;
+    let schedulerLastRaf = 0;
+    let schedulerLastTick = 0;
+    let schedulerLastEvaluation = 0;
+    let schedulerStableSince = 0;
+    let schedulerSimulationAccumulator = 0;
+    let schedulerLastPresentation = 0;
+    let schedulerRefreshHz = 60;
+    let adaptiveFpsCap = 144;
+    const schedulerRafDeltas = [];
+    const schedulerTickDurations = [];
+    const schedulerFrameDeltas = [];
     window.__runtimeReady = false;
     const query = new URLSearchParams(window.location.search);
     const publicPlayMode = query.get('mode') === 'play';
@@ -377,9 +478,16 @@
     const DEMO_ACCOUNT_STORAGE_KEY = 'openwyd.publicDemoAccount.v1';
     const DISPLAY_RESOLUTION_STORAGE_KEY = 'openwyd.displayResolution.v1';
     const DISPLAY_FIT_STORAGE_KEY = 'openwyd.displayFit.v1';
+    const DISPLAY_MODE_STORAGE_KEY = 'openwyd.displayMode.v2';
+    const OPTIMIZED_QUALITY_STORAGE_KEY = 'openwyd.optimizedQuality.v1';
+    const OPTIMIZED_UI_SCALE_STORAGE_KEY = 'openwyd.optimizedUiScale.v1';
+    const OPTIMIZED_FPS_STORAGE_KEY = 'openwyd.optimizedFps.v1';
     const DISPLAY_RESOLUTIONS = new Set([
       '640x480', '800x600', '1024x768', '1280x1024', '1600x1200'
     ]);
+    const DISPLAY_MODES = new Set(['optimized', 'legacy']);
+    const QUALITY_PROFILES = new Set(['auto', 'performance', 'quality', 'maximum']);
+    const FPS_CHOICES = new Set(['auto', '60', '75', '120', '144']);
     const DEMO_TOKEN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const randomDemoToken = (length) => {
       const bytes = new Uint8Array(length);
@@ -495,6 +603,29 @@
     const publicFit = requestedFit === 'actual' || requestedFit === 'contain'
       ? requestedFit
       : (readDisplayPreference(DISPLAY_FIT_STORAGE_KEY) === 'contain' ? 'contain' : 'actual');
+    const requestedDisplayMode = query.get('displayMode') || query.get('display') || '';
+    const storedDisplayMode = readDisplayPreference(DISPLAY_MODE_STORAGE_KEY);
+    const publicDisplayMode = publicPlayMode
+      ? (DISPLAY_MODES.has(requestedDisplayMode)
+          ? requestedDisplayMode
+          : (DISPLAY_MODES.has(storedDisplayMode) ? storedDisplayMode : 'optimized'))
+      : 'legacy';
+    const requestedQuality = query.get('quality') || '';
+    const storedQuality = readDisplayPreference(OPTIMIZED_QUALITY_STORAGE_KEY);
+    const optimizedQuality = QUALITY_PROFILES.has(requestedQuality)
+      ? requestedQuality
+      : (QUALITY_PROFILES.has(storedQuality) ? storedQuality : 'auto');
+    const requestedUiScale = Number.parseInt(query.get('uiScale') || '', 10);
+    const storedUiScale = Number.parseInt(readDisplayPreference(OPTIMIZED_UI_SCALE_STORAGE_KEY), 10);
+    const optimizedUiScale = Math.max(80, Math.min(150,
+      Number.isFinite(requestedUiScale)
+        ? requestedUiScale
+        : (Number.isFinite(storedUiScale) ? storedUiScale : 100)));
+    const requestedFps = query.get('fps') || '';
+    const storedFps = readDisplayPreference(OPTIMIZED_FPS_STORAGE_KEY);
+    const optimizedFps = FPS_CHOICES.has(requestedFps)
+      ? requestedFps
+      : (FPS_CHOICES.has(storedFps) ? storedFps : 'auto');
     const defaultSocketProxyUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     const autoConfig = {
       state: resolveInitialState(),
@@ -508,6 +639,10 @@
       autostart: query.get('autostart') !== '0',
       quiet: query.get('quiet') === '1',
       layout: query.get('layout') || 'panel',
+      displayMode: publicDisplayMode,
+      quality: optimizedQuality,
+      uiScale: optimizedUiScale,
+      fps: optimizedFps,
       fit: publicPlayMode ? publicFit : (query.get('fit') || 'actual'),
       fieldMode: (query.get('fieldMode') || query.get('field') || 'real').toLowerCase(),
       logicalSize: publicPlayMode
@@ -525,8 +660,14 @@
     debugPasswordInput.value = autoConfig.debugPassword;
     displayResolutionEl.value = `${autoConfig.logicalSize.width}x${autoConfig.logicalSize.height}`;
     displayFitEl.value = autoConfig.fit;
+    displayModeEl.value = autoConfig.displayMode;
+    optimizedQualityEl.value = autoConfig.quality;
+    optimizedUiScaleEl.value = String(autoConfig.uiScale);
+    optimizedUiScaleValueEl.textContent = `${autoConfig.uiScale}%`;
+    optimizedFpsEl.value = autoConfig.fps;
     if (publicPlayMode) {
       document.body.classList.add('play', 'loading');
+      document.body.classList.toggle('optimized', autoConfig.displayMode === 'optimized');
       document.title = publicDemoMode ? 'OpenWyd Demo' : 'OpenWyd Field Preview';
     } else if (autoConfig.layout === 'capture') {
       document.body.classList.add('capture');
@@ -639,7 +780,76 @@
       }
     };
 
+    const QUALITY_PROFILE_CODES = Object.freeze({
+      auto: 0,
+      performance: 1,
+      quality: 2,
+      maximum: 3
+    });
+    const MAX_OPTIMIZED_BACKING_PIXELS = 12 * 1024 * 1024;
+    let adaptiveResolutionScale = 1;
+    let resizeFrame = 0;
+
+    const optimizedPixelScale = () => {
+      const dpr = Math.max(1, Number(window.devicePixelRatio) || 1);
+      switch (autoConfig.quality) {
+        case 'performance': return Math.min(1, dpr);
+        case 'quality': return Math.min(2, dpr);
+        case 'maximum': return Math.min(3, dpr);
+        default: return Math.min(1.5, dpr);
+      }
+    };
+
+    const optimizedWorldScale = () => {
+      if (autoConfig.quality === 'performance') return Math.min(0.85, adaptiveResolutionScale);
+      if (autoConfig.quality === 'quality' || autoConfig.quality === 'maximum') return 1;
+      return adaptiveResolutionScale;
+    };
+
+    const configureOptimizedRuntime = (cssWidth, cssHeight, backingWidth, backingHeight) => {
+      if (!window.Module || typeof Module._wyd_configure_optimized_view !== 'function') return;
+      Module._wyd_configure_optimized_view(
+        1,
+        QUALITY_PROFILE_CODES[autoConfig.quality] ?? 0,
+        cssWidth,
+        cssHeight,
+        backingWidth,
+        backingHeight,
+        autoConfig.uiScale,
+        Math.round(optimizedWorldScale() * 100)
+      );
+    };
+
     const syncCanvasSize = () => {
+      if (autoConfig.displayMode === 'optimized') {
+        const wrap = canvasEl.parentElement;
+        const rect = publicPlayMode
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : (wrap ? wrap.getBoundingClientRect() : { width: 800, height: 600 });
+        const cssWidth = Math.max(320, Math.round(rect.width));
+        const cssHeight = Math.max(320, Math.round(rect.height));
+        let pixelScale = optimizedPixelScale();
+        const requestedPixels = cssWidth * cssHeight * pixelScale * pixelScale;
+        if (requestedPixels > MAX_OPTIMIZED_BACKING_PIXELS) {
+          pixelScale *= Math.sqrt(MAX_OPTIMIZED_BACKING_PIXELS / requestedPixels);
+        }
+        const backingWidth = Math.max(320, Math.round(cssWidth * pixelScale));
+        const backingHeight = Math.max(320, Math.round(cssHeight * pixelScale));
+
+        if (canvasEl.width !== backingWidth || canvasEl.height !== backingHeight) {
+          canvasEl.width = backingWidth;
+          canvasEl.height = backingHeight;
+        }
+        canvasEl.style.width = `${cssWidth}px`;
+        canvasEl.style.height = `${cssHeight}px`;
+        configureOptimizedRuntime(cssWidth, cssHeight, backingWidth, backingHeight);
+        window.__wydViewport = {
+          mode: 'optimized', cssWidth, cssHeight, backingWidth, backingHeight,
+          pixelScale, uiScale: autoConfig.uiScale, worldScale: optimizedWorldScale()
+        };
+        return;
+      }
+
       const logical = autoConfig.logicalSize;
       if (canvasEl.width !== logical.width || canvasEl.height !== logical.height) {
         canvasEl.width = logical.width;
@@ -668,9 +878,35 @@
 
       canvasEl.style.width = `${Math.round(displayWidth)}px`;
       canvasEl.style.height = `${Math.round(displayHeight)}px`;
+      window.__wydViewport = {
+        mode: 'legacy', cssWidth: displayWidth, cssHeight: displayHeight,
+        backingWidth: logical.width, backingHeight: logical.height,
+        pixelScale: 1, uiScale: 100
+      };
     };
 
-    window.addEventListener('resize', syncCanvasSize);
+    const scheduleCanvasResize = () => {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        syncCanvasSize();
+      });
+    };
+
+    window.addEventListener('resize', scheduleCanvasResize);
+    window.visualViewport?.addEventListener('resize', scheduleCanvasResize);
+    if (window.ResizeObserver && canvasEl.parentElement) {
+      new ResizeObserver(scheduleCanvasResize).observe(canvasEl.parentElement);
+    }
+
+    displayModeEl.addEventListener('change', () => {
+      const mode = DISPLAY_MODES.has(displayModeEl.value) ? displayModeEl.value : 'optimized';
+      writeDisplayPreference(DISPLAY_MODE_STORAGE_KEY, mode);
+      const target = new URL(window.location.href);
+      target.searchParams.set('displayMode', mode);
+      target.searchParams.set('v', '4');
+      window.location.replace(target.toString());
+    });
 
     displayResolutionEl.addEventListener('change', () => {
       const resolution = displayResolutionEl.value;
@@ -692,6 +928,45 @@
       window.__wydHarnessConfig.fit = fit;
       syncCanvasSize();
       canvasEl.focus({ preventScroll: true });
+    });
+
+    optimizedQualityEl.addEventListener('change', () => {
+      const profile = QUALITY_PROFILES.has(optimizedQualityEl.value)
+        ? optimizedQualityEl.value
+        : 'auto';
+      autoConfig.quality = profile;
+      adaptiveResolutionScale = 1;
+      writeDisplayPreference(OPTIMIZED_QUALITY_STORAGE_KEY, profile);
+      scheduleCanvasResize();
+      canvasEl.focus({ preventScroll: true });
+    });
+
+    optimizedUiScaleEl.addEventListener('input', () => {
+      autoConfig.uiScale = Math.max(80, Math.min(150, Number(optimizedUiScaleEl.value) || 100));
+      optimizedUiScaleValueEl.textContent = `${autoConfig.uiScale}%`;
+      writeDisplayPreference(OPTIMIZED_UI_SCALE_STORAGE_KEY, String(autoConfig.uiScale));
+      scheduleCanvasResize();
+    });
+
+    optimizedFpsEl.addEventListener('change', () => {
+      const fps = FPS_CHOICES.has(optimizedFpsEl.value) ? optimizedFpsEl.value : 'auto';
+      autoConfig.fps = fps;
+      writeDisplayPreference(OPTIMIZED_FPS_STORAGE_KEY, fps);
+    });
+
+    fullscreenBtn.addEventListener('click', async () => {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await canvasEl.parentElement?.requestFullscreen({ navigationUI: 'hide' });
+      } catch (error) {
+        write(`fullscreen failed: ${error?.message || error}`, 'err');
+      }
+      scheduleCanvasResize();
+      canvasEl.focus({ preventScroll: true });
+    });
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenBtn.textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia';
+      scheduleCanvasResize();
     });
 
     displayControlsEl.addEventListener('pointerdown', event => event.stopPropagation());
@@ -755,6 +1030,10 @@
     window.__wydHarnessConfig = {
       logicalWidth: autoConfig.logicalSize.width,
       logicalHeight: autoConfig.logicalSize.height,
+      displayMode: autoConfig.displayMode,
+      quality: autoConfig.quality,
+      uiScale: autoConfig.uiScale,
+      fps: autoConfig.fps,
       fit: autoConfig.fit,
       tickMs: autoConfig.tickMs,
       fieldMode: autoConfig.fieldMode
@@ -785,10 +1064,17 @@
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
     const canvasLogicalPoint = (event) => {
       const rect = canvasEl.getBoundingClientRect();
-      const scaleX = rect.width > 0 ? canvasEl.width / rect.width : 1;
-      const scaleY = rect.height > 0 ? canvasEl.height / rect.height : 1;
-      const x = clamp(Math.round((event.clientX - rect.left) * scaleX), 0, Math.max(0, canvasEl.width - 1));
-      const y = clamp(Math.round((event.clientY - rect.top) * scaleY), 0, Math.max(0, canvasEl.height - 1));
+      const optimized = autoConfig.displayMode === 'optimized';
+      const logicalWidth = optimized
+        ? (Module?._wyd_optimized_css_width?.() || Math.round(rect.width))
+        : canvasEl.width;
+      const logicalHeight = optimized
+        ? (Module?._wyd_optimized_css_height?.() || Math.round(rect.height))
+        : canvasEl.height;
+      const scaleX = rect.width > 0 ? logicalWidth / rect.width : 1;
+      const scaleY = rect.height > 0 ? logicalHeight / rect.height : 1;
+      const x = clamp(Math.round((event.clientX - rect.left) * scaleX), 0, Math.max(0, logicalWidth - 1));
+      const y = clamp(Math.round((event.clientY - rect.top) * scaleY), 0, Math.max(0, logicalHeight - 1));
       lastMousePoint = { x, y };
       return lastMousePoint;
     };
@@ -1068,16 +1354,152 @@
       return failures;
     };
 
-    const autoTickStep = () => {
+    window.renderClient = () => {
+      try {
+        return typeof Module?._wyd_render_client === 'function'
+          ? Module._wyd_render_client()
+          : window.tickClient(true, false);
+      } catch (err) {
+        write(`_wyd_render_client threw: ${err?.message || err}`, 'err');
+        return -1;
+      }
+    };
+
+    const percentile = (values, fraction) => {
+      if (!values.length) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+    };
+
+    const resolveOptimizedTargetFps = () => {
+      if (autoConfig.fps !== 'auto') return Number(autoConfig.fps) || 60;
+      const refreshLimit = Math.min(144, Math.max(60, schedulerRefreshHz + 3));
+      return [144, 120, 75, 60].find(tier => tier <= refreshLimit && tier <= adaptiveFpsCap) || 60;
+    };
+
+    window.__wydSimulateFixedScheduler = (presentationHz, durationMs = 10000) => {
+      const hz = Math.max(1, Number(presentationHz) || 60);
+      const duration = Math.max(0, Number(durationMs) || 0);
+      const presentationStep = 1000 / hz;
+      const simulationStep = 1000 / 60;
+      let accumulator = 0;
+      let simulations = 0;
+      for (let elapsed = presentationStep; elapsed <= duration + 0.001; elapsed += presentationStep) {
+        accumulator += presentationStep;
+        while (accumulator + 0.0001 >= simulationStep) {
+          accumulator -= simulationStep;
+          simulations += 1;
+        }
+      }
+      return simulations;
+    };
+
+    const updateOptimizedScheduler = (now, targetFps) => {
+      if (now - schedulerLastEvaluation < 2000 || schedulerTickDurations.length < 12) return;
+      const p95TickMs = percentile(schedulerTickDurations, 0.95);
+      const p95FrameMs = percentile(schedulerFrameDeltas, 0.95);
+      const budgetMs = 1000 / targetFps;
+      const overloaded = p95TickMs > budgetMs * 0.85 || p95FrameMs > budgetMs * 1.65;
+
+      if (autoConfig.quality === 'auto' && overloaded) {
+        schedulerStableSince = 0;
+        if (adaptiveResolutionScale > 0.65) {
+          adaptiveResolutionScale = Math.max(0.65, adaptiveResolutionScale - 0.1);
+          scheduleCanvasResize();
+        } else if (autoConfig.fps === 'auto') {
+          const tiers = [60, 75, 120, 144];
+          const index = tiers.indexOf(targetFps);
+          adaptiveFpsCap = index > 0 ? tiers[index - 1] : 60;
+        }
+      } else if (!overloaded) {
+        if (!schedulerStableSince) schedulerStableSince = now;
+        if (autoConfig.quality === 'auto' && now - schedulerStableSince > 20000) {
+          if (adaptiveResolutionScale < 1) {
+            adaptiveResolutionScale = Math.min(1, adaptiveResolutionScale + 0.05);
+            scheduleCanvasResize();
+          } else if (autoConfig.fps === 'auto' && adaptiveFpsCap < 144) {
+            adaptiveFpsCap = [60, 75, 120, 144].find(tier => tier > adaptiveFpsCap) || 144;
+          }
+          schedulerStableSince = now;
+        }
+      }
+
+      const viewport = window.__wydViewport || {};
+      window.__wydOptimizedMetrics = {
+        targetFps,
+        refreshHz: schedulerRefreshHz,
+        p95TickMs,
+        p95FrameMs,
+        resolutionScale: adaptiveResolutionScale,
+        backingWidth: viewport.backingWidth || canvasEl.width,
+        backingHeight: viewport.backingHeight || canvasEl.height
+      };
+      optimizedMetricsEl.textContent =
+        `${targetFps} FPS · ${p95TickMs.toFixed(1)} ms · ` +
+        `${canvasEl.width}×${canvasEl.height} · mundo ${Math.round(optimizedWorldScale() * 100)}%`;
+      schedulerTickDurations.length = 0;
+      schedulerFrameDeltas.length = 0;
+      schedulerLastEvaluation = now;
+    };
+
+    const autoTickStep = (rafNow = performance.now()) => {
       if (!autoTickRunning) return;
-      const rc = window.tickClient(true, true);
-      autoTickFrames += 1;
-      if (rc < 0) {
-        write(`auto tick failed at frame=${autoTickFrames} rc=${rc}`, 'err');
-        autoTickRunning = false;
-        autoBtn.textContent = 'Start Auto Tick';
-        setStatus(`auto tick stopped rc=${rc}`);
-        return;
+      if (autoConfig.displayMode === 'optimized') {
+        if (schedulerLastRaf > 0) {
+          const rafDelta = rafNow - schedulerLastRaf;
+          if (rafDelta > 2 && rafDelta < 100) {
+            schedulerRafDeltas.push(rafDelta);
+            if (schedulerRafDeltas.length > 90) schedulerRafDeltas.shift();
+            const medianRaf = percentile(schedulerRafDeltas, 0.5);
+            if (medianRaf > 0) schedulerRefreshHz = Math.min(240, Math.round(1000 / medianRaf));
+          }
+        }
+        schedulerLastRaf = rafNow;
+        const targetFps = resolveOptimizedTargetFps();
+        const targetInterval = 1000 / targetFps;
+        if (schedulerLastTick > 0 && rafNow - schedulerLastTick < targetInterval * 0.82) {
+          requestAnimationFrame(autoTickStep);
+          return;
+        }
+        if (schedulerLastTick > 0) schedulerFrameDeltas.push(rafNow - schedulerLastTick);
+        schedulerLastTick = rafNow;
+        const tickStarted = performance.now();
+        const simulationStep = 1000 / 60;
+        if (schedulerLastPresentation > 0) {
+          schedulerSimulationAccumulator += Math.min(100, rafNow - schedulerLastPresentation);
+        } else {
+          schedulerSimulationAccumulator = simulationStep;
+        }
+        schedulerLastPresentation = rafNow;
+        let rc = 1;
+        let simulationSteps = 0;
+        while (schedulerSimulationAccumulator >= simulationStep && simulationSteps < 3) {
+          rc = window.tickClient(true, true);
+          schedulerSimulationAccumulator -= simulationStep;
+          simulationSteps += 1;
+          if (rc < 0) break;
+        }
+        if (simulationSteps === 0) rc = window.renderClient();
+        schedulerTickDurations.push(performance.now() - tickStarted);
+        updateOptimizedScheduler(rafNow, targetFps);
+        autoTickFrames += 1;
+        if (rc < 0) {
+          write(`auto tick failed at frame=${autoTickFrames} rc=${rc}`, 'err');
+          autoTickRunning = false;
+          autoBtn.textContent = 'Start Auto Tick';
+          setStatus(`auto tick stopped rc=${rc}`);
+          return;
+        }
+      } else {
+        const rc = window.tickClient(true, true);
+        autoTickFrames += 1;
+        if (rc < 0) {
+          write(`auto tick failed at frame=${autoTickFrames} rc=${rc}`, 'err');
+          autoTickRunning = false;
+          autoBtn.textContent = 'Start Auto Tick';
+          setStatus(`auto tick stopped rc=${rc}`);
+          return;
+        }
       }
       if (publicDemoMode) {
         const info = readStateDebug();
@@ -1116,6 +1538,15 @@
     window.startAutoTick = () => {
       if (autoTickRunning) return;
       autoTickRunning = true;
+      schedulerLastRaf = 0;
+      schedulerLastTick = 0;
+      schedulerLastPresentation = 0;
+      schedulerSimulationAccumulator = 0;
+      schedulerLastEvaluation = performance.now();
+      schedulerStableSince = schedulerLastEvaluation;
+      schedulerRafDeltas.length = 0;
+      schedulerTickDurations.length = 0;
+      schedulerFrameDeltas.length = 0;
       autoBtn.textContent = 'Stop Auto Tick';
       setStatus('auto tick running');
       requestAnimationFrame(autoTickStep);
@@ -1377,6 +1808,19 @@
         }
         const boot = window.bootClient();
         if (boot) {
+          if (autoConfig.displayMode === 'optimized' &&
+              typeof Module._wyd_d3d9_is_webgl2 === 'function' &&
+              Module._wyd_d3d9_is_webgl2() !== 1) {
+            writeDisplayPreference(DISPLAY_MODE_STORAGE_KEY, 'legacy');
+            loadingMessageEl.textContent = 'WebGL2 não está disponível neste navegador.';
+            loadingDetailEl.textContent = 'Abrindo o modo legado compatível...';
+            setTimeout(() => {
+              const target = new URL(window.location.href);
+              target.searchParams.set('displayMode', 'legacy');
+              window.location.replace(target.toString());
+            }, 900);
+            return;
+          }
           window.setGameState(autoConfig.state);
           refreshStateInfo();
           if (typeof Module._wyd_d3d9_set_debug_flags === 'function') {
@@ -1406,7 +1850,12 @@
       }
     };
   </script>
-  <script src="./openwyd_assets.js"></script>
+  <script>
+    // Both display modes intentionally mount the complete official dataset.
+    // The content-addressed IndexedDB cache makes subsequent visits cheap and
+    // avoids any visual resource appearing after a scene has already started.
+    document.write('<script src="./openwyd_assets.js"><\/script>');
+  </script>
   <script src="./tmproject_startup.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "TMFieldScene.h"
 #include "SControlContainer.h"
+#include "OpenWydOptimized.h"
 #include "SControl.h"
 #include "TMGlobal.h"
 
@@ -478,6 +479,7 @@ int SControlContainer::OnControlEvent(DWORD idwControlID, DWORD idwEvent)
 
 void SControlContainer::AddItem(SControl* pControl)
 {
+	OpenWydOptimizedConfigureRootControl(pControl);
 	m_pControlRoot->AddChild(pControl);
 }
 
