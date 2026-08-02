@@ -7,6 +7,10 @@ FROM emscripten/emsdk:${EMSCRIPTEN_VERSION} AS wasm-assets
 ARG TARGETARCH
 WORKDIR /src
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends brotli \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY v769ClientRelease /src/v769ClientRelease
 COPY webclient/client-wasm/config/startup-preload-manifest.txt \
     /src/webclient/client-wasm/config/startup-preload-manifest.txt
@@ -31,13 +35,20 @@ RUN --mount=type=cache,id=openwyd-emscripten-system-${TARGETARCH},target=/emsdk/
         /src/v769ClientRelease/UI/newtitle.wyt \
         /src/webclient/client-wasm/build/generated/openwyd_loading.png \
     && find /src/webclient/client-wasm/build/link -type f \
-        \( -name 'openwyd_assets.*.data' -o -name 'openwyd_assets.*.js' \) \
-        -size +1024c -exec gzip -6 -k -f '{}' \;
+        \( -name 'openwyd_*.data' -o -name 'openwyd_*.js' \) \
+        -exec gzip -6 -k -f '{}' \; \
+    && find /src/webclient/client-wasm/build/link -type f \
+        \( -name 'openwyd_*.data' -o -name 'openwyd_*.js' \) \
+        -exec brotli -f -q 8 '{}' \;
 
 FROM emscripten/emsdk:${EMSCRIPTEN_VERSION} AS wasm-build
 ARG TARGETARCH
 ARG OPENWYD_BUILD_JOBS
 WORKDIR /src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends brotli \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY Projects /src/Projects
 COPY Dependencies/Directx/Include /src/Dependencies/Directx/Include
@@ -59,10 +70,14 @@ RUN --mount=type=cache,id=openwyd-wasm-objects-${TARGETARCH},target=/src/webclie
     && python3 webclient/client-wasm/tools/prepare_pages_site.py \
         --link-dir /src/webclient/client-wasm/build/link \
         --out-dir /src/webclient/client-wasm/build/site \
+        --max-bytes 2400000000 \
         --loading-art /src/webclient/client-wasm/build/generated/openwyd_loading.png \
     && find /src/webclient/client-wasm/build/site -type f \
         \( -name '*.wasm' -o -name 'tmproject_startup.*.js' \) \
-        -size +1024c -exec gzip -6 -k -f '{}' \;
+        -exec gzip -6 -k -f '{}' \; \
+    && find /src/webclient/client-wasm/build/site -type f \
+        \( -name '*.wasm' -o -name 'tmproject_startup.*.js' \) \
+        -exec brotli -f -q 8 '{}' \;
 
 FROM nginx:1.27-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
