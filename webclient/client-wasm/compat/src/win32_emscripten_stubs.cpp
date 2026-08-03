@@ -13967,7 +13967,7 @@ bool TryDrawNativeStaticObject(
   const bool static_mesh = fvf == 530u && stride == 40u;
   const bool sea_mesh =
       fvf == 578u && stride == 32u &&
-      OpenWydNativeRendererPass() == WydRenderPass::Water;
+      ResolveNativeRenderPass() == WydRenderPass::Water;
   if (!OpenWydNativeRendererEnabled() || primitive_type != D3DPT_TRIANGLELIST ||
       g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
       (!static_mesh && !sea_mesh) || !vertex_buffer || !index_buffer ||
