@@ -11948,12 +11948,14 @@ constexpr uint64_t kNativeSkinMesh1Hash = 0x1c5fbfa394385e90ull;
 constexpr uint64_t kNativeSkinMesh2Hash = 0x851b469b88956e6aull;
 constexpr uint64_t kNativeSkinMesh3Hash = 0x7502e7de3a0f9798ull;
 constexpr uint64_t kNativeSkinMesh4Hash = 0xc73a19e04a083e83ull;
+constexpr uint64_t kNativeSkinMesh5Hash = 0x64c1cfa12def9648ull;
 
 bool IsNativeActorShader(uint64_t hash) {
   return hash == kNativeSkinMesh1Hash ||
          hash == kNativeSkinMesh2Hash ||
          hash == kNativeSkinMesh3Hash ||
-         hash == kNativeSkinMesh4Hash;
+         hash == kNativeSkinMesh4Hash ||
+         hash == kNativeSkinMesh5Hash;
 }
 
 const D3DVERTEXELEMENT9* FindDeclarationElement(
@@ -12115,6 +12117,7 @@ uniform vec4 uFogColor;
 uniform int uFogEnable;
 uniform int uAdditiveBright;
 uniform int uLinearColor;
+uniform int uSkinMeshVariant;
 
 in highp vec2 vUV0;
 in highp vec2 vUV1;
@@ -12212,7 +12215,10 @@ vec3 linearToSrgb(vec3 value) {
 
 void main() {
   float ndotl = max(dot(normalize(vLightNormal), normalize(uLight.xyz)), 0.0);
-  vec4 diffuse = uAmbient + uDiffuse * ndotl;
+  // skinmesh5 belongs to the original vegetation family. Its vs_1_1
+  // bytecode emits c7+c8 instead of applying the directional N.L term.
+  float lightScale = uSkinMeshVariant >= 5 ? 1.0 : ndotl;
+  vec4 diffuse = uAmbient + uDiffuse * lightScale;
   if (uAdditiveBright != 0) diffuse.a = 1.0;
 
   vec4 texel0 = (uUseTexture0 != 0)
@@ -12244,7 +12250,9 @@ void main() {
     vec4 a2 = resolveArg(uColorArg21, texel1, diffuse, current);
     current.rgb = applyColorOp(uColorOp1, a1, a2, current, diffuse, texel1).rgb;
   }
-  if (uAlphaOp1 != 1) {
+  // D3D9 disables the complete texture stage when COLOROP is DISABLE;
+  // ALPHAOP must not keep consuming a stale stage-1 texture by itself.
+  if (uColorOp1 != 1 && uAlphaOp1 != 1) {
     vec4 a1 = resolveArg(uAlphaArg11, texel1, diffuse, current);
     vec4 a2 = resolveArg(uAlphaArg21, texel1, diffuse, current);
     current.a = applyAlphaOp(
@@ -12529,6 +12537,7 @@ bool TryDrawNativeActor(
   if (g_active_vs_hash == kNativeSkinMesh1Hash) skinmesh_variant = 1;
   else if (g_active_vs_hash == kNativeSkinMesh2Hash) skinmesh_variant = 2;
   else if (g_active_vs_hash == kNativeSkinMesh3Hash) skinmesh_variant = 3;
+  else if (g_active_vs_hash == kNativeSkinMesh5Hash) skinmesh_variant = 5;
   glUniform1i(g_native_actor_program.uni_skinmesh_variant, skinmesh_variant);
 
   const bool has_texture0 = BindTextureStage(0);
