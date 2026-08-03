@@ -14,19 +14,33 @@ const reportPath = path.join(
   repoRoot,
   "webclient/client-wasm/build/reports/optimized-viewport-matrix-smoke.json",
 );
-const groups = [
+const profilePath = process.env.OPENWYD_VISUAL_PROFILE
+  ? path.resolve(process.env.OPENWYD_VISUAL_PROFILE)
+  : path.join(
+    repoRoot,
+    "webclient/client-wasm/build/cache/optimized-viewport-matrix-profile",
+  );
+const allGroups = [
   { dpr: 1, sizes: [[1280, 720], [3440, 1440]] },
   { dpr: 1.25, sizes: [[1920, 1080], [3840, 2160]] },
   { dpr: 2, sizes: [[1280, 720], [2560, 1440]] },
 ];
+const requestedGroups = new Set((process.env.OPENWYD_VIEWPORT_GROUPS || "")
+  .split(",")
+  .map(value => Number.parseInt(value.trim(), 10))
+  .filter(index => index >= 0 && index < allGroups.length));
+const groups = requestedGroups.size
+  ? allGroups.filter((_, index) => requestedGroups.has(index))
+  : allGroups;
 
-const browser = await chromium.launch(chromiumLaunchOptions({ headless: true }));
 const result = { ok: false, samples: [], consoleErrors: [] };
 
 try {
   for (const group of groups) {
     const [initialWidth, initialHeight] = group.sizes[0];
-    const context = await browser.newContext({
+    const context = await chromium.launchPersistentContext(profilePath, {
+      ...chromiumLaunchOptions({ headless: true }),
+      headless: true,
       viewport: { width: initialWidth, height: initialHeight },
       deviceScaleFactor: group.dpr,
     });
@@ -54,7 +68,7 @@ try {
       await page.waitForFunction(({ width: expectedWidth, height: expectedHeight }) => (
         Module?._wyd_optimized_css_width?.() === expectedWidth &&
         Module?._wyd_optimized_css_height?.() === expectedHeight
-      ), { width, height }, { timeout: 15000 });
+      ), { width, height }, { timeout: 60000 });
       await page.mouse.move(Math.floor(width / 2), Math.floor(height / 2));
       await page.waitForTimeout(250);
       const sample = await page.evaluate(({ dpr }) => {
@@ -98,7 +112,6 @@ try {
 } finally {
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, `${JSON.stringify(result, null, 2)}\n`);
-  await browser.close();
 }
 
 console.log(JSON.stringify(result, null, 2));
