@@ -15,6 +15,7 @@
 #include "MeshManager.h"
 #include "DirShow.h"
 #include "NewApp.h"
+#include "OpenWydOptimized.h"
 
 namespace
 {
@@ -85,6 +86,28 @@ int TMDemoScene::InitializeScene()
 		0xFF000000,
 		RENDERCTRLTYPE::RENDER_IMAGE_STRETCH);
 
+	if (OpenWydOptimizedEnabled())
+	{
+		const float viewportWidth = static_cast<float>(g_pDevice->m_dwScreenWidth);
+		const float viewportHeight = static_cast<float>(g_pDevice->m_dwScreenHeight);
+		// The cinematic matte is authored as 75 px at the top and 100.2 px
+		// at the bottom of the 800x600 frame.  Building it from the full
+		// widescreen height enlarged the bars and the generic root anchoring
+		// moved them into only one quadrant.  Keep their physical authored
+		// thickness while extending only their width.
+		pTopPanel->SetRealPos(0.0f, 0.0f);
+		pTopPanel->SetRealSize(viewportWidth, 75.0f);
+		pTopPanel->SetStickLeft();
+		pTopPanel->SetStickTop();
+		pBottomPanel->SetRealSize(viewportWidth, 100.2f);
+		pBottomPanel->SetStickLeft();
+		pBottomPanel->SetStickBottom();
+		m_pCoverPanel->SetRealPos(0.0f, 0.0f);
+		m_pCoverPanel->SetRealSize(viewportWidth, viewportHeight);
+		m_pCoverPanel->SetStickLeft();
+		m_pCoverPanel->SetStickTop();
+	}
+
 	m_pControlContainer->AddItem(pTopPanel);
 	m_pControlContainer->AddItem(pBottomPanel);
 	m_pControlContainer->AddItem(m_pCoverPanel);
@@ -105,6 +128,8 @@ int TMDemoScene::InitializeScene()
 		SText::TEXT_TYPE_SHADOW,
 		SText::TEXT_ALIGN_CENTER);
 	pBottomPanel->AddChild(m_pTextEnd);
+	if (OpenWydOptimizedEnabled())
+		m_pTextEnd->SetRealSize(static_cast<float>(g_pDevice->m_dwScreenWidth), 20.0f);
 	m_pTextEnd->SetVisible(0);
 
 	g_pDevice->m_dwClearColor = 0x00000000;
@@ -499,7 +524,9 @@ void TMDemoScene::ReadStrings()
 			0xFFFFFFFF,
 			0.0f,
 			static_cast<float>(i * 20),
-			800.0f,
+			OpenWydOptimizedEnabled() && g_pDevice
+				? static_cast<float>(g_pDevice->m_dwScreenWidth)
+				: 800.0f,
 			20.0f,
 			1,
 			0,

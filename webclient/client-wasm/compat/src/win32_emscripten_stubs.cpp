@@ -247,10 +247,14 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
           const uint8_t a = static_cast<uint8_t>(
               (coverage + static_cast<unsigned int>(sample_count / 2)) /
               static_cast<unsigned int>(sample_count));
-          // Values below four A4 steps turn into the detached 1-3/15 grey
-          // dots visible below the final glyph. They carry too little
-          // coverage to describe an edge at the client's native font sizes.
-          if (a < 64) continue;
+          // Legacy ultimately quantizes this bitmap to A4, where tiny values
+          // become detached grey dots.  Optimized uploads A8 and can retain
+          // the low-coverage edge samples for substantially smoother Tahoma
+          // without changing its 12 px metrics.  The DIB is now cleared for
+          // every opaque TextOut call, so these samples cannot be stale rows.
+          const uint8_t minimum_coverage =
+              wyd_optimized_view_enabled() != 0 ? 8u : 64u;
+          if (a < minimum_coverage) continue;
           if (a == 255) {
             PutDibPixel(dib, pen_x + col, pen_y + row, text_color);
           } else {
@@ -5527,7 +5531,10 @@ bool EnsureOptimizedWorldTarget(int width, int height, int samples) {
   glBindFramebuffer(GL_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
   glGenRenderbuffers(1, &g_optimized_world_target.resolve_color_renderbuffer);
   glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.resolve_color_renderbuffer);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+  // The official X8R8G8B8 backbuffer has no destination alpha channel.  An
+  // RGBA offscreen target let earlier world draws leak alpha into subsequent
+  // D3D blend factors and changed equipment materials only in Optimized.
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, width, height);
   glFramebufferRenderbuffer(
       GL_FRAMEBUFFER,
       GL_COLOR_ATTACHMENT0,
@@ -5542,7 +5549,7 @@ bool EnsureOptimizedWorldTarget(int width, int height, int samples) {
     glGenRenderbuffers(1, &g_optimized_world_target.draw_color_renderbuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.draw_color_renderbuffer);
     glRenderbufferStorageMultisample(
-        GL_RENDERBUFFER, samples, GL_RGBA8, width, height);
+        GL_RENDERBUFFER, samples, GL_RGB8, width, height);
     glFramebufferRenderbuffer(
         GL_FRAMEBUFFER,
         GL_COLOR_ATTACHMENT0,

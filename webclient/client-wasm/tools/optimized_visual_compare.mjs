@@ -11,10 +11,12 @@ const { chromium } = playwrightPkg;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const baseUrl = process.argv[2] ||
   "http://127.0.0.1:8877/webclient/client-wasm/build/link/startup_harness.html";
-const reportDir = path.join(
-  repoRoot,
-  "webclient/client-wasm/build/reports/optimized-visual-compare",
-);
+const reportDir = process.env.OPENWYD_VISUAL_REPORT_DIR
+  ? path.resolve(process.env.OPENWYD_VISUAL_REPORT_DIR)
+  : path.join(
+    repoRoot,
+    "webclient/client-wasm/build/reports/optimized-visual-compare",
+  );
 // Exercise every startup state, including the diagnostic and secondary Field
 // scenes.  This keeps the evidence broad enough to catch text/layout changes
 // outside the first Field screen.
@@ -28,6 +30,9 @@ const ticksPerState = Math.max(
   1,
   Number.parseInt(process.env.OPENWYD_VISUAL_TICKS || "45", 10) || 45,
 );
+const qualityProfile = ["auto", "performance", "quality", "maximum"].includes(
+  process.env.OPENWYD_VISUAL_QUALITY,
+) ? process.env.OPENWYD_VISUAL_QUALITY : "quality";
 const allRuns = [
   { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
   { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
@@ -78,17 +83,111 @@ async function snapshot(page) {
     };
     const canvas = document.getElementById("canvas");
     const rect = canvas.getBoundingClientRect();
+    const optimizedEnabled = Number(call("_wyd_optimized_view_enabled")) === 1;
+    const currentSceneType = Number(call("_wyd_get_scene_type"));
     const textCount = Math.min(2048, Number(call("_wyd_control_visible_text_count")) || 0);
     const visibleText = Array.from({ length: textCount }, (_, index) => ({
       id: call("_wyd_control_visible_text_id", index),
       type: call("_wyd_control_visible_text_type", index),
+      align: call("_wyd_control_visible_text_align", index),
       x: call("_wyd_control_visible_text_x", index),
       y: call("_wyd_control_visible_text_y", index),
       width: call("_wyd_control_visible_text_width", index),
       height: call("_wyd_control_visible_text_height", index),
+      renderX: call("_wyd_control_visible_text_render_x", index),
+      renderY: call("_wyd_control_visible_text_render_y", index),
+      extentWidth: call("_wyd_control_visible_text_extent_width", index),
+      extentHeight: call("_wyd_control_visible_text_extent_height", index),
       color: call("_wyd_control_visible_text_color", index),
       value: readCString(call("_wyd_control_visible_text_value", index)),
     }));
+    const controlCount = Math.min(8192, Number(call("_wyd_control_audit_count")) || 0);
+    const controls = Array.from({ length: controlCount }, (_, index) => ({
+      id: call("_wyd_control_audit_id", index),
+      parentId: call("_wyd_control_audit_parent_id", index),
+      type: call("_wyd_control_audit_type", index),
+      visible: call("_wyd_control_audit_visible", index),
+      localX: call("_wyd_control_audit_local_x", index),
+      localY: call("_wyd_control_audit_local_y", index),
+      x: call("_wyd_control_audit_abs_x", index),
+      y: call("_wyd_control_audit_abs_y", index),
+      width: call("_wyd_control_audit_width", index),
+      height: call("_wyd_control_audit_height", index),
+    }));
+    const layoutFindings = [];
+    for (const control of controls) {
+      if (!control.visible) continue;
+	  const isFullBleedShellBackground = optimizedEnabled && control.parentId === 0 &&
+		control.type === 1 && (
+		  (currentSceneType === 0x7532 && control.id >= 305 && control.id <= 312) ||
+		  (currentSceneType === 0x7533 && control.id === 305)
+		);
+	  if (isFullBleedShellBackground) {
+		layoutFindings.push({
+		  severity: "INFO",
+		  issue: "intentional_full_bleed_background_crop",
+		  ...control,
+		});
+		continue;
+	  }
+	  // FieldScene2.bin deliberately parks the obsolete PK caption outside
+	  // the authored viewport while the real PK button (65786) remains active.
+	  // Preserve the official RC data and keep the exception visible in the
+	  // report instead of treating it as a responsive-layout regression.
+	  if (control.id === 65785 && control.parentId === 65628 && control.localX >= 3000) {
+		layoutFindings.push({ severity: "INFO", issue: "authored_offscreen_control", ...control });
+		continue;
+	  }
+      if (control.width < 0 || control.height < 0) {
+        layoutFindings.push({ severity: "ERROR", issue: "negative_control_size", ...control });
+        continue;
+      }
+      if (control.width === 0 || control.height === 0) continue;
+      if (control.x + control.width <= 0 || control.y + control.height <= 0 ||
+          control.x >= rect.width || control.y >= rect.height) {
+        layoutFindings.push({ severity: "ERROR", issue: "visible_control_outside_viewport", ...control });
+      } else if (control.x < -1 || control.y < -1 ||
+                 control.x + control.width > rect.width + 1 ||
+                 control.y + control.height > rect.height + 1) {
+        layoutFindings.push({ severity: "REVIEW", issue: "visible_control_partly_outside_viewport", ...control });
+      }
+    }
+    for (const item of visibleText) {
+      if (!item.value.trim()) continue;
+      if (item.extentWidth <= 0 || item.extentHeight <= 0) {
+        layoutFindings.push({ severity: "ERROR", issue: "nonempty_text_without_extent", ...item });
+        continue;
+      }
+	  // List-box items remain in the control tree while clipped outside the
+	  // list viewport.  Their GeomControl retains an old/default render point,
+	  // so it is not evidence that text was actually submitted this frame.
+	  const renderMatchesControl =
+		Math.abs(item.renderY - (item.y + 2)) <= Math.max(32, item.height + 8) &&
+		Math.abs(item.renderX - item.x) <= Math.max(32, item.width + 8);
+	  if (!renderMatchesControl) continue;
+      if (item.renderX + item.extentWidth <= 0 || item.renderY + item.extentHeight <= 0 ||
+          item.renderX >= rect.width || item.renderY >= rect.height) {
+        layoutFindings.push({ severity: "ERROR", issue: "rendered_text_outside_viewport", ...item });
+      }
+      const expectedX = item.align === 0 ? item.x + 8
+        : item.align === 1 ? item.x + (item.width - item.extentWidth) / 2
+        : item.align === 2 && call("_wyd_optimized_view_enabled") === 1
+          ? item.x + item.width - item.extentWidth - 8
+          : item.align === 3 ? item.x + 2
+          : null;
+      if (expectedX !== null && Math.abs(item.renderX - expectedX) > 1.1) {
+        layoutFindings.push({
+          severity: "ERROR",
+          issue: "text_alignment_mismatch",
+          expectedX,
+          deltaX: item.renderX - expectedX,
+          ...item,
+        });
+      }
+      if (item.renderX < item.x - 1 || item.renderX + item.extentWidth > item.x + item.width + 1) {
+        layoutFindings.push({ severity: "REVIEW", issue: "text_exceeds_control_width", ...item });
+      }
+    }
     const matrices = Array.from(
       { length: 48 },
       (_, index) => Number(call("_wyd_compare_3d_state_matrix_value", index)),
@@ -123,6 +222,7 @@ async function snapshot(page) {
         sightLength: call("_wyd_debug_camera_sight_length"),
         wantLength: call("_wyd_debug_camera_want_length"),
       },
+	  mouseOverHumanId: call("_wyd_field_mouse_over_human_id"),
       compare3d: {
         valid: call("_wyd_compare_3d_state_valid"),
         matrices,
@@ -136,8 +236,14 @@ async function snapshot(page) {
         maxWidth: call("_wyd_font2_max_size0"),
       },
       visibleText,
+      controls,
+      layoutFindings,
       glErrors: call("_wyd_d3d9_gl_error_total"),
-      assetFailures: call("_wyd_d3d9_asset_file_open_fail"),
+	  assetFailures: call("_wyd_d3d9_asset_file_open_fail"),
+	  assetFailureSamples: Array.from(
+		{ length: Math.min(64, Number(call("_wyd_d3d9_asset_file_open_fail_sample_count")) || 0) },
+		(_, index) => readCString(call("_wyd_d3d9_asset_file_open_fail_sample", index)),
+	  ),
       cache: {
         fromIndexedDb: Boolean(preload?.fromCache),
         networkTransferBytes: Number(packageEntry?.transferSize) || 0,
@@ -163,7 +269,7 @@ async function executeRun(context, run) {
   const url = new URL(baseUrl);
   url.searchParams.set("mode", "play");
   url.searchParams.set("displayMode", run.mode);
-  url.searchParams.set("quality", "quality");
+  url.searchParams.set("quality", qualityProfile);
   url.searchParams.set("uiScale", "100");
   url.searchParams.set("fps", "60");
   url.searchParams.set("state", "0");
@@ -174,6 +280,9 @@ async function executeRun(context, run) {
   url.searchParams.set("quiet", "1");
 
   const output = { ...run, url: url.toString(), states: [], cache: null };
+  // Register the run before it starts so an interrupted capture still leaves
+  // every completed state in the checkpoint report.
+  result.runs.push(output);
   try {
     await page.goto(url.toString(), { waitUntil: "load", timeout: 240000 });
     await page.waitForFunction(() => window.__runtimeReady === true, null, { timeout: 240000 });
@@ -199,6 +308,10 @@ async function executeRun(context, run) {
     for (const state of states) {
       const setResult = await page.evaluate(value => Module._wyd_set_game_state(value), state);
       if (!setResult) throw new Error(`set state ${state} failed`);
+	  // Keep hover-dependent materials identical at every viewport size.  The
+	  // legacy client initializes its logical cursor near the 800x600 center,
+	  // which highlights the test human only in the narrow capture.
+	  await page.evaluate(() => Module._wyd_mouse_event?.(0x0200, 0, 4, 4, 0));
       const tickResult = await page.evaluate(count => {
         let rc = 1;
         for (let index = 0; index < count; index += 1) {
@@ -235,6 +348,10 @@ async function executeRun(context, run) {
         screenshot: relativeToRepo(shot),
         snapshot: stateSnapshot,
       });
+      fs.writeFileSync(
+        path.join(reportDir, "raw-report.checkpoint.json"),
+        `${JSON.stringify(result, null, 2)}\n`,
+      );
       process.stdout.write(`${run.label} state=${state} captured\n`);
     }
     output.cache = output.states[0]?.snapshot?.cache || null;
@@ -253,13 +370,12 @@ try {
     viewport: { width: 800, height: 600 },
     deviceScaleFactor: 1,
   });
-  for (const run of runs) {
-    result.runs.push(await executeRun(context, run));
-  }
+  for (const run of runs) await executeRun(context, run);
   result.ok = result.consoleErrors.length === 0 && result.runs.every(run => (
     run.states.length === states.length && run.states.every(entry => (
       entry.snapshot.state === entry.requestedState &&
       entry.snapshot.glErrors === 0 &&
+      entry.snapshot.layoutFindings.every(finding => finding.severity !== "ERROR") &&
       entry.snapshot.canvas.cssWidth === run.width &&
       entry.snapshot.canvas.cssHeight === run.height &&
       (run.mode === "legacy" || (

@@ -102,9 +102,14 @@ public:
     float m_nHeight;
     IEventListener* m_pEventListener;
     int m_bModal;
+    float m_fOptimizedAuthoredX;
+    float m_fOptimizedAuthoredY;
+    float m_fOptimizedAuthoredWidth;
+    float m_fOptimizedAuthoredHeight;
     unsigned char m_cOptimizedAnchorX;
     unsigned char m_cOptimizedAnchorY;
     unsigned char m_bOptimizedRootLayout;
+    unsigned char m_bOptimizedCoverBackground;
 };
 
 class SPanel : public SControl

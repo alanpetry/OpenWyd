@@ -3,6 +3,7 @@
 #include "TMGlobal.h"
 #include "TMLog.h"
 #include "ItemEffect.h"
+#include "OpenWydOptimized.h"
 #include <WinInet.h>
 
 char g_pAffectTable[MAX_EFFECT_STRING_TABLE][24];
@@ -32,6 +33,8 @@ STRUCT_GUILDZONE g_pGuildZone[MAX_GUILDZONE] =
 
 float BASE_ScreenResize(float size)
 {
+	if (OpenWydOptimizedEnabled())
+		return size * OpenWydOptimizedUiScale();
 	return (float)((float)g_pDevice->m_dwScreenWidth * (float)(size / 800.0f));
 }
 

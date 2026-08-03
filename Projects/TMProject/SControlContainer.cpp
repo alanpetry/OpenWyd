@@ -3,6 +3,7 @@
 #include "SControlContainer.h"
 #include "OpenWydOptimized.h"
 #include "SControl.h"
+#include "SGrid.h"
 #include "TMGlobal.h"
 
 #if defined(__EMSCRIPTEN__)
@@ -20,17 +21,39 @@ struct WydVisibleTextControl
 {
 	unsigned int id;
 	int type;
+	int align;
 	float x;
 	float y;
 	float width;
 	float height;
+	float renderX;
+	float renderY;
+	int textWidth;
+	int textHeight;
 	unsigned int color;
 	char text[256];
+};
+
+struct WydControlAuditSample
+{
+	unsigned int id;
+	unsigned int parentId;
+	int type;
+	int visible;
+	float localX;
+	float localY;
+	float absoluteX;
+	float absoluteY;
+	float width;
+	float height;
 };
 
 constexpr unsigned int kWydVisibleTextControlCapacity = 512;
 WydVisibleTextControl g_wydVisibleTextControls[kWydVisibleTextControlCapacity]{};
 unsigned int g_wydVisibleTextControlCount = 0;
+constexpr unsigned int kWydControlAuditCapacity = 8192;
+WydControlAuditSample g_wydControlAuditSamples[kWydControlAuditCapacity]{};
+unsigned int g_wydControlAuditCount = 0;
 
 SControl* WydFindControl(unsigned int idwControlID)
 {
@@ -79,10 +102,21 @@ void WydCollectVisibleTextControls(SControl* pControl)
 		auto& sample = g_wydVisibleTextControls[g_wydVisibleTextControlCount++];
 		sample.id = pControl->m_dwControlID;
 		sample.type = static_cast<int>(pControl->m_eCtrlType);
+		sample.align = static_cast<int>(pText->m_dwAlignType);
 		sample.x = WydControlAbsX(pControl);
 		sample.y = WydControlAbsY(pControl);
 		sample.width = pControl->m_nWidth;
 		sample.height = pControl->m_nHeight;
+		sample.renderX = pText->m_GCText.nPosX;
+		sample.renderY = pText->m_GCText.nPosY;
+		SIZE extent{};
+		GetTextExtentPoint32(
+			g_pDevice->m_hDC,
+			pText->m_GCText.strString,
+			strlen(pText->m_GCText.strString),
+			&extent);
+		sample.textWidth = extent.cx;
+		sample.textHeight = extent.cy;
 		sample.color = pText->m_GCText.dwColor;
 		std::snprintf(sample.text, sizeof(sample.text), "%s", pText->m_GCText.strString);
 	}
@@ -102,6 +136,44 @@ void WydRefreshVisibleTextControls()
 	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
 		return;
 	WydCollectVisibleTextControls(g_pCurrentScene->m_pControlContainer->m_pControlRoot);
+}
+
+void WydCollectControlAuditSamples(SControl* pControl)
+{
+	if (!pControl || g_wydControlAuditCount >= kWydControlAuditCapacity)
+		return;
+
+	if (pControl->m_dwControlID != 0)
+	{
+		auto& sample = g_wydControlAuditSamples[g_wydControlAuditCount++];
+		sample.id = pControl->m_dwControlID;
+		auto pParent = static_cast<SControl*>(pControl->m_pTop);
+		sample.parentId = pParent ? pParent->m_dwControlID : 0;
+		sample.type = static_cast<int>(pControl->m_eCtrlType);
+		sample.visible = WydControlIsEffectivelyVisible(pControl) ? 1 : 0;
+		sample.localX = pControl->m_nPosX;
+		sample.localY = pControl->m_nPosY;
+		sample.absoluteX = WydControlAbsX(pControl);
+		sample.absoluteY = WydControlAbsY(pControl);
+		sample.width = pControl->m_nWidth;
+		sample.height = pControl->m_nHeight;
+	}
+
+	for (TreeNode* pChild = pControl->m_pDown; pChild; pChild = pChild->m_pNextLink)
+		WydCollectControlAuditSamples(static_cast<SControl*>(pChild));
+}
+
+void WydRefreshControlAuditSamples()
+{
+	g_wydControlAuditCount = 0;
+	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
+		return;
+	WydCollectControlAuditSamples(g_pCurrentScene->m_pControlContainer->m_pControlRoot);
+}
+
+const WydControlAuditSample* WydControlAuditSampleAt(unsigned int index)
+{
+	return index < g_wydControlAuditCount ? &g_wydControlAuditSamples[index] : nullptr;
 }
 } // namespace
 
@@ -183,6 +255,11 @@ extern "C" int wyd_control_visible_text_type(unsigned int index)
 	const auto sample = WydVisibleTextControlAt(index);
 	return sample ? sample->type : -1;
 }
+extern "C" int wyd_control_visible_text_align(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->align : -1;
+}
 extern "C" float wyd_control_visible_text_x(unsigned int index)
 {
 	const auto sample = WydVisibleTextControlAt(index);
@@ -203,6 +280,26 @@ extern "C" float wyd_control_visible_text_height(unsigned int index)
 	const auto sample = WydVisibleTextControlAt(index);
 	return sample ? sample->height : 0.0f;
 }
+extern "C" float wyd_control_visible_text_render_x(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->renderX : 0.0f;
+}
+extern "C" float wyd_control_visible_text_render_y(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->renderY : 0.0f;
+}
+extern "C" int wyd_control_visible_text_extent_width(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->textWidth : 0;
+}
+extern "C" int wyd_control_visible_text_extent_height(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->textHeight : 0;
+}
 extern "C" unsigned int wyd_control_visible_text_color(unsigned int index)
 {
 	const auto sample = WydVisibleTextControlAt(index);
@@ -212,6 +309,115 @@ extern "C" const char* wyd_control_visible_text_value(unsigned int index)
 {
 	const auto sample = WydVisibleTextControlAt(index);
 	return sample ? sample->text : "";
+}
+extern "C" unsigned int wyd_control_audit_count()
+{
+	WydRefreshControlAuditSamples();
+	return g_wydControlAuditCount;
+}
+extern "C" unsigned int wyd_control_audit_id(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->id : 0;
+}
+extern "C" unsigned int wyd_control_audit_parent_id(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->parentId : 0;
+}
+extern "C" int wyd_control_audit_type(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->type : -1;
+}
+extern "C" int wyd_control_audit_visible(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->visible : 0;
+}
+extern "C" float wyd_control_audit_local_x(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->localX : 0.0f;
+}
+extern "C" float wyd_control_audit_local_y(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->localY : 0.0f;
+}
+extern "C" float wyd_control_audit_abs_x(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->absoluteX : 0.0f;
+}
+extern "C" float wyd_control_audit_abs_y(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->absoluteY : 0.0f;
+}
+extern "C" float wyd_control_audit_width(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->width : 0.0f;
+}
+extern "C" float wyd_control_audit_height(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->height : 0.0f;
+}
+extern "C" int wyd_control_grid_rows(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return 0;
+	return static_cast<SGridControl*>(pControl)->m_nRowGridCount;
+}
+extern "C" int wyd_control_grid_columns(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return 0;
+	return static_cast<SGridControl*>(pControl)->m_nColumnGridCount;
+}
+extern "C" int wyd_control_grid_item_count(unsigned int idwControlID)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return 0;
+	return static_cast<SGridControl*>(pControl)->m_nNumItem;
+}
+extern "C" float wyd_control_grid_item_width(unsigned int idwControlID, unsigned int index)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return 0.0f;
+	auto pGrid = static_cast<SGridControl*>(pControl);
+	return index < static_cast<unsigned int>(pGrid->m_nNumItem) && pGrid->m_pItemList[index]
+		? pGrid->m_pItemList[index]->m_nWidth : 0.0f;
+}
+extern "C" float wyd_control_grid_item_height(unsigned int idwControlID, unsigned int index)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return 0.0f;
+	auto pGrid = static_cast<SGridControl*>(pControl);
+	return index < static_cast<unsigned int>(pGrid->m_nNumItem) && pGrid->m_pItemList[index]
+		? pGrid->m_pItemList[index]->m_nHeight : 0.0f;
+}
+extern "C" int wyd_control_audit_populate_skill_belt()
+{
+	if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_FIELD)
+		return 0;
+
+	auto pField = static_cast<TMFieldScene*>(g_pCurrentScene);
+	if (!pField->m_pGridSkillBelt2 || !pField->m_pGridSkillBelt3 || !g_pObjectManager)
+		return 0;
+
+	for (int index = 0; index < 20; ++index)
+		g_pObjectManager->m_cShortSkill[index] = static_cast<char>(index);
+	g_pObjectManager->m_cSelectShortSkill = 0;
+	pField->UpdateSkillBelt();
+	return pField->m_pGridSkillBelt2->m_nNumItem + pField->m_pGridSkillBelt3->m_nNumItem;
 }
 #endif
 
