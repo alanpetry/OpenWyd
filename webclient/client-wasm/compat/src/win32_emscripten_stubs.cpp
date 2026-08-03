@@ -415,6 +415,11 @@ uint64_t g_tex_alpha_promoted_opaque = 0;
 uint64_t g_optimized_ui_sharpened_textures = 0;
 uint64_t g_optimized_ui_sharpened_pixels = 0;
 int g_optimized_ui_sharpen_override = -1;
+uint64_t g_optimized_ui_hd_textures = 0;
+uint64_t g_optimized_ui_hd_source_pixels = 0;
+uint64_t g_optimized_ui_hd_physical_pixels = 0;
+uint64_t g_optimized_ui_hd_microseconds = 0;
+int g_optimized_ui_hd_override = -1;
 uint64_t g_draw_fvf_xyzrhw = 0;
 uint64_t g_draw_fvf_weighted = 0;
 uint64_t g_draw_fvf_tex2plus = 0;
@@ -9385,6 +9390,192 @@ extern "C" uint32_t wyd_d3d9_optimized_ui_sharpened_pixels() {
   return static_cast<uint32_t>(g_optimized_ui_sharpened_pixels);
 }
 
+int RequestedOptimizedUiHdScale() {
+  if (g_optimized_ui_hd_override == 0 || wyd_optimized_view_enabled() == 0) {
+    return 1;
+  }
+  // The performance profile is the explicit low-memory path. Auto, Quality
+  // and Maximum reconstruct official UI atlases at two physical texels per
+  // authored texel. This does not change logical dimensions, RC crops,
+  // hitboxes or the original files bundled in the virtual filesystem.
+  if (g_optimized_ui_hd_override < 0 && wyd_optimized_quality_profile() == 1) {
+    return 1;
+  }
+  return 2;
+}
+
+struct PremultipliedRgbaSample {
+  int alpha = 0;
+  int red = 0;
+  int green = 0;
+  int blue = 0;
+};
+
+PremultipliedRgbaSample ReadPremultipliedRgba(const uint8_t* pixel) {
+  PremultipliedRgbaSample sample{};
+  if (!pixel) return sample;
+  sample.alpha = pixel[3];
+  sample.red = static_cast<int>(pixel[0]) * sample.alpha;
+  sample.green = static_cast<int>(pixel[1]) * sample.alpha;
+  sample.blue = static_cast<int>(pixel[2]) * sample.alpha;
+  return sample;
+}
+
+int CubicMidpointComponent(int outer_left, int left, int right, int outer_right) {
+  // Catmull-Rom evaluated exactly at t=0.5. Clamp to the adjacent authored
+  // samples so block-compression noise cannot create ringing or new extrema.
+  const int interpolated =
+      (-outer_left + 9 * left + 9 * right - outer_right + 8) / 16;
+  return std::max(std::min(left, right), std::min(std::max(left, right), interpolated));
+}
+
+void WritePremultipliedCubicMidpoint(
+    const uint8_t* outer_left,
+    const uint8_t* left,
+    const uint8_t* right,
+    const uint8_t* outer_right,
+    uint8_t* destination) {
+  if (!destination) return;
+  const PremultipliedRgbaSample a = ReadPremultipliedRgba(outer_left);
+  const PremultipliedRgbaSample b = ReadPremultipliedRgba(left);
+  const PremultipliedRgbaSample c = ReadPremultipliedRgba(right);
+  const PremultipliedRgbaSample d = ReadPremultipliedRgba(outer_right);
+  const int alpha = CubicMidpointComponent(a.alpha, b.alpha, c.alpha, d.alpha);
+  destination[3] = static_cast<uint8_t>(alpha);
+  if (alpha <= 0) {
+    destination[0] = destination[1] = destination[2] = 0u;
+    return;
+  }
+  const int premultiplied[3] = {
+      CubicMidpointComponent(a.red, b.red, c.red, d.red),
+      CubicMidpointComponent(a.green, b.green, c.green, d.green),
+      CubicMidpointComponent(a.blue, b.blue, c.blue, d.blue),
+  };
+  for (size_t channel = 0; channel < 3u; ++channel) {
+    const int value = (premultiplied[channel] + alpha / 2) / alpha;
+    destination[channel] = static_cast<uint8_t>(std::max(0, std::min(255, value)));
+  }
+}
+
+bool BuildOptimizedUiHdTexture(
+    const DummyDirect3DTexture9* tex,
+    const std::vector<uint8_t>& source,
+    std::vector<uint8_t>* destination,
+    UINT* destination_width,
+    UINT* destination_height) {
+  if (!tex || !destination || !destination_width || !destination_height ||
+      RequestedOptimizedUiHdScale() != 2 || tex->width < 2u || tex->height < 2u ||
+      (tex->debug_category_flags & kTexCatUi) == 0u ||
+      (tex->debug_category_flags & kTexCatFont) != 0u ||
+      source.size() < static_cast<size_t>(tex->width) * tex->height * 4u) {
+    return false;
+  }
+
+  GLint maximum_texture_size = 0;
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximum_texture_size);
+  const UINT output_width = tex->width * 2u;
+  const UINT output_height = tex->height * 2u;
+  if (maximum_texture_size <= 0 ||
+      output_width > static_cast<UINT>(maximum_texture_size) ||
+      output_height > static_cast<UINT>(maximum_texture_size)) {
+    return false;
+  }
+
+  const auto started_at = std::chrono::steady_clock::now();
+
+  // Separable 2x Catmull-Rom. Authored texels occupy every even coordinate;
+  // only the midpoint texels are reconstructed. RGB is interpolated after
+  // premultiplying by alpha, preventing the matte colours of transparent DXT
+  // blocks from leaking into icons, rounded panels and skill silhouettes.
+  std::vector<uint8_t> horizontal(
+      static_cast<size_t>(output_width) * tex->height * 4u,
+      0u);
+  for (UINT y = 0; y < tex->height; ++y) {
+    const uint8_t* source_row =
+        source.data() + static_cast<size_t>(y) * tex->width * 4u;
+    uint8_t* horizontal_row =
+        horizontal.data() + static_cast<size_t>(y) * output_width * 4u;
+    for (UINT x = 0; x < tex->width; ++x) {
+      const UINT previous = x > 0u ? x - 1u : x;
+      const UINT next = std::min(tex->width - 1u, x + 1u);
+      const UINT after_next = std::min(tex->width - 1u, x + 2u);
+      std::memcpy(horizontal_row + static_cast<size_t>(x * 2u) * 4u,
+                  source_row + static_cast<size_t>(x) * 4u,
+                  4u);
+      WritePremultipliedCubicMidpoint(
+          source_row + static_cast<size_t>(previous) * 4u,
+          source_row + static_cast<size_t>(x) * 4u,
+          source_row + static_cast<size_t>(next) * 4u,
+          source_row + static_cast<size_t>(after_next) * 4u,
+          horizontal_row + static_cast<size_t>(x * 2u + 1u) * 4u);
+    }
+  }
+
+  destination->assign(
+      static_cast<size_t>(output_width) * output_height * 4u,
+      0u);
+  const size_t horizontal_stride = static_cast<size_t>(output_width) * 4u;
+  for (UINT y = 0; y < tex->height; ++y) {
+    const UINT previous = y > 0u ? y - 1u : y;
+    const UINT next = std::min(tex->height - 1u, y + 1u);
+    const UINT after_next = std::min(tex->height - 1u, y + 2u);
+    const uint8_t* previous_row = horizontal.data() + static_cast<size_t>(previous) * horizontal_stride;
+    const uint8_t* current_row = horizontal.data() + static_cast<size_t>(y) * horizontal_stride;
+    const uint8_t* next_row = horizontal.data() + static_cast<size_t>(next) * horizontal_stride;
+    const uint8_t* after_next_row = horizontal.data() + static_cast<size_t>(after_next) * horizontal_stride;
+    uint8_t* even_row = destination->data() + static_cast<size_t>(y * 2u) * horizontal_stride;
+    uint8_t* odd_row = even_row + horizontal_stride;
+    std::memcpy(even_row, current_row, horizontal_stride);
+    for (UINT x = 0; x < output_width; ++x) {
+      const size_t offset = static_cast<size_t>(x) * 4u;
+      WritePremultipliedCubicMidpoint(
+          previous_row + offset,
+          current_row + offset,
+          next_row + offset,
+          after_next_row + offset,
+          odd_row + offset);
+    }
+  }
+
+  *destination_width = output_width;
+  *destination_height = output_height;
+  ++g_optimized_ui_hd_textures;
+  g_optimized_ui_hd_source_pixels += static_cast<uint64_t>(tex->width) * tex->height;
+  g_optimized_ui_hd_physical_pixels += static_cast<uint64_t>(output_width) * output_height;
+  g_optimized_ui_hd_microseconds += static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - started_at).count());
+  return true;
+}
+
+extern "C" void wyd_d3d9_set_optimized_ui_hd_enabled(int enabled) {
+  g_optimized_ui_hd_override = enabled < 0 ? -1 : (enabled != 0 ? 1 : 0);
+}
+
+extern "C" int wyd_d3d9_optimized_ui_hd_enabled() {
+  return RequestedOptimizedUiHdScale() == 2 ? 1 : 0;
+}
+
+extern "C" int wyd_d3d9_optimized_ui_hd_scale() {
+  return RequestedOptimizedUiHdScale();
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_hd_textures() {
+  return static_cast<uint32_t>(g_optimized_ui_hd_textures);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_hd_source_pixels() {
+  return static_cast<uint32_t>(g_optimized_ui_hd_source_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_hd_physical_pixels() {
+  return static_cast<uint32_t>(g_optimized_ui_hd_physical_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_hd_microseconds() {
+  return static_cast<uint32_t>(g_optimized_ui_hd_microseconds);
+}
+
 bool IsPowerOfTwo(UINT value) {
   return value != 0u && (value & (value - 1u)) == 0u;
 }
@@ -9448,6 +9639,13 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
     const bool one_to_one = std::abs(physical_scale - atlas_scale) < 0.10f;
     gl_min_filter = one_to_one ? GL_NEAREST : GL_LINEAR;
     gl_mag_filter = one_to_one ? GL_NEAREST : GL_LINEAR;
+  } else if (wyd_optimized_view_enabled() != 0 &&
+             (tex->debug_category_flags & kTexCatUi) != 0u) {
+    // HD UI atlases are physical-resolution derivatives and should be
+    // sampled continuously. Point sampling would discard the reconstructed
+    // midpoint texels and recreate the blocky legacy appearance.
+    gl_min_filter = GL_LINEAR;
+    gl_mag_filter = GL_LINEAR;
   }
 
   if (tex->gl_wrap_s != wrap_u) {
@@ -9515,17 +9713,27 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
       BuildGLTextureRGBA(tex, &rgba);
       if (rgba.empty()) return false;
       ApplyOptimizedUiSharpen(tex, &rgba);
+      std::vector<uint8_t> hd_rgba;
+      UINT upload_width = tex->width;
+      UINT upload_height = tex->height;
+      const bool uploaded_hd = BuildOptimizedUiHdTexture(
+          tex,
+          rgba,
+          &hd_rgba,
+          &upload_width,
+          &upload_height);
+      const uint8_t* upload_pixels = uploaded_hd ? hd_rgba.data() : rgba.data();
       glTexImage2D(
           GL_TEXTURE_2D,
           0,
           GL_RGBA,
-          static_cast<GLsizei>(tex->width),
-          static_cast<GLsizei>(tex->height),
+          static_cast<GLsizei>(upload_width),
+          static_cast<GLsizei>(upload_height),
           0,
           GL_RGBA,
           GL_UNSIGNED_BYTE,
-          rgba.data());
-      if (tex->mip_levels != 1u && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height)) {
+          upload_pixels);
+      if (tex->mip_levels != 1u && IsPowerOfTwo(upload_width) && IsPowerOfTwo(upload_height)) {
         glGenerateMipmap(GL_TEXTURE_2D);
       }
     }

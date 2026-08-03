@@ -101,6 +101,17 @@ async function runProbe(context, run) {
           itemHeights: Array.from({ length: count }, (_, i) => Module._wyd_control_grid_item_height(id, i)),
         };
       };
+      const initialGrids = [grid(65644), grid(65645)];
+      const auditCount = Module._wyd_control_audit_count();
+      for (let index = 0; index < auditCount; index += 1) {
+        const id = Module._wyd_control_audit_id(index);
+        if (id === 65644) Module._wyd_control_audit_set_raw_visible(index, 0);
+        if (id === 65645) Module._wyd_control_audit_set_raw_visible(index, 1);
+      }
+      // Exercise the second bank as rendered state, not merely as a hidden
+      // control whose item geometry still contains its authored fractions.
+      Module._wyd_tick_client();
+      const alternateGrids = [grid(65644), grid(65645)];
       return {
         populated,
         canvas: {
@@ -111,7 +122,8 @@ async function runProbe(context, run) {
           backingWidth: canvas.width,
           backingHeight: canvas.height,
         },
-        grids: [grid(65644), grid(65645)],
+        grids: initialGrids,
+        alternateGrids,
         glErrors: Module._wyd_d3d9_gl_error_total(),
       };
     });
@@ -148,7 +160,17 @@ try {
   for (const run of runs) result.runs.push(await runProbe(context, run));
   result.ok = result.errors.length === 0 && result.runs.every(run => (
     run.metrics.populated === 20 && run.metrics.glErrors === 0 &&
-    run.metrics.grids.every(grid => grid.itemCount === 10)
+    run.metrics.grids.every(grid => grid.itemCount === 10) &&
+    run.metrics.alternateGrids.every(grid => grid.itemCount === 10) &&
+    // The active optimized bank must cover the official 197 logical pixels
+    // exactly after physical-pixel snapping.  This catches the historic
+    // icon/cooldown/shortcut-box drift in both ten-skill pages.
+    (run.mode !== "optimized" || (
+      Math.abs(run.metrics.grids[0].itemWidths.reduce((sum, value) => sum + value, 0) - 197) < 0.01 &&
+      Math.abs(run.metrics.alternateGrids[1].itemWidths.reduce((sum, value) => sum + value, 0) - 197) < 0.01 &&
+      run.metrics.grids[0].itemWidths.every(value => Number.isInteger(value)) &&
+      run.metrics.alternateGrids[1].itemWidths.every(value => Number.isInteger(value))
+    ))
   ));
 } catch (error) {
   result.errors.push(error?.stack || error?.message || String(error));
