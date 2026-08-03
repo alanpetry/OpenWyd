@@ -5010,7 +5010,11 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
         &decoded_h,
         &decoded_rgba)) {
       g_tex_decode_success += 1;
-      if (MipLevels > 1u) {
+      // D3DX uses zero to request every mip level stored in the source.  The
+      // old bridge treated zero as "no mipmaps", so the most common/default
+      // D3DX request silently uploaded level zero only.  Preserve the authored
+      // DDS chain for both an explicit multi-level request and D3DX_DEFAULT.
+      if (MipLevels == 0u || MipLevels > 1u) {
         DecodeDDSDXTMipsToRGBA(
             static_cast<const uint8_t*>(pSrcData),
             static_cast<size_t>(SrcDataSize),
@@ -5051,7 +5055,10 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
     ApplyColorKeyRGBA(&decoded_rgba, ColorKey);
     PackRGBAForTexture(decoded_rgba, decoded_w, decoded_h, tex);
     if (!decoded_mips.empty()) {
-      decoded_mips.resize(std::min<size_t>(MipLevels, decoded_mips.size()));
+      const size_t requested_levels = MipLevels == 0u
+          ? decoded_mips.size()
+          : static_cast<size_t>(MipLevels);
+      decoded_mips.resize(std::min(requested_levels, decoded_mips.size()));
       for (DecodedTextureMip& mip : decoded_mips) ApplyColorKeyRGBA(&mip.rgba, ColorKey);
       tex->embedded_mips = std::move(decoded_mips);
     }
@@ -6289,6 +6296,8 @@ struct WasmNativeActorProgram {
   GLint uni_fog_params = -1;
   GLint uni_ambient = -1;
   GLint uni_diffuse = -1;
+  GLint uni_material_specular = -1;
+  GLint uni_material_power = -1;
   GLint uni_viewport_inv = -1;
   GLint uni_influence_count = -1;
   GLint uni_palette_size = -1;
@@ -10217,7 +10226,7 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
   }
   if (tex->gl_dirty) {
     const bool use_embedded_mips =
-      g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u &&
+        g_wasm_d3d9_state.webgl2 && tex->mip_levels != 1u &&
         !tex->embedded_mips.empty();
     if (use_embedded_mips) {
       for (size_t level = 0; level < tex->embedded_mips.size(); ++level) {
@@ -12008,6 +12017,7 @@ uniform int uSkinMeshVariant;
 out highp vec2 vUV0;
 out highp vec2 vUV1;
 out highp vec3 vLightNormal;
+out highp vec3 vViewDirection;
 out highp float vFogFactor;
 
 int safeBone(uint value) {
@@ -12077,6 +12087,11 @@ void main() {
         dot(cameraNormal, uNormalRows[2].xyz)));
   }
   vLightNormal = lightingNormal;
+  // Bone matrices in the official skin shaders already include the view
+  // transform, so cameraPosition is in view space and the eye is at origin.
+  // Keep this as a varying so the optimized fragment path can evaluate the
+  // official material's specular response per pixel instead of discarding it.
+  vViewDirection = normalize(-cameraPosition);
   vUV0 = aUV0;
   float generatedOffset = (uSkinMeshVariant == 1) ? uC0.y : uC0.z;
   vUV1 = vec2(cameraNormal.x + generatedOffset,
@@ -12111,6 +12126,8 @@ uniform vec4 uTextureFactor;
 uniform vec4 uLight;
 uniform vec4 uAmbient;
 uniform vec4 uDiffuse;
+uniform vec4 uMaterialSpecular;
+uniform float uMaterialPower;
 uniform int uAlphaTestEnable;
 uniform float uAlphaRef;
 uniform int uAlphaFunc;
@@ -12123,6 +12140,7 @@ uniform int uSkinMeshVariant;
 in highp vec2 vUV0;
 in highp vec2 vUV1;
 in highp vec3 vLightNormal;
+in highp vec3 vViewDirection;
 in highp float vFogFactor;
 layout(location = 0) out vec4 outColor;
 
@@ -12215,7 +12233,9 @@ vec3 linearToSrgb(vec3 value) {
 }
 
 void main() {
-  float ndotl = max(dot(normalize(vLightNormal), normalize(uLight.xyz)), 0.0);
+  vec3 surfaceNormal = normalize(vLightNormal);
+  vec3 lightDirection = normalize(uLight.xyz);
+  float ndotl = max(dot(surfaceNormal, lightDirection), 0.0);
   // skinmesh5 belongs to the original vegetation family. Its vs_1_1
   // bytecode emits c7+c8 instead of applying the directional N.L term.
   float lightScale = uSkinMeshVariant >= 5 ? 1.0 : ndotl;
@@ -12258,6 +12278,24 @@ void main() {
     vec4 a2 = resolveArg(uAlphaArg21, texel1, diffuse, current);
     current.a = applyAlphaOp(
         uAlphaOp1, a1.a, a2.a, current.a, diffuse.a, texel1.a);
+  }
+
+  // The DX9 skin shaders only carried diffuse/ambient lighting in vertex
+  // colors even though TMSkinMesh supplies a Specular material.  Preserve all
+  // authored inputs, but evaluate a restrained Blinn-Phong highlight per
+  // fragment in Optimized.  Transparent effects and skinmesh5 vegetation keep
+  // their exact additive/alpha behavior and do not receive this enhancement.
+  if (uLinearColor != 0 && uSkinMeshVariant < 5) {
+    vec3 viewDirection = normalize(vViewDirection);
+    vec3 halfDirection = normalize(lightDirection + viewDirection);
+    float authoredPower = uMaterialPower > 0.5 ? uMaterialPower : 28.0;
+    float highlight = pow(max(dot(surfaceNormal, halfDirection), 0.0),
+                          clamp(authoredPower, 4.0, 96.0));
+    vec3 specularColor = srgbToLinear(clamp(uMaterialSpecular.rgb, 0.0, 1.0));
+    // Keep the energy deliberately below the old fixed-function diffuse
+    // contribution.  This is enough to reveal curved armor at 4K without the
+    // plastic rim bands produced by an unmasked Fresnel term.
+    current.rgb += specularColor * (highlight * 0.055);
   }
 
   current = clamp(current, 0.0, 1.0);
@@ -12334,6 +12372,8 @@ void main() {
   NATIVE_ACTOR_UNIFORM(uni_fog_params, "uFogParams");
   NATIVE_ACTOR_UNIFORM(uni_ambient, "uAmbient");
   NATIVE_ACTOR_UNIFORM(uni_diffuse, "uDiffuse");
+  NATIVE_ACTOR_UNIFORM(uni_material_specular, "uMaterialSpecular");
+  NATIVE_ACTOR_UNIFORM(uni_material_power, "uMaterialPower");
   NATIVE_ACTOR_UNIFORM(uni_viewport_inv, "uViewportInv");
   NATIVE_ACTOR_UNIFORM(uni_influence_count, "uInfluenceCount");
   NATIVE_ACTOR_UNIFORM(uni_palette_size, "uPaletteSize");
@@ -12526,6 +12566,15 @@ bool TryDrawNativeActor(
                g_ffp_state.vertex_shader_constants.data() + 7 * 4);
   glUniform4fv(g_native_actor_program.uni_diffuse, 1,
                g_ffp_state.vertex_shader_constants.data() + 8 * 4);
+  glUniform4f(
+      g_native_actor_program.uni_material_specular,
+      g_wasm_d3d9_state.material.Specular.r,
+      g_wasm_d3d9_state.material.Specular.g,
+      g_wasm_d3d9_state.material.Specular.b,
+      g_wasm_d3d9_state.material.Specular.a);
+  glUniform1f(
+      g_native_actor_program.uni_material_power,
+      g_wasm_d3d9_state.material.Power);
   glUniform2f(
       g_native_actor_program.uni_viewport_inv,
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
