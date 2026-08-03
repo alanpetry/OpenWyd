@@ -14,6 +14,23 @@ int SCursor::m_nCursorType{ 0 };
 HCURSOR SCursor::m_hCursor1{};
 HCURSOR SCursor::m_hCursor2{};
 
+namespace
+{
+float ControlViewportWidth()
+{
+	return OpenWydOptimizedEnabled()
+		? static_cast<float>(g_pDevice->m_dwScreenWidth)
+		: 800.0f * RenderDevice::m_fWidthRatio;
+}
+
+float ControlViewportHeight()
+{
+	return OpenWydOptimizedEnabled()
+		? static_cast<float>(g_pDevice->m_dwScreenHeight)
+		: 600.0f * RenderDevice::m_fHeightRatio;
+}
+}
+
 SControl::SControl(float inPosX, float inPosY, float inWidth, float inHeight)
 	: TreeNode(0)
 {
@@ -390,8 +407,8 @@ void SPanel::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int inPare
 		m_GCPanel.nLayer = inParentLayer;
 		if ((float)(m_GCPanel.nPosX + m_GCPanel.nWidth) >= 0.0f &&
 			(float)(m_GCPanel.nPosY + m_GCPanel.nHeight) >= 0.0f &&
-			m_GCPanel.nPosX <= (float)(800.0 * RenderDevice::m_fWidthRatio) &&
-			m_GCPanel.nPosY <= (float)(600.0 * RenderDevice::m_fHeightRatio))
+			m_GCPanel.nPosX <= ControlViewportWidth() &&
+			m_GCPanel.nPosY <= ControlViewportHeight())
 		{
 			AddRenderControlItem(pDrawList, &m_GCPanel, inParentLayer);
 		}
@@ -870,8 +887,8 @@ void SText::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int inParen
 
 		if ((float)(m_GCBorder.nPosX + m_GCBorder.nWidth) < 0.0f ||
 			(float)(m_GCBorder.nPosY + m_GCBorder.nHeight) < 0.0f ||
-			m_GCBorder.nPosX > (float)(800.0f * RenderDevice::m_fWidthRatio) ||
-			m_GCBorder.nPosY > (float)(600.0f * RenderDevice::m_fHeightRatio))
+			m_GCBorder.nPosX > ControlViewportWidth() ||
+			m_GCBorder.nPosY > ControlViewportHeight())
 		{
 			return;
 		}
@@ -972,8 +989,8 @@ void SText::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int inParen
 
 	if ((float)(m_GCText.nPosX + m_GCText.nWidth) >= 0.0f &&
 		(float)(m_GCText.nPosY + m_GCText.nHeight) >= 0.0f &&
-		m_GCText.nPosX <= (float)(800.0f * RenderDevice::m_fWidthRatio) &&
-		m_GCText.nPosY <= (float)(600.0f * RenderDevice::m_fHeightRatio))
+		m_GCText.nPosX <= ControlViewportWidth() &&
+		m_GCText.nPosY <= ControlViewportHeight())
 	{
 		AddRenderControlItem(pDrawList, &m_GCText, inParentLayer);
 

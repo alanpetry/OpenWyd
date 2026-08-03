@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -27,7 +28,7 @@ from build_gdi_font_atlas import (  # noqa: E402
 from preload_manifest import read_preload_entries  # noqa: E402
 
 
-ASSET_STATE_SCHEMA_VERSION = 3
+ASSET_STATE_SCHEMA_VERSION = 4
 BOOTSTRAP_NAME = "openwyd_assets.js"
 STATE_NAME = "openwyd_assets.state.json"
 HASH_CACHE_SCHEMA_VERSION = 1
@@ -123,6 +124,109 @@ def _use_single_buffer_streaming_loader(loader_path: Path) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _use_bounded_memory_indexeddb_cache(loader_path: Path) -> None:
+    """Keep the monolithic package in IndexedDB without full-size copies.
+
+    Emscripten's default cache starts every 64 MB write/read concurrently.  On
+    a 500+ MB package that retains all chunk copies and, on reads, allocates a
+    second complete buffer for concatenation.  Process one chunk at a time and
+    copy it directly into the final buffer.  The package remains monolithic:
+    it is still completely restored and mounted before the client starts.
+    """
+
+    source = loader_path.read_text(encoding="utf-8")
+    cache_pattern = re.compile(
+        r"^        async function cacheRemotePackage\([\s\S]*?"
+        r"^        \}\r?\n\r?\n",
+        re.MULTILINE,
+    )
+    fetch_pattern = re.compile(
+        r"^        async function fetchCachedPackage\([\s\S]*?"
+        r"^        \}\r?\n\r?\n",
+        re.MULTILINE,
+    )
+    cache_replacement = """        async function cacheRemotePackage(db, packageName, packageData, packageMeta) {
+          var chunkCount = Math.ceil(packageData.byteLength / CHUNK_SIZE);
+
+          for (var chunkId = 0; chunkId < chunkCount; chunkId++) {
+            var chunkStart = chunkId * CHUNK_SIZE;
+            var chunkEnd = Math.min(packageData.byteLength, chunkStart + CHUNK_SIZE);
+            var chunk = packageData.slice(chunkStart, chunkEnd);
+            await new Promise((resolve, reject) => {
+              var transaction = db.transaction([PACKAGE_STORE_NAME], IDB_RW);
+              var packages = transaction.objectStore(PACKAGE_STORE_NAME);
+              var request = packages.put(chunk, `package/${packageName}/${chunkId}`);
+              request.onsuccess = resolve;
+              request.onerror = reject;
+              transaction.onabort = reject;
+            });
+            chunk = undefined;
+          }
+
+          await new Promise((resolve, reject) => {
+            var transaction = db.transaction([METADATA_STORE_NAME], IDB_RW);
+            var metadata = transaction.objectStore(METADATA_STORE_NAME);
+            var request = metadata.put(
+              {'uuid': packageMeta.uuid, 'chunkCount': chunkCount},
+              `metadata/${packageName}`
+            );
+            request.onsuccess = resolve;
+            request.onerror = reject;
+            transaction.onabort = reject;
+          });
+          return packageData;
+        }
+
+"""
+    fetch_replacement = """        async function fetchCachedPackage(db, packageName, metadata) {
+          var chunkCount = metadata['chunkCount'];
+          var packageData = new Uint8Array(REMOTE_PACKAGE_SIZE);
+          var byteOffset = 0;
+
+          for (var chunkId = 0; chunkId < chunkCount; chunkId++) {
+            var buffer = await new Promise((resolve, reject) => {
+              var transaction = db.transaction([PACKAGE_STORE_NAME], IDB_RO);
+              var packages = transaction.objectStore(PACKAGE_STORE_NAME);
+              var request = packages.get(`package/${packageName}/${chunkId}`);
+              request.onsuccess = (event) => {
+                if (!event.target.result) {
+                  reject(`CachedPackageNotFound for: ${packageName}`);
+                } else {
+                  resolve(event.target.result);
+                }
+              };
+              request.onerror = reject;
+              transaction.onabort = reject;
+            });
+            var chunk = new Uint8Array(buffer);
+            if (byteOffset + chunk.byteLength > packageData.byteLength) {
+              throw new Error(`Cached package exceeded declared size: ${packageName}`);
+            }
+            packageData.set(chunk, byteOffset);
+            byteOffset += chunk.byteLength;
+            chunk = undefined;
+            buffer = undefined;
+          }
+
+          if (byteOffset != packageData.byteLength) {
+            throw new Error(
+              `Cached package size mismatch: ${byteOffset}/${packageData.byteLength}`
+            );
+          }
+          return packageData.buffer;
+        }
+
+"""
+    source, cache_count = cache_pattern.subn(cache_replacement, source)
+    source, fetch_count = fetch_pattern.subn(fetch_replacement, source)
+    if cache_count != 1 or fetch_count != 1:
+        raise RuntimeError(
+            "unsupported Emscripten IndexedDB cache loader; expected one "
+            f"cache function and one fetch function, got {cache_count}/{fetch_count}"
+        )
+    loader_path.write_text(source, encoding="utf-8", newline="\n")
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -388,6 +492,8 @@ def build_asset_bundle(
                 for entry in entries
             ],
             f"--js-output={loader_name}",
+            "--use-preload-cache",
+            "--indexedDB-name=OPENWYD_PRELOAD_CACHE",
             "--no-node",
             "--quiet",
         ]
@@ -407,6 +513,7 @@ def build_asset_bundle(
                 "file_packager completed without producing data and loader"
             )
         _use_single_buffer_streaming_loader(staged_loader)
+        _use_bounded_memory_indexeddb_cache(staged_loader)
         os.replace(staged_data, link_dir / data_name)
         os.replace(staged_loader, link_dir / loader_name)
 

@@ -325,7 +325,7 @@
           </select>
         </label>
         <label>Interface
-          <input id="optimized-ui-scale" type="range" min="80" max="150" step="5" value="100" />
+          <input id="optimized-ui-scale" type="range" min="80" max="100" step="5" value="100" />
           <span id="optimized-ui-scale-value">100%</span>
         </label>
         <label>FPS
@@ -617,7 +617,7 @@
       : (QUALITY_PROFILES.has(storedQuality) ? storedQuality : 'auto');
     const requestedUiScale = Number.parseInt(query.get('uiScale') || '', 10);
     const storedUiScale = Number.parseInt(readDisplayPreference(OPTIMIZED_UI_SCALE_STORAGE_KEY), 10);
-    const optimizedUiScale = Math.max(80, Math.min(150,
+    const optimizedUiScale = Math.max(80, Math.min(100,
       Number.isFinite(requestedUiScale)
         ? requestedUiScale
         : (Number.isFinite(storedUiScale) ? storedUiScale : 100)));
@@ -942,7 +942,7 @@
     });
 
     optimizedUiScaleEl.addEventListener('input', () => {
-      autoConfig.uiScale = Math.max(80, Math.min(150, Number(optimizedUiScaleEl.value) || 100));
+      autoConfig.uiScale = Math.max(80, Math.min(100, Number(optimizedUiScaleEl.value) || 100));
       optimizedUiScaleValueEl.textContent = `${autoConfig.uiScale}%`;
       writeDisplayPreference(OPTIMIZED_UI_SCALE_STORAGE_KEY, String(autoConfig.uiScale));
       scheduleCanvasResize();

@@ -27,13 +27,15 @@ int ClampQuality(int value)
 	return std::max(0, std::min(3, value));
 }
 
-float CalculateUiScale(int cssWidth, int cssHeight, int uiScalePercent)
+float CalculateUiScale(int uiScalePercent)
 {
-	const float fitScale = std::min(
-		static_cast<float>(cssWidth) / 800.0f,
-		static_cast<float>(cssHeight) / 600.0f);
-	const float requested = static_cast<float>(uiScalePercent) / 100.0f;
-	return std::max(0.25f, fitScale * requested);
+	// The optimized viewport may be much larger than 800x600, but the RCs,
+	// fonts and hit boxes are still authored in logical client pixels.  A
+	// setting of 100% must therefore remain exactly one logical pixel per CSS
+	// pixel.  Scaling by the window's fit ratio made the whole interface 1.8x
+	// larger at 1920x1080 and also leaked into legacy scene calculations that
+	// use RenderDevice::m_fWidthRatio.
+	return static_cast<float>(uiScalePercent) / 100.0f;
 }
 
 float AnchorFactor(unsigned char anchor)
@@ -225,14 +227,13 @@ extern "C" int wyd_configure_optimized_view(
 	g_viewport.cssHeight = ClampDimension(cssHeight, 600);
 	g_viewport.backingWidth = ClampDimension(backingWidth, g_viewport.cssWidth);
 	g_viewport.backingHeight = ClampDimension(backingHeight, g_viewport.cssHeight);
-	g_viewport.uiScalePercent = std::max(80, std::min(150, uiScalePercent));
+	// Optimized may compact the official UI on a small viewport, but it never
+	// enlarges the authored font/control metrics.
+	g_viewport.uiScalePercent = std::max(80, std::min(100, uiScalePercent));
 	g_viewport.worldScalePercent = std::max(50, std::min(100, worldScalePercent));
 	g_viewport.worldScale = static_cast<float>(g_viewport.worldScalePercent) / 100.0f;
 	g_viewport.uiScale = OpenWydOptimizedEnabled()
-		? CalculateUiScale(
-			g_viewport.cssWidth,
-			g_viewport.cssHeight,
-			g_viewport.uiScalePercent)
+		? CalculateUiScale(g_viewport.uiScalePercent)
 		: static_cast<float>(g_viewport.cssWidth) / 800.0f;
 
 	if (OpenWydOptimizedEnabled())

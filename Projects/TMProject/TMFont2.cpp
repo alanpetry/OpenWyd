@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "TMFont2.h"
 #include "TMGlobal.h"
+#include "OpenWydOptimized.h"
 
 char* TMFont2::m_pBuffer{};
 unsigned int TMFont2::m_nLength = 0;
@@ -316,6 +317,15 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 		return TRUE;
 #endif
 
+	D3DFORMAT fontTextureFormat = D3DFORMAT::D3DFMT_A4R4G4B4;
+#if defined(__EMSCRIPTEN__)
+	// Preserve the original A4 texture in Legacy.  Optimized keeps the same
+	// 12 px metrics and geometry but retains all 256 coverage levels produced
+	// by the Tahoma rasterizer, avoiding the banded/noisy 4-bit outline.
+	if (OpenWydOptimizedEnabled())
+		fontTextureFormat = D3DFORMAT::D3DFMT_A8R8G8B8;
+#endif
+
 	if (m_pTexture == nullptr)
 	{
 		if (g_pDevice->m_bSavage == 1)
@@ -325,7 +335,7 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 				RenderDevice::m_nFontTextureSize / 8,
 				1,
 				0,
-				D3DFORMAT::D3DFMT_A4R4G4B4,
+				fontTextureFormat,
 				D3DPOOL::D3DPOOL_MANAGED,
 				&m_pTexture);
 		}
@@ -371,7 +381,7 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 				RenderDevice::m_nFontTextureSize / 8,
 				1,
 				0,
-				D3DFORMAT::D3DFMT_A4R4G4B4,
+				fontTextureFormat,
 				D3DPOOL::D3DPOOL_MANAGED,
 				1,
 				1,
@@ -420,11 +430,23 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 			// byte (>>24 on little-endian uint32).
 			const unsigned int pixel =
 				g_pDevice->m_pBitmapBits[nX + nY * RenderDevice::m_nFontTextureSize];
-			const unsigned char bAlpha =
-				static_cast<unsigned char>((pixel >> 24) & 0xFFu) >> 4;
+			const unsigned char alpha8 =
+				static_cast<unsigned char>((pixel >> 24) & 0xFFu);
+			const unsigned char bAlpha = alpha8 >> 4;
 #else
 			char bAlpha = (g_pDevice->m_pBitmapBits[nX + nY * RenderDevice::m_nFontTextureSize] & 0xFF) >> 4;
 #endif
+
+		#if defined(__EMSCRIPTEN__)
+			if (fontTextureFormat == D3DFORMAT::D3DFMT_A8R8G8B8)
+			{
+				reinterpret_cast<unsigned int*>(pDstRow)[nX] =
+					alpha8 == 0 ? 0u : (static_cast<unsigned int>(alpha8) << 24) | 0x00FFFFFFu;
+				if (alpha8 != 0)
+					++nAlphaPixels;
+				continue;
+			}
+		#endif
 
 			if (bAlpha <= 0)
 				*pDst16 = 0;

@@ -43,9 +43,27 @@ const context = await browserType.launchPersistentContext(profilePath, {
 const page = await context.newPage();
 const consoleErrors = [];
 const consoleLog = [];
+const consoleTasks = [];
 page.on("console", (message) => {
-  consoleLog.push(message.text());
-  if (message.type() === "error") consoleErrors.push(message.text());
+  const task = (async () => {
+    let rendered = message.text();
+    const values = [];
+    for (const argument of message.args()) {
+      try {
+        values.push(await argument.jsonValue());
+      } catch {
+        values.push(argument.toString());
+      }
+    }
+    if (values.length && (rendered === "JSHandle@object" || rendered === "[object Object]")) {
+      try {
+        rendered = JSON.stringify(values.length === 1 ? values[0] : values);
+      } catch {}
+    }
+    consoleLog.push(rendered);
+    if (message.type() === "error") consoleErrors.push(rendered);
+  })();
+  consoleTasks.push(task);
 });
 page.on("pageerror", (error) => consoleErrors.push(error?.message || String(error)));
 
@@ -149,6 +167,7 @@ try {
   const canvasRect = await page.locator("#canvas").boundingBox();
   if (!canvasRect) throw new Error("optimized canvas has no visible bounds");
   await page.screenshot({ path: screenshotPath, clip: canvasRect });
+  await Promise.all(consoleTasks);
   const scheduleCounts = Object.values(result.simulationSchedule || {});
   result.ok = consoleErrors.length === 0 &&
     scheduleCounts.length === 4 && Math.max(...scheduleCounts) - Math.min(...scheduleCounts) <= 1 &&

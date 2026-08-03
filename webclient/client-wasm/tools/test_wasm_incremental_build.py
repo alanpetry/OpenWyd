@@ -150,6 +150,34 @@ class IncrementalWasmBuildTests(unittest.TestCase):
             (link_dir / "bundle.data").unlink()
             self.assertFalse(assets.bundle_is_available(link_dir))
 
+    def test_indexeddb_cache_is_rewritten_without_retained_chunk_arrays(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            loader = Path(temporary) / "bundle.js"
+            loader.write_text(
+                """        async function cacheRemotePackage(db, packageName, packageData, packageMeta) {
+          var finishedChunks = 0;
+          return new Promise((resolve) => resolve(packageData));
+        }
+
+        async function fetchCachedPackage(db, packageName, metadata) {
+          var chunks = new Array(metadata['chunkCount']);
+          return new Promise((resolve) => resolve(chunks));
+        }
+
+""",
+                encoding="utf-8",
+            )
+            assets._use_bounded_memory_indexeddb_cache(loader)
+            source = loader.read_text(encoding="utf-8")
+            self.assertIn(
+                "var packageData = new Uint8Array(REMOTE_PACKAGE_SIZE);",
+                source,
+            )
+            self.assertIn("await new Promise", source)
+            self.assertIn("packageData.slice(chunkStart, chunkEnd)", source)
+            self.assertNotIn("finishedChunks", source)
+            self.assertNotIn("var chunks = new Array", source)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

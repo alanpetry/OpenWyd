@@ -369,7 +369,17 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 #endif
 
 	int _nFontSize = 14;
-	switch (m_dwScreenWidth)
+	if (OpenWydOptimizedEnabled())
+	{
+		// Optimized changes the amount of world visible, not the typography.
+		// The original resolution switch promotes every viewport wider than
+		// 1280 to a 24 px font; at 1920x1080 that made 12 px RC text twice as
+		// large and caused overlap even though the controls themselves stayed
+		// at 1:1 scale.  Keep the official 800x600 Tahoma metrics and improve
+		// only the atlas coverage/physical sampling in the optimized renderer.
+		_nFontSize = 12;
+	}
+	else switch (m_dwScreenWidth)
 	{
 	case 640:
 		_nFontSize = 10;
