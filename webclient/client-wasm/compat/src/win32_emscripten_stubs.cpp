@@ -6222,6 +6222,8 @@ struct WasmNativeColorProgram {
   GLint uni_wvp = -1;
   GLint uni_world_view = -1;
   GLint uni_viewport_inv = -1;
+  GLint uni_viewport_origin = -1;
+  GLint uni_screen_space = -1;
   GLint uni_sampler0 = -1;
   GLint uni_use_texture0 = -1;
   GLint uni_color_op0 = -1;
@@ -11825,7 +11827,7 @@ bool EnsureNativeActorProgram() {
 precision highp float;
 precision highp int;
 
-layout(location = 0) in vec3 aPosition;
+layout(location = 0) in vec4 aPosition;
 layout(location = 1) in vec4 aWeights;
 layout(location = 2) in uvec4 aIndices;
 layout(location = 3) in vec3 aNormal;
@@ -13184,18 +13186,28 @@ layout(location = 2) in vec2 aUV;
 uniform mat4 uWvp;
 uniform mat4 uWorldView;
 uniform vec2 uViewportInv;
+uniform vec2 uViewportOrigin;
+uniform int uScreenSpace;
 
 out highp vec4 vDiffuse;
 out highp vec2 vUV;
 out highp vec3 vViewPosition;
 
 void main() {
-  vec4 local = vec4(aPosition, 1.0);
-  vec4 clip = uWvp * local;
-  clip.x += clip.w * uViewportInv.x;
-  clip.y -= clip.w * uViewportInv.y;
-  clip.z = 2.0 * clip.z - clip.w;
-  gl_Position = clip;
+  vec4 local = vec4(aPosition.xyz, 1.0);
+  if (uScreenSpace != 0) {
+    float ndcX = (aPosition.x - uViewportOrigin.x) *
+        uViewportInv.x * 2.0 - 1.0 + uViewportInv.x;
+    float ndcY = 1.0 - (aPosition.y - uViewportOrigin.y) *
+        uViewportInv.y * 2.0 - uViewportInv.y;
+    gl_Position = vec4(ndcX, ndcY, aPosition.z * 2.0 - 1.0, 1.0);
+  } else {
+    vec4 clip = uWvp * local;
+    clip.x += clip.w * uViewportInv.x;
+    clip.y -= clip.w * uViewportInv.y;
+    clip.z = 2.0 * clip.z - clip.w;
+    gl_Position = clip;
+  }
   vDiffuse = aColorBGRA.bgra;
   vUV = aUV;
   vViewPosition = (uWorldView * local).xyz;
@@ -13318,7 +13330,7 @@ float fogFactor() {
 
 void main() {
   vec4 texel = uUseTexture0 != 0
-      ? texture(uSampler0, vUV) : vec4(1.0);
+      ? texture(uSampler0, vUV) : vec4(0.0, 0.0, 0.0, 1.0);
   vec4 current = vDiffuse;
   vec4 colorArg1 = resolveArg(uColorArg10, texel, current);
   vec4 colorArg2 = resolveArg(uColorArg20, texel, current);
@@ -13368,6 +13380,8 @@ void main() {
   NATIVE_COLOR_UNIFORM(uni_wvp, "uWvp");
   NATIVE_COLOR_UNIFORM(uni_world_view, "uWorldView");
   NATIVE_COLOR_UNIFORM(uni_viewport_inv, "uViewportInv");
+  NATIVE_COLOR_UNIFORM(uni_viewport_origin, "uViewportOrigin");
+  NATIVE_COLOR_UNIFORM(uni_screen_space, "uScreenSpace");
   NATIVE_COLOR_UNIFORM(uni_sampler0, "uSampler0");
   NATIVE_COLOR_UNIFORM(uni_use_texture0, "uUseTexture0");
   NATIVE_COLOR_UNIFORM(uni_color_op0, "uColorOp0");
@@ -13399,9 +13413,21 @@ bool TryDrawNativeColorVertexUP(
     UINT stride,
     DWORD fvf) {
   const WydRenderPass pass = ResolveNativeRenderPass();
-  const bool supported_pass =
+  const bool screen_space = fvf == 324u && stride == 28u;
+  const bool supported_layout =
+      (fvf == 322u && stride == 24u) || screen_space;
+  const bool supported_world_pass =
       pass == WydRenderPass::Vegetation || pass == WydRenderPass::Water ||
       pass == WydRenderPass::Transparent || pass == WydRenderPass::WorldText;
+  const bool supported_screen_pass =
+      pass == WydRenderPass::Ui || pass == WydRenderPass::Text;
+  const bool supported_pass = screen_space
+      ? supported_screen_pass
+      : supported_world_pass;
+  const DummyDirect3DTexture9* screen_texture =
+      screen_space ? AsTexture(g_ffp_state.textures[0]) : nullptr;
+  const bool screen_texture_ready =
+      screen_texture && !screen_texture->pixels.empty();
   const DWORD color_op0 = StageStateValue(
       0, D3DTSS_COLOROP, D3DTOP_MODULATE);
   const DWORD alpha_op0 = StageStateValue(
@@ -13409,7 +13435,8 @@ bool TryDrawNativeColorVertexUP(
   const DWORD color_op1 = StageStateValue(
       1, D3DTSS_COLOROP, D3DTOP_DISABLE);
   if (!OpenWydNativeRendererEnabled() || !supported_pass ||
-      vertex_count == 0u || !vertex_data || stride != 24u || fvf != 322u ||
+      vertex_count == 0u || !vertex_data || !supported_layout ||
+      (screen_space && !screen_texture_ready) ||
       g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
       color_op1 != D3DTOP_DISABLE || !NativeColorOpSupported(color_op0) ||
       !NativeColorOpSupported(alpha_op0) || !EnsureNativeColorProgram()) {
@@ -13443,17 +13470,26 @@ bool TryDrawNativeColorVertexUP(
     return reinterpret_cast<const void*>(value);
   };
   glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset(0));
+  glVertexAttribPointer(
+      0, screen_space ? 4 : 3, GL_FLOAT, GL_FALSE, stride, offset(0));
   glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, offset(12));
+  glVertexAttribPointer(
+      1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+      offset(screen_space ? 16 : 12));
   glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, offset(16));
+  glVertexAttribPointer(
+      2, 2, GL_FLOAT, GL_FALSE, stride,
+      offset(screen_space ? 20 : 16));
 
   glUniformMatrix4fv(color.uni_wvp, 1, GL_FALSE, &wvp._11);
   glUniformMatrix4fv(color.uni_world_view, 1, GL_FALSE, &world_view._11);
   glUniform2f(color.uni_viewport_inv,
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+  glUniform2f(color.uni_viewport_origin,
+      static_cast<float>(g_wasm_d3d9_state.viewport.X),
+      static_cast<float>(g_wasm_d3d9_state.viewport.Y));
+  glUniform1i(color.uni_screen_space, screen_space ? 1 : 0);
   const bool has_texture0 = BindTextureStage(0);
   glUniform1i(color.uni_sampler0, 0);
   glUniform1i(color.uni_use_texture0, has_texture0 ? 1 : 0);
@@ -13647,6 +13683,10 @@ bool TryDrawNativeColorObject(
   glUniform2f(color.uni_viewport_inv,
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+  glUniform2f(color.uni_viewport_origin,
+      static_cast<float>(g_wasm_d3d9_state.viewport.X),
+      static_cast<float>(g_wasm_d3d9_state.viewport.Y));
+  glUniform1i(color.uni_screen_space, 0);
   const bool has_texture0 = BindTextureStage(0);
   glUniform1i(color.uni_sampler0, 0);
   glUniform1i(color.uni_use_texture0, has_texture0 ? 1 : 0);
