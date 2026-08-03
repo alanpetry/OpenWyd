@@ -140,4 +140,5 @@ extern "C"
 	unsigned int wyd_native_renderer_command_texture_stages(unsigned int index);
 	unsigned int wyd_native_renderer_command_stride(unsigned int index);
 	unsigned int wyd_native_renderer_command_index_count(unsigned int index);
+	unsigned int wyd_native_renderer_command_supported(unsigned int index);
 }

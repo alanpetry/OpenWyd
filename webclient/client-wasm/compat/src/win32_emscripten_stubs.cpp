@@ -6033,6 +6033,7 @@ struct FFPVertex {
 struct WasmDrawScratch {
   std::vector<FFPVertex> decoded_vertices;
   std::vector<uint32_t> decoded_indices;
+  std::vector<uint8_t> raw_color_vertices;
 };
 
 WasmDrawScratch g_draw_scratch;
@@ -6213,6 +6214,37 @@ struct WasmNativeTerrainProgram {
   bool failed = false;
 };
 
+struct WasmNativeColorProgram {
+  GLuint program = 0;
+  std::array<GLuint, 3> vbo{};
+  std::array<GLsizeiptr, 3> capacities{};
+  size_t ring_index = 0;
+  GLint uni_wvp = -1;
+  GLint uni_world_view = -1;
+  GLint uni_viewport_inv = -1;
+  GLint uni_sampler0 = -1;
+  GLint uni_use_texture0 = -1;
+  GLint uni_color_op0 = -1;
+  GLint uni_color_arg10 = -1;
+  GLint uni_color_arg20 = -1;
+  GLint uni_alpha_op0 = -1;
+  GLint uni_alpha_arg10 = -1;
+  GLint uni_alpha_arg20 = -1;
+  GLint uni_texture_factor = -1;
+  GLint uni_fog_enable = -1;
+  GLint uni_fog_mode = -1;
+  GLint uni_fog_start = -1;
+  GLint uni_fog_end = -1;
+  GLint uni_fog_density = -1;
+  GLint uni_range_fog_enable = -1;
+  GLint uni_fog_color = -1;
+  GLint uni_alpha_test_enable = -1;
+  GLint uni_alpha_ref = -1;
+  GLint uni_alpha_func = -1;
+  bool ready = false;
+  bool failed = false;
+};
+
 struct Compare3DState {
   bool armed = false;
   bool valid = false;
@@ -6226,6 +6258,7 @@ struct Compare3DState {
 WasmFFPProgram g_ffp_program;
 WasmNativeActorProgram g_native_actor_program;
 WasmNativeTerrainProgram g_native_terrain_program;
+WasmNativeColorProgram g_native_color_program;
 WasmFixedFunctionState g_ffp_state;
 Compare3DState g_compare_3d_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
@@ -13106,6 +13139,590 @@ bool ConfigureNativeFixedObjectState(
   return true;
 }
 
+bool NativeColorOpSupported(DWORD op) {
+  switch (op) {
+    case D3DTOP_DISABLE:
+    case D3DTOP_SELECTARG1:
+    case D3DTOP_SELECTARG2:
+    case D3DTOP_MODULATE:
+    case D3DTOP_MODULATE2X:
+    case D3DTOP_MODULATE4X:
+    case D3DTOP_ADD:
+    case D3DTOP_ADDSIGNED:
+    case D3DTOP_ADDSIGNED2X:
+    case D3DTOP_SUBTRACT:
+    case D3DTOP_ADDSMOOTH:
+    case D3DTOP_BLENDDIFFUSEALPHA:
+    case D3DTOP_BLENDTEXTUREALPHA:
+    case D3DTOP_BLENDFACTORALPHA:
+    case D3DTOP_BLENDTEXTUREALPHAPM:
+    case D3DTOP_BLENDCURRENTALPHA:
+    case D3DTOP_MODULATEALPHA_ADDCOLOR:
+    case D3DTOP_MODULATECOLOR_ADDALPHA:
+    case D3DTOP_MODULATEINVALPHA_ADDCOLOR:
+    case D3DTOP_MODULATEINVCOLOR_ADDALPHA:
+    case D3DTOP_DOTPRODUCT3:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool EnsureNativeColorProgram() {
+  WasmNativeColorProgram& color = g_native_color_program;
+  if (color.ready) return true;
+  if (color.failed || !g_wasm_d3d9_state.webgl2 || !EnsureWasmContext())
+    return false;
+
+  static const char* kVertex = R"GLSL(#version 300 es
+precision highp float;
+
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec4 aColorBGRA;
+layout(location = 2) in vec2 aUV;
+
+uniform mat4 uWvp;
+uniform mat4 uWorldView;
+uniform vec2 uViewportInv;
+
+out highp vec4 vDiffuse;
+out highp vec2 vUV;
+out highp vec3 vViewPosition;
+
+void main() {
+  vec4 local = vec4(aPosition, 1.0);
+  vec4 clip = uWvp * local;
+  clip.x += clip.w * uViewportInv.x;
+  clip.y -= clip.w * uViewportInv.y;
+  clip.z = 2.0 * clip.z - clip.w;
+  gl_Position = clip;
+  vDiffuse = aColorBGRA.bgra;
+  vUV = aUV;
+  vViewPosition = (uWorldView * local).xyz;
+}
+)GLSL";
+
+  static const char* kFragment = R"GLSL(#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uSampler0;
+uniform int uUseTexture0;
+uniform int uColorOp0;
+uniform int uColorArg10;
+uniform int uColorArg20;
+uniform int uAlphaOp0;
+uniform int uAlphaArg10;
+uniform int uAlphaArg20;
+uniform vec4 uTextureFactor;
+uniform int uFogEnable;
+uniform int uFogMode;
+uniform float uFogStart;
+uniform float uFogEnd;
+uniform float uFogDensity;
+uniform int uRangeFogEnable;
+uniform vec4 uFogColor;
+uniform int uAlphaTestEnable;
+uniform float uAlphaRef;
+uniform int uAlphaFunc;
+
+in highp vec4 vDiffuse;
+in highp vec2 vUV;
+in highp vec3 vViewPosition;
+layout(location = 0) out vec4 outColor;
+
+vec4 resolveArg(int arg, vec4 texel, vec4 currentColor) {
+  int source = arg & 15;
+  vec4 value = vDiffuse;
+  if (source == 1) value = currentColor;
+  else if (source == 2) value = texel;
+  else if (source == 3) value = uTextureFactor;
+  if ((arg & 16) != 0) value = vec4(1.0) - value;
+  if ((arg & 32) != 0) value = value.aaaa;
+  return value;
+}
+
+vec4 applyColorOp(int op, vec4 a1, vec4 a2, vec4 currentColor, vec4 texel) {
+  if (op == 1) return currentColor;
+  if (op == 2) return a1;
+  if (op == 3) return a2;
+  if (op == 4) return a1 * a2;
+  if (op == 5) return min(a1 * a2 * 2.0, vec4(1.0));
+  if (op == 6) return min(a1 * a2 * 4.0, vec4(1.0));
+  if (op == 7) return min(a1 + a2, vec4(1.0));
+  if (op == 8) return clamp(a1 + a2 - vec4(0.5), 0.0, 1.0);
+  if (op == 9) return clamp((a1 + a2 - vec4(0.5)) * 2.0, 0.0, 1.0);
+  if (op == 10) return clamp(a1 - a2, 0.0, 1.0);
+  if (op == 11) return min(a1 + a2 * (vec4(1.0) - a1), vec4(1.0));
+  if (op == 12) return a1 * vDiffuse.a + a2 * (1.0 - vDiffuse.a);
+  if (op == 13) return a1 * texel.a + a2 * (1.0 - texel.a);
+  if (op == 14) return a1 * uTextureFactor.a + a2 * (1.0 - uTextureFactor.a);
+  if (op == 15) return min(a1 + a2 * (1.0 - texel.a), vec4(1.0));
+  if (op == 16) return a1 * currentColor.a + a2 * (1.0 - currentColor.a);
+  if (op == 18) return vec4(min(a1.rgb * a1.a + a2.rgb, vec3(1.0)), currentColor.a);
+  if (op == 19) return vec4(min(a1.rgb + a2.rgb * a1.a, vec3(1.0)), currentColor.a);
+  if (op == 20) return vec4(min((vec3(1.0) - a1.aaa) * a2.rgb + a1.rgb, vec3(1.0)), currentColor.a);
+  if (op == 21) return vec4(min((vec3(1.0) - a1.rgb) * a2.rgb + a1.aaa, vec3(1.0)), currentColor.a);
+  if (op == 24) {
+    float value = clamp(dot((a1.rgb - vec3(0.5)) * 2.0,
+                            (a2.rgb - vec3(0.5)) * 2.0), 0.0, 1.0);
+    return vec4(value, value, value, currentColor.a);
+  }
+  return currentColor;
+}
+
+float applyAlphaOp(int op, float a1, float a2, float currentA,
+                   float diffuseA, float textureA) {
+  if (op == 1) return currentA;
+  if (op == 2) return a1;
+  if (op == 3) return a2;
+  if (op == 4) return a1 * a2;
+  if (op == 5) return min(a1 * a2 * 2.0, 1.0);
+  if (op == 6) return min(a1 * a2 * 4.0, 1.0);
+  if (op == 7) return min(a1 + a2, 1.0);
+  if (op == 8) return clamp(a1 + a2 - 0.5, 0.0, 1.0);
+  if (op == 9) return clamp((a1 + a2 - 0.5) * 2.0, 0.0, 1.0);
+  if (op == 10) return clamp(a1 - a2, 0.0, 1.0);
+  if (op == 11) return min(a1 + a2 * (1.0 - a1), 1.0);
+  if (op == 12) return a1 * diffuseA + a2 * (1.0 - diffuseA);
+  if (op == 13) return a1 * textureA + a2 * (1.0 - textureA);
+  if (op == 14) return a1 * uTextureFactor.a + a2 * (1.0 - uTextureFactor.a);
+  if (op == 15) return min(a1 + a2 * (1.0 - textureA), 1.0);
+  if (op == 16) return a1 * currentA + a2 * (1.0 - currentA);
+  return currentA;
+}
+
+bool alphaTestPass(float alpha) {
+  if (uAlphaFunc == 1) return false;
+  if (uAlphaFunc == 2) return alpha < uAlphaRef;
+  if (uAlphaFunc == 3) return abs(alpha - uAlphaRef) < (1.0 / 255.0);
+  if (uAlphaFunc == 4) return alpha <= uAlphaRef;
+  if (uAlphaFunc == 5) return alpha > uAlphaRef;
+  if (uAlphaFunc == 6) return abs(alpha - uAlphaRef) >= (1.0 / 255.0);
+  if (uAlphaFunc == 7) return alpha >= uAlphaRef;
+  return true;
+}
+
+float fogFactor() {
+  if (uFogEnable == 0 || uFogMode == 0) return 1.0;
+  float distanceValue = uRangeFogEnable != 0
+      ? length(vViewPosition) : abs(vViewPosition.z);
+  if (uFogMode == 3)
+    return clamp((uFogEnd - distanceValue) /
+                 max(abs(uFogEnd - uFogStart), 1.0e-6), 0.0, 1.0);
+  if (uFogMode == 1)
+    return clamp(exp(-max(uFogDensity, 0.0) * distanceValue), 0.0, 1.0);
+  float densityDistance = max(uFogDensity, 0.0) * distanceValue;
+  return clamp(exp(-(densityDistance * densityDistance)), 0.0, 1.0);
+}
+
+void main() {
+  vec4 texel = uUseTexture0 != 0
+      ? texture(uSampler0, vUV) : vec4(1.0);
+  vec4 current = vDiffuse;
+  vec4 colorArg1 = resolveArg(uColorArg10, texel, current);
+  vec4 colorArg2 = resolveArg(uColorArg20, texel, current);
+  current.rgb = applyColorOp(
+      uColorOp0, colorArg1, colorArg2, current, texel).rgb;
+  vec4 alphaArg1 = resolveArg(uAlphaArg10, texel, current);
+  vec4 alphaArg2 = resolveArg(uAlphaArg20, texel, current);
+  current.a = applyAlphaOp(
+      uAlphaOp0, alphaArg1.a, alphaArg2.a, current.a,
+      vDiffuse.a, texel.a);
+  current = clamp(current, 0.0, 1.0);
+  if (uAlphaTestEnable != 0 && !alphaTestPass(current.a)) discard;
+  current.rgb = mix(uFogColor.rgb, current.rgb, fogFactor());
+  outColor = current;
+}
+)GLSL";
+
+  GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
+  if (!CompileShader(vertex, kVertex) || !CompileShader(fragment, kFragment)) {
+    if (vertex) glDeleteShader(vertex);
+    if (fragment) glDeleteShader(fragment);
+    color.failed = true;
+    return false;
+  }
+  color.program = glCreateProgram();
+  glAttachShader(color.program, vertex);
+  glAttachShader(color.program, fragment);
+  glLinkProgram(color.program);
+  glDeleteShader(vertex);
+  glDeleteShader(fragment);
+  GLint linked = GL_FALSE;
+  glGetProgramiv(color.program, GL_LINK_STATUS, &linked);
+  if (linked != GL_TRUE) {
+    char log[2048]{};
+    GLsizei length = 0;
+    glGetProgramInfoLog(color.program, sizeof(log) - 1, &length, log);
+    std::fprintf(stderr, "[WASM Native Color] program link failed: %s\n", log);
+    glDeleteProgram(color.program);
+    color.program = 0;
+    color.failed = true;
+    return false;
+  }
+  glGenBuffers(static_cast<GLsizei>(color.vbo.size()), color.vbo.data());
+#define NATIVE_COLOR_UNIFORM(field, name) \
+  color.field = glGetUniformLocation(color.program, name)
+  NATIVE_COLOR_UNIFORM(uni_wvp, "uWvp");
+  NATIVE_COLOR_UNIFORM(uni_world_view, "uWorldView");
+  NATIVE_COLOR_UNIFORM(uni_viewport_inv, "uViewportInv");
+  NATIVE_COLOR_UNIFORM(uni_sampler0, "uSampler0");
+  NATIVE_COLOR_UNIFORM(uni_use_texture0, "uUseTexture0");
+  NATIVE_COLOR_UNIFORM(uni_color_op0, "uColorOp0");
+  NATIVE_COLOR_UNIFORM(uni_color_arg10, "uColorArg10");
+  NATIVE_COLOR_UNIFORM(uni_color_arg20, "uColorArg20");
+  NATIVE_COLOR_UNIFORM(uni_alpha_op0, "uAlphaOp0");
+  NATIVE_COLOR_UNIFORM(uni_alpha_arg10, "uAlphaArg10");
+  NATIVE_COLOR_UNIFORM(uni_alpha_arg20, "uAlphaArg20");
+  NATIVE_COLOR_UNIFORM(uni_texture_factor, "uTextureFactor");
+  NATIVE_COLOR_UNIFORM(uni_fog_enable, "uFogEnable");
+  NATIVE_COLOR_UNIFORM(uni_fog_mode, "uFogMode");
+  NATIVE_COLOR_UNIFORM(uni_fog_start, "uFogStart");
+  NATIVE_COLOR_UNIFORM(uni_fog_end, "uFogEnd");
+  NATIVE_COLOR_UNIFORM(uni_fog_density, "uFogDensity");
+  NATIVE_COLOR_UNIFORM(uni_range_fog_enable, "uRangeFogEnable");
+  NATIVE_COLOR_UNIFORM(uni_fog_color, "uFogColor");
+  NATIVE_COLOR_UNIFORM(uni_alpha_test_enable, "uAlphaTestEnable");
+  NATIVE_COLOR_UNIFORM(uni_alpha_ref, "uAlphaRef");
+  NATIVE_COLOR_UNIFORM(uni_alpha_func, "uAlphaFunc");
+#undef NATIVE_COLOR_UNIFORM
+  color.ready = true;
+  return glGetError() == GL_NO_ERROR;
+}
+
+bool TryDrawNativeColorVertexUP(
+    D3DPRIMITIVETYPE primitive_type,
+    UINT vertex_count,
+    const void* vertex_data,
+    UINT stride,
+    DWORD fvf) {
+  const WydRenderPass pass = ResolveNativeRenderPass();
+  const bool supported_pass =
+      pass == WydRenderPass::Vegetation || pass == WydRenderPass::Water ||
+      pass == WydRenderPass::Transparent || pass == WydRenderPass::WorldText;
+  const DWORD color_op0 = StageStateValue(
+      0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+  const DWORD alpha_op0 = StageStateValue(
+      0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+  const DWORD color_op1 = StageStateValue(
+      1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+  if (!OpenWydNativeRendererEnabled() || !supported_pass ||
+      vertex_count == 0u || !vertex_data || stride != 24u || fvf != 322u ||
+      g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
+      color_op1 != D3DTOP_DISABLE || !NativeColorOpSupported(color_op0) ||
+      !NativeColorOpSupported(alpha_op0) || !EnsureNativeColorProgram()) {
+    return false;
+  }
+
+  D3DXMATRIX world_view{};
+  D3DXMATRIX wvp{};
+  D3DXMatrixMultiply(&world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
+  D3DXMatrixMultiply(&wvp, &world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
+
+  WasmNativeColorProgram& color = g_native_color_program;
+  glUseProgram(color.program);
+  color.ring_index = (color.ring_index + 1u) % color.vbo.size();
+  const GLuint vbo = color.vbo[color.ring_index];
+  const GLsizeiptr byte_count =
+      static_cast<GLsizeiptr>(vertex_count) * static_cast<GLsizeiptr>(stride);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  if (color.capacities[color.ring_index] < byte_count) {
+    glBufferData(GL_ARRAY_BUFFER, byte_count, nullptr, GL_STREAM_DRAW);
+    color.capacities[color.ring_index] = byte_count;
+  }
+  glBufferSubData(GL_ARRAY_BUFFER, 0, byte_count, vertex_data);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+  for (GLuint attribute = 0; attribute <= 6; ++attribute)
+    glDisableVertexAttribArray(attribute);
+  const auto offset = [](uintptr_t value) {
+    return reinterpret_cast<const void*>(value);
+  };
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, offset(12));
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, offset(16));
+
+  glUniformMatrix4fv(color.uni_wvp, 1, GL_FALSE, &wvp._11);
+  glUniformMatrix4fv(color.uni_world_view, 1, GL_FALSE, &world_view._11);
+  glUniform2f(color.uni_viewport_inv,
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+  const bool has_texture0 = BindTextureStage(0);
+  glUniform1i(color.uni_sampler0, 0);
+  glUniform1i(color.uni_use_texture0, has_texture0 ? 1 : 0);
+  glUniform1i(color.uni_color_op0, static_cast<GLint>(color_op0));
+  glUniform1i(color.uni_color_arg10, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_COLORARG1, D3DTA_TEXTURE)));
+  glUniform1i(color.uni_color_arg20, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_COLORARG2, D3DTA_DIFFUSE)));
+  glUniform1i(color.uni_alpha_op0, static_cast<GLint>(alpha_op0));
+  glUniform1i(color.uni_alpha_arg10, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE)));
+  glUniform1i(color.uni_alpha_arg20, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE)));
+  const D3DCOLORVALUE texture_factor =
+      ColorValueFromARGB(g_wasm_d3d9_state.texture_factor);
+  glUniform4f(color.uni_texture_factor,
+      texture_factor.r, texture_factor.g, texture_factor.b, texture_factor.a);
+
+  const bool fog_enabled =
+      ((g_debug_ffp_flags & kDebugDisableFog) == 0u) &&
+      g_wasm_d3d9_state.fog_enable != 0u &&
+      g_wasm_d3d9_state.fog_vertex_mode != D3DFOG_NONE;
+  const D3DCOLORVALUE fog_color =
+      ColorValueFromARGB(g_wasm_d3d9_state.fog_color);
+  glUniform1i(color.uni_fog_enable, fog_enabled ? 1 : 0);
+  glUniform1i(color.uni_fog_mode,
+      static_cast<GLint>(g_wasm_d3d9_state.fog_vertex_mode));
+  glUniform1f(color.uni_fog_start, g_wasm_d3d9_state.fog_start);
+  glUniform1f(color.uni_fog_end, g_wasm_d3d9_state.fog_end);
+  glUniform1f(color.uni_fog_density, g_wasm_d3d9_state.fog_density);
+  glUniform1i(color.uni_range_fog_enable,
+      g_wasm_d3d9_state.range_fog_enable != 0u ? 1 : 0);
+  glUniform4f(color.uni_fog_color,
+      fog_color.r, fog_color.g, fog_color.b, fog_color.a);
+  const bool alpha_test_enabled =
+      ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
+      g_wasm_d3d9_state.alpha_test_enable != 0u &&
+      g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS;
+  glUniform1i(color.uni_alpha_test_enable, alpha_test_enabled ? 1 : 0);
+  glUniform1f(color.uni_alpha_ref,
+      static_cast<float>(g_wasm_d3d9_state.alpha_ref & 0xFFu) / 255.0f);
+  glUniform1i(color.uni_alpha_func,
+      static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
+
+  const bool depth_test_enabled =
+      g_wasm_d3d9_state.z_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthTest) == 0u);
+  const bool depth_write_enabled =
+      g_wasm_d3d9_state.z_write_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthWrite) == 0u);
+  const bool blend_enabled =
+      g_wasm_d3d9_state.blend_enabled &&
+      ((g_debug_ffp_flags & kDebugDisableBlend) == 0u);
+  SetCapabilityCached(GL_DEPTH_TEST, depth_test_enabled);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(depth_write_enabled ? GL_TRUE : GL_FALSE);
+  SetCapabilityCached(GL_BLEND, blend_enabled);
+  if (blend_enabled) ApplyBlendState();
+  if ((g_debug_ffp_flags & kDebugDisableCull) != 0u)
+    SetCapabilityCached(GL_CULL_FACE, false);
+  else
+    ApplyCullState(IsMirroredMatrix3x3(
+        *reinterpret_cast<const D3DMATRIX*>(&world_view)));
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, false);
+
+  glDrawArrays(
+      PrimitiveToGL(primitive_type), 0, static_cast<GLsizei>(vertex_count));
+  const GLenum draw_error = glGetError();
+  g_ffp_program.program_bound = false;
+  g_ffp_program.vertex_input_bound = false;
+  g_ffp_program.index_buffer_bound = false;
+  return draw_error == GL_NO_ERROR;
+}
+
+bool TryDrawNativeColorIndexedUP(
+    D3DPRIMITIVETYPE primitive_type,
+    UINT min_vertex_index,
+    UINT num_vertices,
+    UINT primitive_count,
+    const void* index_data,
+    D3DFORMAT index_data_format,
+    const void* vertex_data,
+    UINT stride,
+    DWORD fvf) {
+  if (fvf != 322u || stride != 24u || !index_data || !vertex_data ||
+      num_vertices == 0u) {
+    return false;
+  }
+  const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
+  if (index_count == 0u ||
+      (index_data_format != D3DFMT_INDEX16 &&
+       index_data_format != D3DFMT_INDEX32)) {
+    return false;
+  }
+
+  std::vector<uint8_t>& expanded = g_draw_scratch.raw_color_vertices;
+  expanded.resize(static_cast<size_t>(index_count) * stride);
+  const auto* source = static_cast<const uint8_t*>(vertex_data) +
+      static_cast<size_t>(min_vertex_index) * stride;
+  for (UINT index = 0; index < index_count; ++index) {
+    const uint32_t source_index = index_data_format == D3DFMT_INDEX16
+        ? static_cast<const uint16_t*>(index_data)[index]
+        : static_cast<const uint32_t*>(index_data)[index];
+    if (source_index < min_vertex_index ||
+        source_index - min_vertex_index >= num_vertices) {
+      return false;
+    }
+    std::memcpy(
+        expanded.data() + static_cast<size_t>(index) * stride,
+        source + static_cast<size_t>(source_index - min_vertex_index) * stride,
+        stride);
+  }
+  return TryDrawNativeColorVertexUP(
+      primitive_type, index_count, expanded.data(), stride, fvf);
+}
+
+bool TryDrawNativeColorObject(
+    D3DPRIMITIVETYPE primitive_type,
+    INT base_vertex_index,
+    UINT start_index,
+    UINT primitive_count,
+    DummyDirect3DVertexBuffer9* vertex_buffer,
+    DummyDirect3DIndexBuffer9* index_buffer,
+    DWORD fvf,
+    UINT stride) {
+  const WydRenderPass pass = ResolveNativeRenderPass();
+  const bool supported_pass =
+      pass == WydRenderPass::Sky || pass == WydRenderPass::OpaqueWorld ||
+      pass == WydRenderPass::Vegetation || pass == WydRenderPass::Water ||
+      pass == WydRenderPass::Transparent || pass == WydRenderPass::WorldText;
+  const DWORD color_op0 = StageStateValue(
+      0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+  const DWORD alpha_op0 = StageStateValue(
+      0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+  const DWORD color_op1 = StageStateValue(
+      1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+  if (!OpenWydNativeRendererEnabled() || !supported_pass ||
+      primitive_type != D3DPT_TRIANGLELIST || fvf != 322u || stride != 24u ||
+      g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
+      color_op1 != D3DTOP_DISABLE || !NativeColorOpSupported(color_op0) ||
+      !NativeColorOpSupported(alpha_op0) || !vertex_buffer || !index_buffer ||
+      !EnsureNativeColorProgram() ||
+      !EnsureNativeVertexBufferResident(vertex_buffer) ||
+      !EnsureNativeIndexBufferResident(index_buffer)) {
+    return false;
+  }
+
+  const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
+  const size_t index_size =
+      index_buffer->format == D3DFMT_INDEX32 ? sizeof(uint32_t) : sizeof(uint16_t);
+  const size_t index_offset = static_cast<size_t>(start_index) * index_size;
+  const int64_t signed_vertex_offset =
+      static_cast<int64_t>(g_ffp_state.stream0_offset) +
+      static_cast<int64_t>(base_vertex_index) * static_cast<int64_t>(stride);
+  if (index_count == 0u ||
+      index_offset + static_cast<size_t>(index_count) * index_size >
+          index_buffer->data.size() ||
+      signed_vertex_offset < 0 ||
+      static_cast<uint64_t>(signed_vertex_offset) + stride >
+          vertex_buffer->data.size()) {
+    return false;
+  }
+
+  D3DXMATRIX world_view{};
+  D3DXMATRIX wvp{};
+  D3DXMatrixMultiply(&world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
+  D3DXMatrixMultiply(&wvp, &world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
+
+  WasmNativeColorProgram& color = g_native_color_program;
+  glUseProgram(color.program);
+  glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->native_gl_buffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer->native_gl_buffer);
+  for (GLuint attribute = 0; attribute <= 6; ++attribute)
+    glDisableVertexAttribArray(attribute);
+  const auto offset = [signed_vertex_offset](uintptr_t value) {
+    return reinterpret_cast<const void*>(
+        static_cast<uintptr_t>(signed_vertex_offset) + value);
+  };
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, offset(12));
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, offset(16));
+
+  glUniformMatrix4fv(color.uni_wvp, 1, GL_FALSE, &wvp._11);
+  glUniformMatrix4fv(color.uni_world_view, 1, GL_FALSE, &world_view._11);
+  glUniform2f(color.uni_viewport_inv,
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+  const bool has_texture0 = BindTextureStage(0);
+  glUniform1i(color.uni_sampler0, 0);
+  glUniform1i(color.uni_use_texture0, has_texture0 ? 1 : 0);
+  glUniform1i(color.uni_color_op0, static_cast<GLint>(color_op0));
+  glUniform1i(color.uni_color_arg10, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_COLORARG1, D3DTA_TEXTURE)));
+  glUniform1i(color.uni_color_arg20, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_COLORARG2, D3DTA_DIFFUSE)));
+  glUniform1i(color.uni_alpha_op0, static_cast<GLint>(alpha_op0));
+  glUniform1i(color.uni_alpha_arg10, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE)));
+  glUniform1i(color.uni_alpha_arg20, static_cast<GLint>(StageStateValue(
+      0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE)));
+  const D3DCOLORVALUE texture_factor =
+      ColorValueFromARGB(g_wasm_d3d9_state.texture_factor);
+  glUniform4f(color.uni_texture_factor,
+      texture_factor.r, texture_factor.g, texture_factor.b, texture_factor.a);
+
+  const bool fog_enabled =
+      ((g_debug_ffp_flags & kDebugDisableFog) == 0u) &&
+      g_wasm_d3d9_state.fog_enable != 0u &&
+      g_wasm_d3d9_state.fog_vertex_mode != D3DFOG_NONE;
+  const D3DCOLORVALUE fog_color =
+      ColorValueFromARGB(g_wasm_d3d9_state.fog_color);
+  glUniform1i(color.uni_fog_enable, fog_enabled ? 1 : 0);
+  glUniform1i(color.uni_fog_mode,
+      static_cast<GLint>(g_wasm_d3d9_state.fog_vertex_mode));
+  glUniform1f(color.uni_fog_start, g_wasm_d3d9_state.fog_start);
+  glUniform1f(color.uni_fog_end, g_wasm_d3d9_state.fog_end);
+  glUniform1f(color.uni_fog_density, g_wasm_d3d9_state.fog_density);
+  glUniform1i(color.uni_range_fog_enable,
+      g_wasm_d3d9_state.range_fog_enable != 0u ? 1 : 0);
+  glUniform4f(color.uni_fog_color,
+      fog_color.r, fog_color.g, fog_color.b, fog_color.a);
+  const bool alpha_test_enabled =
+      ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
+      g_wasm_d3d9_state.alpha_test_enable != 0u &&
+      g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS;
+  glUniform1i(color.uni_alpha_test_enable, alpha_test_enabled ? 1 : 0);
+  glUniform1f(color.uni_alpha_ref,
+      static_cast<float>(g_wasm_d3d9_state.alpha_ref & 0xFFu) / 255.0f);
+  glUniform1i(color.uni_alpha_func,
+      static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
+
+  const bool depth_test_enabled =
+      g_wasm_d3d9_state.z_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthTest) == 0u);
+  const bool depth_write_enabled =
+      g_wasm_d3d9_state.z_write_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthWrite) == 0u);
+  const bool blend_enabled =
+      g_wasm_d3d9_state.blend_enabled &&
+      ((g_debug_ffp_flags & kDebugDisableBlend) == 0u);
+  SetCapabilityCached(GL_DEPTH_TEST, depth_test_enabled);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(depth_write_enabled ? GL_TRUE : GL_FALSE);
+  SetCapabilityCached(GL_BLEND, blend_enabled);
+  if (blend_enabled) ApplyBlendState();
+  if ((g_debug_ffp_flags & kDebugDisableCull) != 0u)
+    SetCapabilityCached(GL_CULL_FACE, false);
+  else
+    ApplyCullState(IsMirroredMatrix3x3(
+        *reinterpret_cast<const D3DMATRIX*>(&world_view)));
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, false);
+
+  glDrawElements(
+      GL_TRIANGLES, static_cast<GLsizei>(index_count),
+      index_buffer->format == D3DFMT_INDEX32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+      reinterpret_cast<const void*>(index_offset));
+  const GLenum draw_error = glGetError();
+  g_ffp_program.program_bound = false;
+  g_ffp_program.vertex_input_bound = false;
+  g_ffp_program.index_buffer_bound = false;
+  return draw_error == GL_NO_ERROR;
+}
+
 bool TryDrawNativeStaticObject(
     D3DPRIMITIVETYPE primitive_type,
     INT base_vertex_index,
@@ -13796,6 +14413,18 @@ HRESULT WydD3D9Device_DrawPrimitiveUP(
     ResetUPStreamState(false);
     return S_OK;
   }
+  if (TryDrawNativeColorVertexUP(
+          primitive_type,
+          vertex_count,
+          vertex_stream_zero_data,
+          stride,
+          fvf)) {
+    OpenWydNativeRendererPromoteLastCommand();
+    g_ffp_state.draw_calls += 1;
+    g_ffp_state.primitive_count += primitive_count;
+    ResetUPStreamState(false);
+    return S_OK;
+  }
 
   std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
   vertices.clear();
@@ -13871,6 +14500,23 @@ HRESULT WydD3D9Device_DrawIndexedPrimitiveUP(
   if (ShouldSkipFVFDraw(fvf)) return S_OK;
   const UINT stride = EffectiveStride(fvf, vertex_stream_zero_stride);
   if (stride == 0) return D3DERR_INVALIDCALL;
+
+  if (TryDrawNativeColorIndexedUP(
+          primitive_type,
+          min_vertex_index,
+          num_vertices,
+          primitive_count,
+          index_data,
+          index_data_format,
+          vertex_stream_zero_data,
+          stride,
+          fvf)) {
+    OpenWydNativeRendererPromoteLastCommand();
+    g_ffp_state.draw_calls += 1;
+    g_ffp_state.primitive_count += primitive_count;
+    ResetUPStreamState(true);
+    return S_OK;
+  }
 
   std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
   vertices.clear();
@@ -14110,6 +14756,21 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
       &invalid_index);
   if (FAILED(hr)) return hr;
   if (invalid_index) return S_OK;
+
+  if (TryDrawNativeColorObject(
+          primitive_type,
+          base_vertex_index,
+          start_index,
+          primitive_count,
+          vb,
+          ib,
+          fvf,
+          stride)) {
+    OpenWydNativeRendererPromoteLastCommand();
+    g_ffp_state.draw_calls += 1;
+    g_ffp_state.primitive_count += primitive_count;
+    return S_OK;
+  }
 
   if (TryDrawNativeStaticObject(
           primitive_type,

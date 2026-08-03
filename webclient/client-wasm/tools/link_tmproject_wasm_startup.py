@@ -1122,6 +1122,7 @@ def main() -> int:
         "_wyd_native_renderer_command_texture_stages",
         "_wyd_native_renderer_command_stride",
         "_wyd_native_renderer_command_index_count",
+        "_wyd_native_renderer_command_supported",
         "_wyd_configure_optimized_view",
         "_wyd_optimized_view_enabled",
         "_wyd_optimized_quality_profile",

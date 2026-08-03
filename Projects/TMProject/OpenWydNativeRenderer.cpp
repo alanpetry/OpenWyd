@@ -13,6 +13,7 @@ WydRenderPass g_pass = WydRenderPass::Unknown;
 std::atomic<std::uint64_t> g_nextGeometry{1};
 std::uint64_t g_nextFrameId = 1;
 std::vector<WydRenderCommand> g_commands;
+std::vector<std::uint8_t> g_commandSupport;
 WydNativeRendererFrameStats g_current{};
 WydNativeRendererFrameStats g_last{};
 
@@ -83,8 +84,11 @@ void OpenWydNativeRendererBeginFrame()
 	if (!OpenWydNativeRendererEnabled())
 		return;
 	g_commands.clear();
+	g_commandSupport.clear();
 	if (g_commands.capacity() < 8192)
 		g_commands.reserve(8192);
+	if (g_commandSupport.capacity() < 8192)
+		g_commandSupport.reserve(8192);
 	g_current = {};
 	g_current.frameId = g_nextFrameId++;
 	g_current.streamHash = kFnvOffset;
@@ -110,6 +114,7 @@ void OpenWydNativeRendererRecord(const WydRenderCommand& source, bool supported)
 	if (command.pass == WydRenderPass::Unknown)
 		command.pass = g_pass;
 	g_commands.push_back(command);
+	g_commandSupport.push_back(supported ? 1u : 0u);
 	HashCommand(&g_current.streamHash, command);
 	++g_current.commandCount;
 	if (supported)
@@ -125,6 +130,7 @@ void OpenWydNativeRendererPromoteLastCommand()
 	if (g_current.fallbackDraws > 0)
 		--g_current.fallbackDraws;
 	++g_current.supportedDraws;
+	g_commandSupport.back() = 1u;
 }
 
 void OpenWydNativeRendererEndFrame()
@@ -246,5 +252,10 @@ WYD_NATIVE_COMMAND_FIELD_EXPORT(
 	wyd_native_renderer_command_stride, vertexStride)
 WYD_NATIVE_COMMAND_FIELD_EXPORT(
 	wyd_native_renderer_command_index_count, indexCount)
+
+extern "C" unsigned int wyd_native_renderer_command_supported(unsigned int index)
+{
+	return index < g_commandSupport.size() ? g_commandSupport[index] : 0u;
+}
 
 #undef WYD_NATIVE_COMMAND_FIELD_EXPORT

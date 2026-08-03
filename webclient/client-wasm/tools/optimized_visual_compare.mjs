@@ -229,9 +229,15 @@ async function snapshot(page) {
         psHash: `${values[4].toString(16).padStart(8, "0")}${values[5].toString(16).padStart(8, "0")}`,
         blend: values[6], depth: values[7], raster: values[8],
         textureStages: values[9], stride: values[10], draws: 0, indices: 0,
+        supported: 0, fallback: 0,
       };
       group.draws += 1;
       group.indices += Number(call("_wyd_native_renderer_command_index_count", index)) || 0;
+      if (Number(call("_wyd_native_renderer_command_supported", index)) || 0) {
+        group.supported += 1;
+      } else {
+        group.fallback += 1;
+      }
       nativeCommandGroups.set(key, group);
     }
     return {
