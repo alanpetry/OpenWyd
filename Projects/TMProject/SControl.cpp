@@ -58,9 +58,14 @@ SControl::SControl(float inPosX, float inPosY, float inWidth, float inHeight)
 	m_nWidth = inWidth * fWidthRatio;
 	m_nHeight = inHeight * fHeightRatio;
 	m_dwUniqueID = SControl::m_dwStaticID++;
+	m_fOptimizedAuthoredX = inPosX;
+	m_fOptimizedAuthoredY = inPosY;
+	m_fOptimizedAuthoredWidth = inWidth;
+	m_fOptimizedAuthoredHeight = inHeight;
 	m_cOptimizedAnchorX = 0;
 	m_cOptimizedAnchorY = 0;
 	m_bOptimizedRootLayout = 0;
+	m_bOptimizedCoverBackground = 0;
 }
 
 SControl::~SControl()
@@ -265,7 +270,11 @@ void SControl::SetCenterPos(unsigned int dwControlID, float inPosX, float inPosY
 	{
 		if (dwControlID == dwCenterUI[i])
 		{
-			m_nPosX = ((float)g_pDevice->m_dwScreenWidth * 0.5f) - inWidth * 0.5f;
+			if (OpenWydOptimizedEnabled())
+				OpenWydOptimizedConfigureCenteredControl(this);
+			else
+				m_nPosX = ((float)g_pDevice->m_dwScreenWidth * 0.5f) - inWidth * 0.5f;
+			break;
 		}
 	}
 }
@@ -930,27 +939,52 @@ void SText::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int inParen
 			SIZE size4;
 			GetTextExtentPoint32(g_pDevice->m_hDC, m_GCText4.strString, strlen(m_GCText4.strString), &size4);
 
-			auto fullSize = size2.cx + size3.cx + size4.cx;
-			m_GCText.nPosX = (float)(ivParentPos.x + m_nPosX) + ((m_nWidth - (float)fullSize) / 2.0f);
-			m_GCText2.nPosX = (float)(size2.cx / 2) + m_GCText.nPosX;
-			m_GCText3.nPosX = (float)(size3.cx / 2) + m_GCText2.nPosX;
-			m_GCText4.nPosX = (float)(size4.cx / 2) + m_GCText3.nPosX;
+			if (OpenWydOptimizedEnabled())
+			{
+				// These four strings are colour layers of the same value.  Each
+				// layer replaces the other groups with spaces, so they must share
+				// one origin.  Summing their complete widths separated the digits.
+				const int fullSize = std::max(
+					std::max(size.cx, size2.cx),
+					std::max(size3.cx, size4.cx));
+				const float origin = (float)(ivParentPos.x + m_nPosX)
+					+ ((m_nWidth - (float)fullSize) * 0.5f);
+				m_GCText.nPosX = origin;
+				m_GCText2.nPosX = origin;
+				m_GCText3.nPosX = origin;
+				m_GCText4.nPosX = origin;
+			}
+			else
+			{
+				auto fullSize = size2.cx + size3.cx + size4.cx;
+				m_GCText.nPosX = (float)(ivParentPos.x + m_nPosX) + ((m_nWidth - (float)fullSize) / 2.0f);
+				m_GCText2.nPosX = (float)(size2.cx / 2) + m_GCText.nPosX;
+				m_GCText3.nPosX = (float)(size3.cx / 2) + m_GCText2.nPosX;
+				m_GCText4.nPosX = (float)(size4.cx / 2) + m_GCText3.nPosX;
+			}
 		}
 	}
 	else if (m_dwAlignType == 2)
 	{
 		int len = strlen(m_GCText.strString);
-		m_GCText.nPosX = (float)((float)(ivParentPos.x + m_nPosX) + m_nWidth)
-			- (float)((float)(8 * len + 8) * fWidthRatio);
+		if (OpenWydOptimizedEnabled())
+		{
+			SIZE size{};
+			GetTextExtentPoint32(g_pDevice->m_hDC, m_GCText.strString, len, &size);
+			m_GCText.nPosX = (float)(ivParentPos.x + m_nPosX) + m_nWidth
+				- (float)size.cx - (8.0f * fWidthRatio);
+		}
+		else
+		{
+			m_GCText.nPosX = (float)((float)(ivParentPos.x + m_nPosX) + m_nWidth)
+				- (float)((float)(8 * len + 8) * fWidthRatio);
+		}
 
 		if (m_cComma == 2)
 		{
-			m_GCText2.nPosX = (float)((float)(ivParentPos.x + m_nPosX) + m_nWidth)
-				- (float)((float)(8 * len + 8) * fWidthRatio);
-			m_GCText3.nPosX = (float)((float)(ivParentPos.x + m_nPosX) + m_nWidth)
-				- (float)((float)(8 * len + 8) * fWidthRatio);
-			m_GCText4.nPosX = (float)((float)(ivParentPos.x + m_nPosX) + m_nWidth)
-				- (float)((float)(8 * len + 8) * fWidthRatio);
+			m_GCText2.nPosX = m_GCText.nPosX;
+			m_GCText3.nPosX = m_GCText.nPosX;
+			m_GCText4.nPosX = m_GCText.nPosX;
 		}
 	}
 	else if (m_dwAlignType == 3)

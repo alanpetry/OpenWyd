@@ -34,6 +34,7 @@ WydQualityProfile OpenWydOptimizedQuality();
 const WydViewportMetrics& OpenWydOptimizedViewport();
 float OpenWydOptimizedUiScale();
 void OpenWydOptimizedConfigureRootControl(SControl* control);
+void OpenWydOptimizedConfigureCenteredControl(SControl* control);
 void OpenWydOptimizedRelayoutControls(
 	SControlContainer* controls,
 	const WydViewportMetrics& previous,

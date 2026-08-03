@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "TMFieldScene.h"
+#include "OpenWydOptimized.h"
 #include "TMGlobal.h"
 #include "TMLog.h"
 #include "dsutil.h"
@@ -821,6 +822,15 @@ int TMFieldScene::InitializeScene()
 	memset(m_szWhisperList, 0, sizeof(m_szWhisperList));
 
 	m_pFadePanel->SetSize((float)g_pDevice->m_dwScreenWidth, (float)g_pDevice->m_dwScreenHeight);
+	if (OpenWydOptimizedEnabled())
+	{
+		// This panel is resized from its authored 800x520 dimensions to cover the
+		// complete viewport.  Keep its origin fixed as well; otherwise the root
+		// anchoring pass centers the old RC rectangle before this resize and the
+		// fullscreen fade starts at (extraWidth/2, extraHeight/2).
+		m_pFadePanel->SetStickLeft();
+		m_pFadePanel->SetStickTop();
+	}
 
 	m_pKingDomFlag = (SPanel*)m_pControlContainer->FindControl(65768);
 	if (m_pKingDomFlag)
@@ -991,10 +1001,27 @@ int TMFieldScene::InitializeScene()
 	m_pMainInfo1 = (SPanel*)m_pControlContainer->FindControl(65628u);
 	m_pMainInfo1_BG = (SPanel*)m_pControlContainer->FindControl(65641u);
 
-	m_pMainInfo1_BG->SetPos(((float)g_pDevice->m_dwScreenWidth - m_pMainInfo1_BG->m_nWidth) / 2.0f,
-		m_pMainInfo1_BG->m_nPosX);
-
-	m_pMainInfo1->SetStickLeft();
+	if (OpenWydOptimizedEnabled())
+	{
+		// FieldScene2 stores every bottom-HUD child (skill belt, quick slots,
+		// progress bars and buttons) under an authored 800px-wide root.  Moving
+		// only the background detached all interactive children on widescreen.
+		// Centre the whole root and keep the background relative to it.
+		m_pMainInfo1_BG->SetPos(
+			(m_pMainInfo1->m_nWidth - m_pMainInfo1_BG->m_nWidth) * 0.5f,
+			m_pMainInfo1_BG->m_nPosY);
+		m_pMainInfo1->m_cOptimizedAnchorX = 1;
+		m_pMainInfo1->m_bOptimizedRootLayout = 1;
+		m_pMainInfo1->m_nPosX =
+			(static_cast<float>(g_pDevice->m_dwScreenWidth) - m_pMainInfo1->m_nWidth) * 0.5f;
+	}
+	else
+	{
+		m_pMainInfo1_BG->SetPos(
+			(static_cast<float>(g_pDevice->m_dwScreenWidth) - m_pMainInfo1_BG->m_nWidth) * 0.5f,
+			m_pMainInfo1_BG->m_nPosY);
+		m_pMainInfo1->SetStickLeft();
+	}
 	m_pMainInfo1->SetStickBottom();
 
 	SPanel* pChatPanel = (SPanel*)m_pControlContainer->FindControl(65672);
@@ -14288,7 +14315,7 @@ void TMFieldScene::SetShortSkill(int nIndex, SGridControlItem* pGridItem)
 		memcpy(pNewItem2, pGridItem->m_pItem, sizeof(STRUCT_ITEM));
 
 		auto pNewGridItem = new SGridControlItem(nullptr, pNewItem2, 0.0f, 0.0f);
-		pBelt2->AddItem(pNewGridItem, nIndex, 0);
+		pBelt2->AddSkillItem(pNewGridItem, nIndex, 0);
 
 		if (g_pObjectManager->m_cSelectShortSkill == nIndex)
 			pNewGridItem->m_GCObj.nTextureSetIndex = 200;
@@ -14305,7 +14332,7 @@ void TMFieldScene::SetShortSkill(int nIndex, SGridControlItem* pGridItem)
 		memcpy(pNewItem3, pGridItem->m_pItem, sizeof(STRUCT_ITEM));
 
 		auto pNewGridItem = new SGridControlItem(nullptr, pNewItem3, 0.0f, 0.0f);
-		pBelt3->AddItem(pNewGridItem, nIndex - 10, 0);
+		pBelt3->AddSkillItem(pNewGridItem, nIndex - 10, 0);
 
 		if (g_pObjectManager->m_cSelectShortSkill == nIndex)
 			pNewGridItem->m_GCObj.nTextureSetIndex = 200;

@@ -47,6 +47,66 @@ float AnchorFactor(unsigned char anchor)
 	return 0.0f;
 }
 
+bool KeepAuthoredSceneCompositionTogether()
+{
+	if (!g_pCurrentScene)
+		return false;
+
+	// LoginScene*.bin is composed from several top-level image slices and
+	// top-level controls.  Anchoring each slice independently tears the
+	// original 800x600 composition apart on a wide viewport.  These historical
+	// scenes do not have their original scene classes in this checkout, so keep
+	// the complete official RC canvas together and centre it as one unit.
+	return g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_LOGIN ||
+		g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_CREATE_ACCOUNT;
+}
+
+bool IsFullBleedShellBackground(const SControl* control)
+{
+	if (!control || !g_pCurrentScene || control->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_PANEL)
+		return false;
+
+	if (g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_LOGIN)
+		return control->m_dwControlID >= 305 && control->m_dwControlID <= 312;
+
+	return g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_CREATE_ACCOUNT &&
+		control->m_dwControlID == 305;
+}
+
+void ApplyFullBleedShellBackground(
+	SControl* control,
+	const WydViewportMetrics& viewport)
+{
+	if (!control || !control->m_bOptimizedCoverBackground || !g_pCurrentScene)
+		return;
+
+	float sourceX = 0.0f;
+	float sourceY = 0.0f;
+	float sourceWidth = 798.0f;
+	float sourceHeight = 600.0f;
+	if (g_pCurrentScene->m_eSceneType == ESCENE_TYPE::ESCENE_CREATE_ACCOUNT)
+	{
+		sourceY = 100.0f;
+		sourceWidth = 800.0f;
+		sourceHeight = 400.0f;
+	}
+
+	const float coverScale = std::max(
+		static_cast<float>(viewport.cssWidth) / sourceWidth,
+		static_cast<float>(viewport.cssHeight) / sourceHeight);
+	const float offsetX =
+		(static_cast<float>(viewport.cssWidth) - sourceWidth * coverScale) * 0.5f -
+		sourceX * coverScale;
+	const float offsetY =
+		(static_cast<float>(viewport.cssHeight) - sourceHeight * coverScale) * 0.5f -
+		sourceY * coverScale;
+
+	control->m_nPosX = offsetX + control->m_fOptimizedAuthoredX * coverScale;
+	control->m_nPosY = offsetY + control->m_fOptimizedAuthoredY * coverScale;
+	control->m_nWidth = control->m_fOptimizedAuthoredWidth * coverScale;
+	control->m_nHeight = control->m_fOptimizedAuthoredHeight * coverScale;
+}
+
 unsigned char ClassifyHorizontal(float center)
 {
 	if (center < 320.0f)
@@ -88,6 +148,11 @@ void RelayoutRootControl(
 {
 	if (!control)
 		return;
+	if (control->m_bOptimizedCoverBackground)
+	{
+		ApplyFullBleedShellBackground(control, current);
+		return;
+	}
 
 	const float previousScale = std::max(0.001f, previous.uiScale);
 	const float currentScale = std::max(0.001f, current.uiScale);
@@ -174,15 +239,54 @@ void OpenWydOptimizedConfigureRootControl(SControl* control)
 		return;
 
 	const float scale = std::max(0.001f, g_viewport.uiScale);
-	const float centerX = control->m_nPosX / scale + control->m_nWidth / scale * 0.5f;
-	const float centerY = control->m_nPosY / scale + control->m_nHeight / scale * 0.5f;
-	control->m_cOptimizedAnchorX = ClassifyHorizontal(centerX);
-	control->m_cOptimizedAnchorY = ClassifyVertical(centerY);
+	control->m_fOptimizedAuthoredX = control->m_nPosX / scale;
+	control->m_fOptimizedAuthoredY = control->m_nPosY / scale;
+	control->m_fOptimizedAuthoredWidth = control->m_nWidth / scale;
+	control->m_fOptimizedAuthoredHeight = control->m_nHeight / scale;
+	control->m_bOptimizedCoverBackground = IsFullBleedShellBackground(control) ? 1 : 0;
+	if (control->m_bOptimizedCoverBackground)
+	{
+		control->m_cOptimizedAnchorX = 1;
+		control->m_cOptimizedAnchorY = 1;
+		control->m_bOptimizedRootLayout = 1;
+		ApplyFullBleedShellBackground(control, g_viewport);
+		return;
+	}
+	if (KeepAuthoredSceneCompositionTogether())
+	{
+		control->m_cOptimizedAnchorX = 1;
+		control->m_cOptimizedAnchorY = 1;
+	}
+	else
+	{
+		const float centerX = control->m_nPosX / scale + control->m_nWidth / scale * 0.5f;
+		const float centerY = control->m_nPosY / scale + control->m_nHeight / scale * 0.5f;
+		control->m_cOptimizedAnchorX = ClassifyHorizontal(centerX);
+		control->m_cOptimizedAnchorY = ClassifyVertical(centerY);
+	}
 	control->m_bOptimizedRootLayout = 1;
 
 	const float extraWidth = static_cast<float>(g_viewport.cssWidth) - 800.0f * scale;
 	const float extraHeight = static_cast<float>(g_viewport.cssHeight) - 600.0f * scale;
 	control->m_nPosX += extraWidth * AnchorFactor(control->m_cOptimizedAnchorX);
+	control->m_nPosY += extraHeight * AnchorFactor(control->m_cOptimizedAnchorY);
+}
+
+void OpenWydOptimizedConfigureCenteredControl(SControl* control)
+{
+	if (!OpenWydOptimizedEnabled() || !control || control->m_bOptimizedRootLayout)
+		return;
+
+	const float scale = std::max(0.001f, g_viewport.uiScale);
+	const float authoredCenterY =
+		control->m_nPosY / scale + control->m_nHeight / scale * 0.5f;
+	control->m_cOptimizedAnchorX = 1;
+	control->m_cOptimizedAnchorY = ClassifyVertical(authoredCenterY);
+	control->m_bOptimizedRootLayout = 1;
+
+	const float extraHeight = static_cast<float>(g_viewport.cssHeight) - 600.0f * scale;
+	control->m_nPosX =
+		(static_cast<float>(g_viewport.cssWidth) - control->m_nWidth) * 0.5f;
 	control->m_nPosY += extraHeight * AnchorFactor(control->m_cOptimizedAnchorY);
 }
 

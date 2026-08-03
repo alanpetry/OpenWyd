@@ -66,6 +66,7 @@ char* SGridControl::m_szParamString[49] = {
 SGridControl::SGridControl(unsigned int inTextureSetIndex, int inRowGridCount, int inColumnGridCount, float inX, float inY, float inWidth, float inHeight, TMEITEMTYPE type)
 	: SPanel(inTextureSetIndex, inX, inY, inWidth, inHeight, 0xFFFFFFFF, RENDERCTRLTYPE::RENDER_IMAGE_STRETCH)
 {
+	m_eCtrlType = CONTROL_TYPE::CTRL_TYPE_GRID;
 	m_eItemType = type;
 	m_nRowGridCount = inRowGridCount;
 	m_nColumnGridCount = inColumnGridCount;
@@ -707,6 +708,9 @@ int SGridControl::AddItem(SGridControlItem* ipNewItem, int inCellIndexX, int inC
 
 int SGridControl::AddSkillItem(SGridControlItem* ipNewItem, int inCellIndexX, int inCellIndexY)
 {
+	if (!ipNewItem || m_nColumnGridCount <= 0 || m_nRowGridCount <= 0)
+		return 0;
+
 	for (int nY = 0; nY < ipNewItem->m_nCellHeight; ++nY)
 	{
 		for (int nX = 0; nX < ipNewItem->m_nCellWidth; ++nX)
@@ -719,8 +723,18 @@ int SGridControl::AddSkillItem(SGridControlItem* ipNewItem, int inCellIndexX, in
 	ipNewItem->SetGridControl(this);
 	ipNewItem->m_nCellIndexX = inCellIndexX;
 	ipNewItem->m_nCellIndexY = inCellIndexY;
-	ipNewItem->m_nWidth = 24.0f * RenderDevice::m_fWidthRatio;
-	ipNewItem->m_nHeight = 24.0f * RenderDevice::m_fHeightRatio;
+
+	// Skill-belt cells are not guaranteed to be 24x24 (the official
+	// FieldScene2 belt is 197x24 for ten columns).  The old hard-coded size
+	// made every icon cover part of the next slot.  Fit the square official
+	// icon inside the real cell and centre it without changing its aspect.
+	const float fCellWidth = m_nWidth / static_cast<float>(m_nColumnGridCount);
+	const float fCellHeight = m_nHeight / static_cast<float>(m_nRowGridCount);
+	const float fItemSize = std::min(fCellWidth, fCellHeight);
+	ipNewItem->m_nWidth = fItemSize;
+	ipNewItem->m_nHeight = fItemSize;
+	ipNewItem->m_nPosX = (fCellWidth - fItemSize) * 0.5f;
+	ipNewItem->m_nPosY = (fCellHeight - fItemSize) * 0.5f;
 	m_pItemList[m_nNumItem++] = ipNewItem;
 
 	TMMesh* pMesh = g_pMeshManager->GetCommonMesh(ipNewItem->m_GCObj.n3DObjIndex, 0, 180000);

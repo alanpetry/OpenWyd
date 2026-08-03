@@ -1911,7 +1911,9 @@ int RenderDevice::SetViewVector(TMVector3 ivCamera, TMVector3 ivLookat)
 HRESULT RenderDevice::SetProjectionMatrix()
 {
 	float fovYRadians = RenderDevice::m_fFOVY * D3DXToRadian(180);
-	if (OpenWydOptimizedEnabled())
+	const bool preserveCinematicVerticalFraming =
+		g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_DEMO;
+	if (OpenWydOptimizedEnabled() && !preserveCinematicVerticalFraming)
 	{
 		// Keep the physical size of world objects close to the official
 		// 800x600 view.  Reusing the same vertical FOV at 1080p made a character
@@ -1919,14 +1921,13 @@ HRESULT RenderDevice::SetProjectionMatrix()
 		// it 1.8x larger.  Increasing the FOV from the tangent of the base
 		// projection reveals more world vertically and horizontally while the
 		// UI remains at its authored 1:1 size.
-		// Expanding without limit exposes the hard edge of 128x128 Field
-		// blocks whose official data deliberately has no neighbour.  Cap the
-		// vertical coverage at 1.5x: a 1080p view is still substantially zoomed
-		// out versus Legacy, but never asks the original two-block streamer to
-		// render a third block behind the camera.
-		const float viewportHeight = std::min(
-			900.0f,
-			static_cast<float>(std::max<DWORD>(1, m_dwScreenHeight - m_nHeightShift)));
+		// Use the complete logical viewport height.  Capping this at 900 made a
+		// 1080p character roughly 20% larger in screen pixels than the official
+		// 800x600 framing -- exactly the opposite of an expanded viewport.  The
+		// optimized renderer must reveal more world while preserving the authored
+		// on-screen scale of characters and objects.
+		const float viewportHeight =
+			static_cast<float>(std::max<DWORD>(1, m_dwScreenHeight - m_nHeightShift));
 		const float baseHeight = 600.0f;
 		const float halfTangent = tanf(fovYRadians * 0.5f)
 			* (viewportHeight / baseHeight);
