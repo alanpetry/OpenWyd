@@ -1910,8 +1910,34 @@ int RenderDevice::SetViewVector(TMVector3 ivCamera, TMVector3 ivLookat)
 
 HRESULT RenderDevice::SetProjectionMatrix()
 {
+	float fovYRadians = RenderDevice::m_fFOVY * D3DXToRadian(180);
+	if (OpenWydOptimizedEnabled())
+	{
+		// Keep the physical size of world objects close to the official
+		// 800x600 view.  Reusing the same vertical FOV at 1080p made a character
+		// occupy the same fraction of a much taller canvas, effectively drawing
+		// it 1.8x larger.  Increasing the FOV from the tangent of the base
+		// projection reveals more world vertically and horizontally while the
+		// UI remains at its authored 1:1 size.
+		// Expanding without limit exposes the hard edge of 128x128 Field
+		// blocks whose official data deliberately has no neighbour.  Cap the
+		// vertical coverage at 1.5x: a 1080p view is still substantially zoomed
+		// out versus Legacy, but never asks the original two-block streamer to
+		// render a third block behind the camera.
+		const float viewportHeight = std::min(
+			900.0f,
+			static_cast<float>(std::max<DWORD>(1, m_dwScreenHeight - m_nHeightShift)));
+		const float baseHeight = 600.0f;
+		const float halfTangent = tanf(fovYRadians * 0.5f)
+			* (viewportHeight / baseHeight);
+		fovYRadians = 2.0f * atanf(halfTangent);
+		fovYRadians = std::max(
+			D3DXToRadian(20.0f),
+			std::min(D3DXToRadian(120.0f), fovYRadians));
+	}
+
 	D3DXMatrixPerspectiveFovLH(&m_matProj, 
-		RenderDevice::m_fFOVY * D3DXToRadian(180),
+		fovYRadians,
 		(float)((float)(m_dwScreenWidth - m_nWidthShift) / (float)(m_dwScreenHeight - m_nHeightShift)) * 1.0f,
 		g_ClipNear * 1.4f,
 		g_ClipFar);

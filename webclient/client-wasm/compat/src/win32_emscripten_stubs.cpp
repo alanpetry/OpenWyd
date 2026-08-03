@@ -812,6 +812,7 @@ constexpr uint32_t kTexCatShadow = 1u << 8;
 constexpr uint32_t kTexCatLightmap = 1u << 9;
 constexpr uint32_t kTexCatRain = 1u << 10;
 constexpr uint32_t kTexCatPattern = 1u << 11;
+constexpr uint32_t kTexCatFont = 1u << 12;
 
 uint32_t ComputeTextureCategoryFlags(const std::string& path) {
   uint32_t flags = 0;
@@ -4833,6 +4834,14 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
     tex->debug_source_path = g_last_closed_debug_source_path;
     tex->debug_category_flags = ComputeTextureCategoryFlags(tex->debug_source_path);
     g_last_closed_debug_source_path.clear();
+  }
+  // TMFont2 owns a single-line 512x64 dynamic atlas.  Keep it separate from
+  // ordinary RC art so optimized font smoothing does not blur every panel,
+  // icon and border in the interface.
+  if (w == 512u && h == 64u && MipLevels == 1u &&
+      (texture_format == D3DFMT_A4R4G4B4 ||
+       texture_format == D3DFMT_A8R8G8B8)) {
+    tex->debug_category_flags |= kTexCatFont | kTexCatUi;
   }
   if (!decoded_rgba.empty() && decoded_w > 0 && decoded_h > 0) {
     ApplyColorKeyRGBA(&decoded_rgba, ColorKey);
@@ -9142,10 +9151,11 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
   GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
   if (wyd_optimized_view_enabled() != 0 &&
-      (tex->debug_category_flags & kTexCatUi) != 0u) {
-    // RC textures were authored for integer 800x600 coordinates. Linear
-    // sampling avoids pixel stair-steps when the optimized UI is placed at a
-    // non-integer physical scale, while keeping the legacy sampler untouched.
+      (tex->debug_category_flags & kTexCatFont) != 0u) {
+    // Fonts retain their exact logical metrics while A8 coverage is resolved
+    // smoothly at the physical canvas resolution.  Ordinary UI art keeps its
+    // original sampler; forcing GL_LINEAR for all RC textures made it blurrier
+    // than Legacy.
     gl_min_filter = GL_LINEAR;
     gl_mag_filter = GL_LINEAR;
   }

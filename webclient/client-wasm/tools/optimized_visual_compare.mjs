@@ -1,0 +1,295 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import playwrightPkg from "../../node_modules/playwright/index.js";
+import { chromiumLaunchOptions } from "../../tools/playwright_portable_browser.mjs";
+
+const { chromium } = playwrightPkg;
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const baseUrl = process.argv[2] ||
+  "http://127.0.0.1:8877/webclient/client-wasm/build/link/startup_harness.html";
+const reportDir = path.join(
+  repoRoot,
+  "webclient/client-wasm/build/reports/optimized-visual-compare",
+);
+// Exercise every startup state, including the diagnostic and secondary Field
+// scenes.  This keeps the evidence broad enough to catch text/layout changes
+// outside the first Field screen.
+const allStates = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+const requestedStates = (process.env.OPENWYD_VISUAL_STATES || "")
+  .split(",")
+  .map(value => Number.parseInt(value.trim(), 10))
+  .filter(value => allStates.includes(value));
+const states = requestedStates.length ? [...new Set(requestedStates)] : allStates;
+const ticksPerState = Math.max(
+  1,
+  Number.parseInt(process.env.OPENWYD_VISUAL_TICKS || "45", 10) || 45,
+);
+const allRuns = [
+  { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
+  { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
+  { label: "optimized-1920x1080", mode: "optimized", width: 1920, height: 1080 },
+];
+const requestedRuns = new Set((process.env.OPENWYD_VISUAL_RUNS || "")
+  .split(",")
+  .map(value => value.trim())
+  .filter(Boolean));
+const runs = requestedRuns.size
+  ? allRuns.filter(run => requestedRuns.has(run.label))
+  : allRuns;
+
+fs.mkdirSync(reportDir, { recursive: true });
+const configuredProfilePath = process.env.OPENWYD_VISUAL_PROFILE
+  ? path.resolve(process.env.OPENWYD_VISUAL_PROFILE)
+  : "";
+const profilePath = configuredProfilePath ||
+  fs.mkdtempSync(path.join(os.tmpdir(), "openwyd-visual-compare-"));
+if (configuredProfilePath) fs.mkdirSync(profilePath, { recursive: true });
+const result = {
+  ok: false,
+  baseUrl,
+  states,
+  ticksPerState,
+  profilePath,
+  runs: [],
+  consoleErrors: [],
+};
+
+function screenshotPath(run, state) {
+  return path.join(reportDir, `${run.label}-state-${state}.png`);
+}
+
+function relativeToRepo(filePath) {
+  return path.relative(repoRoot, filePath).replaceAll("\\", "/");
+}
+
+async function snapshot(page) {
+  return page.evaluate(() => {
+    const M = window.Module || {};
+    const call = (name, ...args) => typeof M[name] === "function" ? M[name](...args) : null;
+    const readCString = (pointer) => {
+      if (!pointer || !M.HEAPU8) return "";
+      let end = pointer;
+      while (end < M.HEAPU8.length && M.HEAPU8[end] !== 0) end += 1;
+      return new TextDecoder("windows-1252").decode(M.HEAPU8.subarray(pointer, end));
+    };
+    const canvas = document.getElementById("canvas");
+    const rect = canvas.getBoundingClientRect();
+    const textCount = Math.min(2048, Number(call("_wyd_control_visible_text_count")) || 0);
+    const visibleText = Array.from({ length: textCount }, (_, index) => ({
+      id: call("_wyd_control_visible_text_id", index),
+      type: call("_wyd_control_visible_text_type", index),
+      x: call("_wyd_control_visible_text_x", index),
+      y: call("_wyd_control_visible_text_y", index),
+      width: call("_wyd_control_visible_text_width", index),
+      height: call("_wyd_control_visible_text_height", index),
+      color: call("_wyd_control_visible_text_color", index),
+      value: readCString(call("_wyd_control_visible_text_value", index)),
+    }));
+    const matrices = Array.from(
+      { length: 48 },
+      (_, index) => Number(call("_wyd_compare_3d_state_matrix_value", index)),
+    );
+    const packageEntry = performance.getEntriesByType("resource")
+      .find(entry => /openwyd_assets\..*\.data(?:$|\?)/.test(entry.name));
+    const preload = Object.values(M.preloadResults || {})[0] || null;
+    return {
+      state: call("_wyd_get_game_state"),
+      sceneType: call("_wyd_get_scene_type"),
+      canvas: {
+        cssWidth: Math.round(rect.width),
+        cssHeight: Math.round(rect.height),
+        backingWidth: canvas.width,
+        backingHeight: canvas.height,
+      },
+      optimized: {
+        enabled: call("_wyd_optimized_view_enabled"),
+        uiScale: call("_wyd_optimized_ui_scale"),
+        uiScalePercent: call("_wyd_optimized_ui_scale_percent"),
+        worldScale: call("_wyd_optimized_world_scale"),
+        samples: call("_wyd_d3d9_optimized_world_samples"),
+        webgl2: call("_wyd_d3d9_is_webgl2"),
+      },
+      camera: {
+        valid: call("_wyd_debug_camera_valid"),
+        x: call("_wyd_debug_camera_x"),
+        y: call("_wyd_debug_camera_y"),
+        z: call("_wyd_debug_camera_z"),
+        horizon: call("_wyd_debug_camera_h"),
+        vertical: call("_wyd_debug_camera_v"),
+        sightLength: call("_wyd_debug_camera_sight_length"),
+        wantLength: call("_wyd_debug_camera_want_length"),
+      },
+      compare3d: {
+        valid: call("_wyd_compare_3d_state_valid"),
+        matrices,
+        projection: matrices.slice(32, 48),
+      },
+      font: {
+        renderCalls: call("_wyd_font2_render_calls"),
+        nonEmptyCalls: call("_wyd_font2_render_nonempty"),
+        lastWidth: call("_wyd_font2_last_nonempty_size0"),
+        alphaPixels: call("_wyd_font2_last_nonempty_alpha_pixels"),
+        maxWidth: call("_wyd_font2_max_size0"),
+      },
+      visibleText,
+      glErrors: call("_wyd_d3d9_gl_error_total"),
+      assetFailures: call("_wyd_d3d9_asset_file_open_fail"),
+      cache: {
+        fromIndexedDb: Boolean(preload?.fromCache),
+        networkTransferBytes: Number(packageEntry?.transferSize) || 0,
+        networkDecodedBytes: Number(packageEntry?.decodedBodySize) || 0,
+      },
+    };
+  });
+}
+
+async function executeRun(context, run) {
+  const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  await page.setViewportSize({ width: run.width, height: run.height });
+  page.on("console", message => {
+    if (message.type() === "error") {
+      result.consoleErrors.push(`${run.label}: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", error => {
+    result.consoleErrors.push(`${run.label}: ${error?.message || String(error)}`);
+  });
+
+  const url = new URL(baseUrl);
+  url.searchParams.set("mode", "play");
+  url.searchParams.set("displayMode", run.mode);
+  url.searchParams.set("quality", "quality");
+  url.searchParams.set("uiScale", "100");
+  url.searchParams.set("fps", "60");
+  url.searchParams.set("state", "0");
+  url.searchParams.set("fieldMode", "real");
+  url.searchParams.set("tickMs", "16");
+  url.searchParams.set("autoboot", "0");
+  url.searchParams.set("autostart", "0");
+  url.searchParams.set("quiet", "1");
+
+  const output = { ...run, url: url.toString(), states: [], cache: null };
+  try {
+    await page.goto(url.toString(), { waitUntil: "load", timeout: 240000 });
+    await page.waitForFunction(() => window.__runtimeReady === true, null, { timeout: 240000 });
+    await page.evaluate(() => {
+      window.stopAutoTick?.();
+      document.body.classList.remove("loading");
+      // The settings button is HTML chrome, not part of the Direct3D/WebGL
+      // surface.  Author CSS uses display:flex and can override [hidden], so
+      // force it out of deterministic evidence captures.
+      document.querySelector(".display-controls")?.style.setProperty(
+        "display", "none", "important",
+      );
+      if (window.Module) {
+        Module.print = () => {};
+        Module.printErr = () => {};
+      }
+      Module._wyd_debug_set_fake_time?.(0);
+      Module._wyd_compare_random_arm?.(0x4f50454e);
+    });
+    const boot = await page.evaluate(() => Module._wyd_boot_client(0));
+    if (!boot) throw new Error("boot failed");
+
+    for (const state of states) {
+      const setResult = await page.evaluate(value => Module._wyd_set_game_state(value), state);
+      if (!setResult) throw new Error(`set state ${state} failed`);
+      const tickResult = await page.evaluate(count => {
+        let rc = 1;
+        for (let index = 0; index < count; index += 1) {
+          Module._wyd_debug_advance_fake_time?.(16);
+          rc = Module._wyd_tick_client();
+          if (rc < 0) break;
+        }
+        return rc;
+      }, ticksPerState);
+      if (tickResult < 0) throw new Error(`state ${state} tick failed: ${tickResult}`);
+      const stateSnapshot = await snapshot(page);
+      const shot = screenshotPath(run, state);
+      const canvasBox = await page.locator("#canvas").boundingBox();
+      if (!canvasBox) throw new Error(`state ${state} canvas has no bounds`);
+      // Playwright's element/page screenshots wait for visual stability and
+      // can time out while the WebGL canvas is continuously presented.  CDP
+      // reads the browser surface immediately without that stability wait.
+      const captured = await cdp.send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: false,
+        clip: {
+          x: canvasBox.x,
+          y: canvasBox.y,
+          width: canvasBox.width,
+          height: canvasBox.height,
+          scale: 1,
+        },
+      });
+      fs.writeFileSync(shot, Buffer.from(captured.data, "base64"));
+      output.states.push({
+        requestedState: state,
+        tickResult,
+        screenshot: relativeToRepo(shot),
+        snapshot: stateSnapshot,
+      });
+      process.stdout.write(`${run.label} state=${state} captured\n`);
+    }
+    output.cache = output.states[0]?.snapshot?.cache || null;
+    await page.evaluate(() => Module._wyd_shutdown_client?.());
+  } finally {
+    await page.close();
+  }
+  return output;
+}
+
+let context;
+try {
+  context = await chromium.launchPersistentContext(profilePath, {
+    ...chromiumLaunchOptions({ headless: true }),
+    headless: true,
+    viewport: { width: 800, height: 600 },
+    deviceScaleFactor: 1,
+  });
+  for (const run of runs) {
+    result.runs.push(await executeRun(context, run));
+  }
+  result.ok = result.consoleErrors.length === 0 && result.runs.every(run => (
+    run.states.length === states.length && run.states.every(entry => (
+      entry.snapshot.state === entry.requestedState &&
+      entry.snapshot.glErrors === 0 &&
+      entry.snapshot.canvas.cssWidth === run.width &&
+      entry.snapshot.canvas.cssHeight === run.height &&
+      (run.mode === "legacy" || (
+        entry.snapshot.optimized.enabled === 1 &&
+        Math.abs(entry.snapshot.optimized.uiScale - 1) < 0.0001
+      ))
+    ))
+  ));
+} catch (error) {
+  result.error = error?.stack || error?.message || String(error);
+} finally {
+  if (context) await context.close();
+  if (!configuredProfilePath) {
+    try {
+      fs.rmSync(profilePath, { recursive: true, force: true });
+    } catch {}
+  }
+  const reportPath = path.join(reportDir, "raw-report.json");
+  fs.writeFileSync(reportPath, `${JSON.stringify(result, null, 2)}\n`);
+}
+
+console.log(JSON.stringify({
+  ok: result.ok,
+  report: relativeToRepo(path.join(reportDir, "raw-report.json")),
+  runs: result.runs.map(run => ({
+    label: run.label,
+    cache: run.cache,
+    stateCount: run.states.length,
+  })),
+  consoleErrors: result.consoleErrors,
+  error: result.error || null,
+}, null, 2));
+process.exit(result.ok ? 0 : 1);

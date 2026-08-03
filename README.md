@@ -46,10 +46,18 @@ the original game simulation remains fixed at 60 Hz. **Legacy** mode remains
 available in Display Settings and preserves the original 800x600 rendering
 path for fidelity checks.
 
+Optimized keeps the official UI and Tahoma text at their authored 1:1 logical
+size instead of enlarging them with the browser window. Its font atlas retains
+8-bit alpha coverage, ordinary RC artwork keeps the original sampler, and the
+3D view expands horizontally and zooms out within the safe coverage of the
+original Field blocks.
+
 Both modes mount the same complete official asset package before starting the
 client. There is no scene-by-scene or progressive asset loader. The first
 visit is large; the content-addressed browser cache and immutable compressed
-files make later visits reuse that complete package.
+files make later visits reuse that complete package. The persistent IndexedDB
+cache is read and written in bounded chunks so warm starts do not download or
+decode the 512 MB package again and do not allocate a second full-size copy.
 
 This is active preservation and porting work. A visible scene is not yet a
 claim of complete visual or behavioral parity with the Windows client.
@@ -157,10 +165,19 @@ mantendo a simulação original fixa em 60 Hz. O modo **Legado** continua
 disponível nas Configurações de Exibição e preserva o caminho original em
 800x600 para as verificações de fidelidade.
 
+O Otimizado mantém a interface oficial e os textos Tahoma no tamanho lógico
+1:1 em que foram criados, sem ampliá-los junto com a janela do navegador. O
+atlas de fonte preserva alpha de 8 bits, a arte RC comum conserva o sampler
+original e a visão 3D expande horizontalmente e afasta a câmera dentro da
+cobertura segura dos blocos de Field originais.
+
 Os dois modos montam o mesmo pacote completo de assets oficiais antes de
 iniciar o cliente. Não existe carregamento progressivo ou por cenário. O
 primeiro acesso é grande; nos seguintes, o cache content-addressed do navegador
-e os arquivos comprimidos imutáveis reutilizam o pacote completo.
+e os arquivos comprimidos imutáveis reutilizam o pacote completo. O cache
+persistente em IndexedDB é lido e gravado em blocos de memória limitados: uma
+abertura quente não baixa nem decodifica novamente o pacote de 512 MB e não
+aloca uma segunda cópia integral.
 
 Este é um trabalho ativo de preservação e portabilidade. Uma cena visível não
 significa que a paridade visual ou comportamental com o cliente Windows já
