@@ -6335,6 +6335,7 @@ struct WasmNativeTerrainProgram {
   GLint uni_sampler1 = -1;
   GLint uni_use_texture0 = -1;
   GLint uni_use_texture1 = -1;
+  GLint uni_color_op0 = -1;
   GLint uni_color_op1 = -1;
   GLint uni_lighting_enable = -1;
   GLint uni_global_ambient = -1;
@@ -12691,6 +12692,7 @@ uniform sampler2D uSampler0;
 uniform sampler2D uSampler1;
 uniform int uUseTexture0;
 uniform int uUseTexture1;
+uniform int uColorOp0;
 uniform int uColorOp1;
 uniform int uLightingEnable;
 uniform vec4 uGlobalAmbient;
@@ -12830,10 +12832,13 @@ void main() {
   }
 
   vec4 current = lit * texel0;
+  if (uColorOp0 == 5) current.rgb = min(current.rgb * 2.0, vec3(1.0));
   if (uUseTexture1 != 0 && uColorOp1 != 1) {
     if (uColorOp1 == 2) current.rgb = texel1.rgb;
     else if (uColorOp1 == 5) current.rgb = min(current.rgb * texel1.rgb * 2.0, vec3(1.0));
     else if (uColorOp1 == 7) current.rgb = min(current.rgb + texel1.rgb, vec3(1.0));
+    else if (uColorOp1 == 11) current.rgb = min(
+        current.rgb + texel1.rgb * (vec3(1.0) - current.rgb), vec3(1.0));
     else current.rgb *= texel1.rgb;
   }
   current = clamp(current, 0.0, 1.0);
@@ -12885,6 +12890,7 @@ void main() {
   NATIVE_TERRAIN_UNIFORM(uni_sampler1, "uSampler1");
   NATIVE_TERRAIN_UNIFORM(uni_use_texture0, "uUseTexture0");
   NATIVE_TERRAIN_UNIFORM(uni_use_texture1, "uUseTexture1");
+  NATIVE_TERRAIN_UNIFORM(uni_color_op0, "uColorOp0");
   NATIVE_TERRAIN_UNIFORM(uni_color_op1, "uColorOp1");
   NATIVE_TERRAIN_UNIFORM(uni_lighting_enable, "uLightingEnable");
   NATIVE_TERRAIN_UNIFORM(uni_global_ambient, "uGlobalAmbient");
@@ -13163,8 +13169,9 @@ bool ConfigureNativeFixedObjectState(
   const bool supported_second_stage =
       color_op1 == D3DTOP_DISABLE || color_op1 == D3DTOP_SELECTARG1 ||
       color_op1 == D3DTOP_MODULATE || color_op1 == D3DTOP_MODULATE2X ||
-      color_op1 == D3DTOP_ADD;
-  if (color_op0 != D3DTOP_MODULATE ||
+      color_op1 == D3DTOP_ADD || color_op1 == D3DTOP_ADDSMOOTH;
+  if ((color_op0 != D3DTOP_MODULATE &&
+       color_op0 != D3DTOP_MODULATE2X) ||
       !stage0_modulates_texture_and_diffuse ||
       (allow_second_texture_stage
            ? !supported_second_stage
@@ -13246,6 +13253,7 @@ bool ConfigureNativeFixedObjectState(
   glUniform1i(fixed.uni_sampler1, 1);
   glUniform1i(fixed.uni_use_texture0, has_texture0 ? 1 : 0);
   glUniform1i(fixed.uni_use_texture1, has_texture1 ? 1 : 0);
+  glUniform1i(fixed.uni_color_op0, static_cast<GLint>(color_op0));
   glUniform1i(fixed.uni_color_op1, static_cast<GLint>(
       allow_second_texture_stage ? color_op1 : D3DTOP_DISABLE));
   glUniform1i(fixed.uni_lighting_enable,
@@ -13994,7 +14002,7 @@ bool TryDrawNativeStaticObject(
   }
 
   D3DXMATRIX world_view{};
-  if (!ConfigureNativeFixedObjectState(&world_view, sea_mesh)) return false;
+  if (!ConfigureNativeFixedObjectState(&world_view, true)) return false;
   glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->native_gl_buffer);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer->native_gl_buffer);
   for (GLuint attribute = 0; attribute <= 6; ++attribute)
