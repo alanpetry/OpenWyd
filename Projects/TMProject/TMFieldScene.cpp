@@ -2100,8 +2100,17 @@ int TMFieldScene::InitializeScene()
 		m_pControlContainer->m_pModalControl[5] = m_pFireWorkPanel;
 		m_pFireWorkPanel->SetVisible(0);
 
-		m_pFireWorkPanel->SetPos((float)(g_pDevice->m_dwScreenWidth) - (m_pFireWorkPanel->m_nWidth / 2.0f),
-			(float)(g_pDevice->m_dwScreenHeight) - (m_pFireWorkPanel->m_nHeight / 2.0f));
+		if (OpenWydOptimizedEnabled())
+		{
+			m_pFireWorkPanel->SetPos(
+				((float)g_pDevice->m_dwScreenWidth - m_pFireWorkPanel->m_nWidth) * 0.5f,
+				((float)g_pDevice->m_dwScreenHeight - m_pFireWorkPanel->m_nHeight) * 0.5f);
+		}
+		else
+		{
+			m_pFireWorkPanel->SetPos((float)(g_pDevice->m_dwScreenWidth) - (m_pFireWorkPanel->m_nWidth / 2.0f),
+				(float)(g_pDevice->m_dwScreenHeight) - (m_pFireWorkPanel->m_nHeight / 2.0f));
+		}
 	}
 
 	m_pTotoPanel = (SPanel*)m_pControlContainer->FindControl(8961);
@@ -2124,8 +2133,17 @@ int TMFieldScene::InitializeScene()
 		m_pControlContainer->m_pModalControl[6] = (SControl*)m_pTotoPanel;
 		m_pTotoPanel->SetVisible(0);
 
-		m_pTotoPanel->SetPos((float)(g_pDevice->m_dwScreenWidth) - (m_pTotoPanel->m_nWidth / 2.0f),
-			(float)(g_pDevice->m_dwScreenHeight) - (m_pTotoPanel->m_nHeight / 2.0f));
+		if (OpenWydOptimizedEnabled())
+		{
+			m_pTotoPanel->SetPos(
+				((float)g_pDevice->m_dwScreenWidth - m_pTotoPanel->m_nWidth) * 0.5f,
+				((float)g_pDevice->m_dwScreenHeight - m_pTotoPanel->m_nHeight) * 0.5f);
+		}
+		else
+		{
+			m_pTotoPanel->SetPos((float)(g_pDevice->m_dwScreenWidth) - (m_pTotoPanel->m_nWidth / 2.0f),
+				(float)(g_pDevice->m_dwScreenHeight) - (m_pTotoPanel->m_nHeight / 2.0f));
+		}
 	}
 
 	BASE_ReadTOTOList((char*)"UI\\TOTOGame.csv");

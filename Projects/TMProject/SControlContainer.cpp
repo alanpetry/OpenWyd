@@ -22,6 +22,7 @@ struct WydVisibleTextControl
 	unsigned int id;
 	int type;
 	int align;
+	int comma;
 	float x;
 	float y;
 	float width;
@@ -106,6 +107,7 @@ void WydCollectVisibleTextControls(SControl* pControl)
 		sample.id = pControl->m_dwControlID;
 		sample.type = static_cast<int>(pControl->m_eCtrlType);
 		sample.align = static_cast<int>(pText->m_dwAlignType);
+		sample.comma = static_cast<int>(pText->m_cComma);
 		sample.x = WydControlAbsX(pControl);
 		sample.y = WydControlAbsY(pControl);
 		sample.width = pControl->m_nWidth;
@@ -273,6 +275,11 @@ extern "C" int wyd_control_visible_text_align(unsigned int index)
 	const auto sample = WydVisibleTextControlAt(index);
 	return sample ? sample->align : -1;
 }
+extern "C" int wyd_control_visible_text_comma(unsigned int index)
+{
+	const auto sample = WydVisibleTextControlAt(index);
+	return sample ? sample->comma : 0;
+}
 extern "C" float wyd_control_visible_text_x(unsigned int index)
 {
 	const auto sample = WydVisibleTextControlAt(index);
@@ -380,6 +387,27 @@ extern "C" int wyd_control_audit_reveal_with_ancestors(unsigned int index)
 	}
 	return 1;
 }
+extern "C" int wyd_control_audit_prepare_runtime_panel(unsigned int idwControlID)
+{
+	if (!g_pCurrentScene || g_pCurrentScene->m_eSceneType != ESCENE_TYPE::ESCENE_FIELD)
+		return 0;
+
+	// The minimap is intentionally stored at an inactive RC position and is
+	// resized/repositioned only when the official toggle runs.  Auditing its raw
+	// hidden tree produces a false off-screen result, so exercise that same
+	// production path before capturing it.
+	if (idwControlID == 289)
+	{
+		auto* pField = static_cast<TMFieldScene*>(g_pCurrentScene);
+		if (!pField->m_pMiniMapPanel)
+			return 0;
+		if (!pField->m_pMiniMapPanel->m_bVisible)
+			pField->SetVisibleMiniMap();
+		return pField->m_pMiniMapPanel->m_bVisible ? 1 : 0;
+	}
+
+	return 0;
+}
 extern "C" float wyd_control_audit_local_x(unsigned int index)
 {
 	const auto sample = WydControlAuditSampleAt(index);
@@ -448,6 +476,55 @@ extern "C" float wyd_control_grid_item_height(unsigned int idwControlID, unsigne
 	auto pGrid = static_cast<SGridControl*>(pControl);
 	return index < static_cast<unsigned int>(pGrid->m_nNumItem) && pGrid->m_pItemList[index]
 		? pGrid->m_pItemList[index]->m_nHeight : 0.0f;
+}
+extern "C" int wyd_control_grid_item_cell_x(unsigned int idwControlID, unsigned int index)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return -1;
+	auto* pGrid = static_cast<SGridControl*>(pControl);
+	return index < static_cast<unsigned int>(pGrid->m_nNumItem) && pGrid->m_pItemList[index]
+		? pGrid->m_pItemList[index]->m_nCellIndexX : -1;
+}
+extern "C" int wyd_control_grid_item_sindex(unsigned int idwControlID, unsigned int index)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID)
+		return -1;
+	auto* pGrid = static_cast<SGridControl*>(pControl);
+	auto* pGridItem = index < static_cast<unsigned int>(pGrid->m_nNumItem)
+		? pGrid->m_pItemList[index] : nullptr;
+	return pGridItem && pGridItem->m_pItem ? pGridItem->m_pItem->sIndex : -1;
+}
+extern "C" int wyd_control_selected_short_skill()
+{
+	return g_pObjectManager
+		? static_cast<unsigned char>(g_pObjectManager->m_cSelectShortSkill) : -1;
+}
+extern "C" int wyd_control_assigned_short_skill(unsigned int index)
+{
+	return g_pObjectManager && index < 20
+		? static_cast<unsigned char>(g_pObjectManager->m_cShortSkill[index]) : -1;
+}
+extern "C" int wyd_control_audit_click_skill_cell(unsigned int idwControlID, unsigned int cell)
+{
+	SControl* pControl = WydFindControl(idwControlID);
+	if (!pControl || pControl->m_eCtrlType != CONTROL_TYPE::CTRL_TYPE_GRID || !g_pCursor)
+		return -1;
+	auto* pGrid = static_cast<SGridControl*>(pControl);
+	if (pGrid->m_eGridType != TMEGRIDTYPE::GRID_SKILLB ||
+		cell >= static_cast<unsigned int>(pGrid->m_nColumnGridCount))
+		return -1;
+
+	const ECursorStyle previousStyle = g_pCursor->GetStyle();
+	g_pCursor->SetStyle(ECursorStyle::TMC_CURSOR_HAND);
+	const int x = static_cast<int>(std::floor(
+		pGrid->m_nPosX + ((static_cast<float>(cell) + 0.5f) * pGrid->m_nWidth) /
+		static_cast<float>(pGrid->m_nColumnGridCount)));
+	const int y = static_cast<int>(std::floor(pGrid->m_nPosY + pGrid->m_nHeight * 0.5f));
+	const int processed = pGrid->OnMouseEvent(514, 0, x, y);
+	g_pCursor->SetStyle(previousStyle);
+	return processed ? wyd_control_selected_short_skill() : -1;
 }
 extern "C" int wyd_control_audit_populate_skill_belt()
 {
