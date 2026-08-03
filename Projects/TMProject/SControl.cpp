@@ -944,9 +944,9 @@ void SText::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int inParen
 				// These four strings are colour layers of the same value.  Each
 				// layer replaces the other groups with spaces, so they must share
 				// one origin.  Summing their complete widths separated the digits.
-				const int fullSize = std::max(
-					std::max(size.cx, size2.cx),
-					std::max(size3.cx, size4.cx));
+				const int fullSize = (std::max)(
+					(std::max)(size.cx, size2.cx),
+					(std::max)(size3.cx, size4.cx));
 				const float origin = (float)(ivParentPos.x + m_nPosX)
 					+ ((m_nWidth - (float)fullSize) * 0.5f);
 				m_GCText.nPosX = origin;

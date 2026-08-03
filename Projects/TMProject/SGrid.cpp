@@ -6,6 +6,51 @@
 #include "TMFieldScene.h"
 #include "TMUtil.h"
 #include "ItemEffect.h"
+#include "OpenWydOptimized.h"
+
+namespace
+{
+float SnapOptimizedUiCoordinate(float value, bool horizontal)
+{
+	if (!OpenWydOptimizedEnabled())
+		return value;
+
+	const WydViewportMetrics& viewport = OpenWydOptimizedViewport();
+	const int logicalSize = horizontal ? viewport.cssWidth : viewport.cssHeight;
+	const int physicalSize = horizontal ? viewport.backingWidth : viewport.backingHeight;
+	if (logicalSize <= 0 || physicalSize <= 0)
+		return value;
+
+	const float physicalScale = static_cast<float>(physicalSize) / static_cast<float>(logicalSize);
+	return std::round(value * physicalScale) / physicalScale;
+}
+
+void SkillCellBounds(
+	const SGridControl* grid,
+	int cellX,
+	int cellY,
+	float originX,
+	float originY,
+	float& left,
+	float& top,
+	float& right,
+	float& bottom)
+{
+	left = originX + (static_cast<float>(cellX) * grid->m_nWidth) /
+		static_cast<float>(grid->m_nColumnGridCount);
+	right = originX + (static_cast<float>(cellX + 1) * grid->m_nWidth) /
+		static_cast<float>(grid->m_nColumnGridCount);
+	top = originY + (static_cast<float>(cellY) * grid->m_nHeight) /
+		static_cast<float>(grid->m_nRowGridCount);
+	bottom = originY + (static_cast<float>(cellY + 1) * grid->m_nHeight) /
+		static_cast<float>(grid->m_nRowGridCount);
+
+	left = SnapOptimizedUiCoordinate(left, true);
+	right = SnapOptimizedUiCoordinate(right, true);
+	top = SnapOptimizedUiCoordinate(top, false);
+	bottom = SnapOptimizedUiCoordinate(bottom, false);
+}
+}
 
 SGridControlItem* SGridControl::m_pLastMouseOverItem;
 SGridControlItem* SGridControl::m_pLastAttachedItem;
@@ -562,25 +607,47 @@ void SGridControl::FrameMove2(stGeomList* pDrawList, TMVector2 ivParentPos, int 
 			if (!pGridCurrent)
 				continue;
 
-			TMVector2 vecPos = TMVector2((ivParentPos.x + m_nPosX) + (((float)pGridCurrent->m_nCellIndexX * m_nWidth) / (float)m_nColumnGridCount),
-				(ivParentPos.y + m_nPosY) + (((float)pGridCurrent->m_nCellIndexY * m_nHeight) / (float)m_nRowGridCount));
+			float cellLeft = 0.0f;
+			float cellTop = 0.0f;
+			float cellRight = 0.0f;
+			float cellBottom = 0.0f;
+			SkillCellBounds(
+				this,
+				pGridCurrent->m_nCellIndexX,
+				pGridCurrent->m_nCellIndexY,
+				ivParentPos.x + m_nPosX,
+				ivParentPos.y + m_nPosY,
+				cellLeft,
+				cellTop,
+				cellRight,
+				cellBottom);
+
+			const float itemSize = (std::min)(cellRight - cellLeft, cellBottom - cellTop);
+			pGridCurrent->m_nWidth = itemSize;
+			pGridCurrent->m_nHeight = itemSize;
+			pGridCurrent->m_nPosX = (cellRight - cellLeft - itemSize) * 0.5f;
+			pGridCurrent->m_nPosY = (cellBottom - cellTop - itemSize) * 0.5f;
+
+			TMVector2 vecPos = TMVector2(cellLeft, cellTop);
 
 			pGridCurrent->FrameMove2(pDrawList, vecPos, inParentLayer, 0);
 
 			if (pGridCurrent->m_fTimer <= 0.0f || pGridCurrent->m_fTimer >= 1.0f)
 				continue;
 
-			pGridCurrent->m_GCEnable.nPosX = ivParentPos.x + m_nPosX + (float)((float)pGridCurrent->m_nCellIndexX * BASE_ScreenResize(m_GCGrid->nWidth));
-			pGridCurrent->m_GCEnable.nPosY = ivParentPos.y + m_nPosY + (float)((float)pGridCurrent->m_nCellIndexY * BASE_ScreenResize(m_GCGrid->nHeight));
-			pGridCurrent->m_GCEnable.nWidth = (float)((float)(24 * pGridCurrent->m_nCellWidth)
-				* RenderDevice::m_fWidthRatio)
-				* (float)(1.0f - pGridCurrent->m_fTimer);
+			// Match the cooldown mask to the actual rendered skill icon.  The
+			// official belt is not made of 24-pixel cells, so the former fixed
+			// 24x24 mask bled into neighbouring skills and became especially
+			// visible at high-DPI resolutions.
+			pGridCurrent->m_GCEnable.nPosX = pGridCurrent->m_GCObj.nPosX;
+			pGridCurrent->m_GCEnable.nPosY = pGridCurrent->m_GCObj.nPosY;
+			pGridCurrent->m_GCEnable.nWidth = pGridCurrent->m_GCObj.nWidth
+				* (1.0f - pGridCurrent->m_fTimer);
 
 			if (pGridCurrent->m_GCEnable.nWidth > 0.0099999998f && pGridCurrent->m_GCEnable.nWidth < 2.0f)
 				pGridCurrent->m_GCEnable.nWidth = 2.0f;
 
-			pGridCurrent->m_GCEnable.nHeight = (float)(24 * pGridCurrent->m_nCellHeight)
-				* RenderDevice::m_fHeightRatio;
+			pGridCurrent->m_GCEnable.nHeight = pGridCurrent->m_GCObj.nHeight;
 
 			pGridCurrent->m_GCEnable.nLayer = inParentLayer;
 			pGridCurrent->m_GCEnable.dwColor = 0xAA000000;
@@ -730,7 +797,7 @@ int SGridControl::AddSkillItem(SGridControlItem* ipNewItem, int inCellIndexX, in
 	// icon inside the real cell and centre it without changing its aspect.
 	const float fCellWidth = m_nWidth / static_cast<float>(m_nColumnGridCount);
 	const float fCellHeight = m_nHeight / static_cast<float>(m_nRowGridCount);
-	const float fItemSize = std::min(fCellWidth, fCellHeight);
+	const float fItemSize = (std::min)(fCellWidth, fCellHeight);
 	ipNewItem->m_nWidth = fItemSize;
 	ipNewItem->m_nHeight = fItemSize;
 	ipNewItem->m_nPosX = (fCellWidth - fItemSize) * 0.5f;

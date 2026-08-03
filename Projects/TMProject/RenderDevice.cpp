@@ -1932,9 +1932,9 @@ HRESULT RenderDevice::SetProjectionMatrix()
 		const float halfTangent = tanf(fovYRadians * 0.5f)
 			* (viewportHeight / baseHeight);
 		fovYRadians = 2.0f * atanf(halfTangent);
-		fovYRadians = std::max(
+		fovYRadians = (std::max)(
 			D3DXToRadian(20.0f),
-			std::min(D3DXToRadian(120.0f), fovYRadians));
+			(std::min)(D3DXToRadian(120.0f), fovYRadians));
 	}
 
 	D3DXMatrixPerspectiveFovLH(&m_matProj, 
