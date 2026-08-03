@@ -567,6 +567,8 @@ int g_optimized_material_hd_override = -1;
 uint64_t g_native_buffer_uploads = 0;
 uint64_t g_native_buffer_upload_bytes = 0;
 uint64_t g_native_resident_draws = 0;
+uint32_t g_native_actor_failure_reason = 0;
+char g_native_actor_error[1024]{};
 uint64_t g_draw_fvf_xyzrhw = 0;
 uint64_t g_draw_fvf_weighted = 0;
 uint64_t g_draw_fvf_tex2plus = 0;
@@ -12045,7 +12047,7 @@ void main() {
     float weight = weights[influence];
     if (abs(weight) <= 1.0e-7) continue;
     int bone = safeBone(indices[influence]);
-    cameraPosition += bonePosition(aPosition, bone) * weight;
+    cameraPosition += bonePosition(aPosition.xyz, bone) * weight;
     cameraNormal += boneNormal(aNormal, bone) * weight;
   }
   if (dot(cameraNormal, cameraNormal) <= 1.0e-12)
@@ -12261,7 +12263,15 @@ void main() {
 
   GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
   GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
-  if (!CompileShader(vertex, kVertex) || !CompileShader(fragment, kFragment)) {
+  const bool vertex_compiled = CompileShader(vertex, kVertex);
+  const bool fragment_compiled = CompileShader(fragment, kFragment);
+  if (!vertex_compiled || !fragment_compiled) {
+    GLsizei length = 0;
+    glGetShaderInfoLog(
+        vertex_compiled ? fragment : vertex,
+        sizeof(g_native_actor_error) - 1,
+        &length,
+        g_native_actor_error);
     if (vertex) glDeleteShader(vertex);
     if (fragment) glDeleteShader(fragment);
     g_native_actor_program.failed = true;
@@ -12280,6 +12290,7 @@ void main() {
     char log[2048]{};
     GLsizei length = 0;
     glGetProgramInfoLog(program, sizeof(log) - 1, &length, log);
+    std::snprintf(g_native_actor_error, sizeof(g_native_actor_error), "%s", log);
     std::fprintf(stderr, "[WASM Native Actor] program link failed: %s\n", log);
     glDeleteProgram(program);
     g_native_actor_program.failed = true;
@@ -12288,6 +12299,10 @@ void main() {
 
   GLuint bone_block = glGetUniformBlockIndex(program, "BoneBlock");
   if (bone_block == GL_INVALID_INDEX) {
+    std::snprintf(
+        g_native_actor_error,
+        sizeof(g_native_actor_error),
+        "BoneBlock was optimized out");
     std::fprintf(stderr, "[WASM Native Actor] BoneBlock was optimized out\n");
     glDeleteProgram(program);
     g_native_actor_program.failed = true;
@@ -12427,22 +12442,34 @@ bool TryDrawNativeActor(
     DummyDirect3DVertexBuffer9* vertex_buffer,
     DummyDirect3DIndexBuffer9* index_buffer,
     const DummyDirect3DVertexDeclaration9& declaration) {
-  if (!OpenWydNativeRendererEnabled() || !IsNativeActorShader(g_active_vs_hash) ||
-      g_active_ps_hash != 0 || !vertex_buffer || !index_buffer ||
-      !EnsureNativeActorProgram() ||
-      !EnsureNativeVertexBufferResident(vertex_buffer) ||
+  if (!OpenWydNativeRendererEnabled() || !IsNativeActorShader(g_active_vs_hash))
+    return false;
+  if (g_active_ps_hash != 0 || !vertex_buffer || !index_buffer) {
+    g_native_actor_failure_reason = 1;
+    return false;
+  }
+  if (!EnsureNativeActorProgram()) {
+    g_native_actor_failure_reason = 2;
+    return false;
+  }
+  if (!EnsureNativeVertexBufferResident(vertex_buffer) ||
       !EnsureNativeIndexBufferResident(index_buffer)) {
+    g_native_actor_failure_reason = 3;
     return false;
   }
 
   const UINT stride = g_ffp_state.stream0_stride;
   const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
-  if (stride == 0 || index_count == 0) return false;
+  if (stride == 0 || index_count == 0) {
+    g_native_actor_failure_reason = 4;
+    return false;
+  }
   const size_t index_size =
       index_buffer->format == D3DFMT_INDEX32 ? sizeof(uint32_t) : sizeof(uint16_t);
   const size_t index_offset = static_cast<size_t>(start_index) * index_size;
   if (index_offset + static_cast<size_t>(index_count) * index_size >
       index_buffer->data.size()) {
+    g_native_actor_failure_reason = 5;
     return false;
   }
   const int64_t signed_vertex_offset =
@@ -12450,6 +12477,7 @@ bool TryDrawNativeActor(
       static_cast<int64_t>(base_vertex_index) * static_cast<int64_t>(stride);
   if (signed_vertex_offset < 0 ||
       static_cast<uint64_t>(signed_vertex_offset) >= vertex_buffer->data.size()) {
+    g_native_actor_failure_reason = 6;
     return false;
   }
 
@@ -12461,6 +12489,7 @@ bool TryDrawNativeActor(
   if (!ConfigureNativeActorAttributes(
           declaration, stride, static_cast<size_t>(signed_vertex_offset),
           &influence_count, &index_swizzle)) {
+    g_native_actor_failure_reason = 7;
     g_ffp_program.program_bound = false;
     g_ffp_program.vertex_input_bound = false;
     g_ffp_program.index_buffer_bound = false;
@@ -12592,6 +12621,7 @@ bool TryDrawNativeActor(
       index_buffer->format == D3DFMT_INDEX32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
       reinterpret_cast<const void*>(index_offset));
   const GLenum draw_error = glGetError();
+  g_native_actor_failure_reason = draw_error == GL_NO_ERROR ? 0u : 8u;
 
   // Both renderers share a context.  The native draw changed bindings behind
   // the bridge's cache, so its next draw must restore its own program/input.
@@ -14286,6 +14316,14 @@ extern "C" uint32_t wyd_native_renderer_buffer_upload_bytes_low() {
 
 extern "C" uint32_t wyd_native_renderer_resident_draws() {
   return static_cast<uint32_t>(g_native_resident_draws);
+}
+
+extern "C" uint32_t wyd_native_renderer_actor_failure_reason() {
+  return g_native_actor_failure_reason;
+}
+
+extern "C" const char* wyd_native_renderer_actor_error() {
+  return g_native_actor_error;
 }
 
 extern "C" void wyd_compare_latch_3d_state() {

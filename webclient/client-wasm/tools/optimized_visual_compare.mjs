@@ -272,6 +272,8 @@ async function snapshot(page) {
         bufferUploads: call("_wyd_native_renderer_buffer_uploads"),
         bufferUploadBytes: call("_wyd_native_renderer_buffer_upload_bytes_low"),
         residentDraws: call("_wyd_native_renderer_resident_draws"),
+        actorFailureReason: call("_wyd_native_renderer_actor_failure_reason"),
+        actorError: readCString(call("_wyd_native_renderer_actor_error")),
         commandGroups: [...nativeCommandGroups.values()]
           .sort((left, right) => right.draws - left.draws)
           .slice(0, 64),

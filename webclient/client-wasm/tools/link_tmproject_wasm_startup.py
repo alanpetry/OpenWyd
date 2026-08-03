@@ -1110,6 +1110,8 @@ def main() -> int:
         "_wyd_native_renderer_buffer_uploads",
         "_wyd_native_renderer_buffer_upload_bytes_low",
         "_wyd_native_renderer_resident_draws",
+        "_wyd_native_renderer_actor_failure_reason",
+        "_wyd_native_renderer_actor_error",
         "_wyd_native_renderer_command_pass",
         "_wyd_native_renderer_command_fvf",
         "_wyd_native_renderer_command_vs_hash_low",
