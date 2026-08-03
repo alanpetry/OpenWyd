@@ -30,7 +30,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 
 RC_CURRENT_SIZES = {1: 40, 2: 40, 3: 32, 6: 52, 10: 48, 12: 52, 13: 184, 15: 28, 16: 40}
@@ -86,6 +86,27 @@ class UiSetItem:
     dest_y: int
     status: str
     detail: str
+
+
+@dataclass
+class TextureReprocessing:
+    path: str
+    category: str
+    encoding: str
+    width: int
+    height: int
+    alpha_mode: str
+    alpha_coverage_percent: float
+    translucent_percent: float
+    edge_energy: float
+    seam_error_x: float
+    seam_error_y: float
+    ui_catalog_indices: list[int]
+    ui_crop_count: int
+    recommendation: str
+    risk: str
+    ai_candidate: bool
+    required_checks: list[str]
 
 
 @dataclass
@@ -180,6 +201,131 @@ def decode_texture(path: Path) -> Image.Image:
     image = Image.open(io.BytesIO(payload))
     image.load()
     return image.convert("RGBA")
+
+
+def _mean_rgb_difference(left: Image.Image, right: Image.Image) -> float:
+    difference = ImageChops.difference(left.convert("RGB"), right.convert("RGB"))
+    statistics = ImageStat.Stat(difference)
+    return sum(statistics.mean) / 3.0
+
+
+def _texture_reprocessing_policy(
+    info: TextureInfo,
+    alpha_mode: str,
+) -> tuple[str, str, bool, list[str]]:
+    lower = info.path.lower()
+    ui_like = info.category in ("ui", "nui")
+    icon_atlas = any(token in lower for token in ("itemicon", "skill", "amul"))
+    common = ["hash/versioned derivative", "in-game A/B capture", "original fallback"]
+    if ui_like:
+        checks = common + ["premultiplied-alpha resize", "all UI crops scaled exactly", "text/logo shape invariant"]
+        if icon_atlas:
+            checks += ["per-icon crop comparison", "inventory/skill hitbox audit"]
+        return "deterministic_alpha_aware_2x", "medium" if icon_atlas else "low", False, checks
+    if info.category == "effect":
+        return (
+            "runtime_sampling_only",
+            "high",
+            False,
+            common + ["additive/alpha silhouette invariant", "temporal effect sequence", "particle edge audit"],
+        )
+    if info.category == "environment":
+        return (
+            "seam_aware_super_resolution_candidate",
+            "medium",
+            alpha_mode == "opaque",
+            common + ["opposite-edge seam equality", "mipmap reconstruction", "terrain tiling capture"],
+        )
+    if info.category == "model":
+        if alpha_mode != "opaque":
+            return (
+                "deterministic_alpha_aware_2x",
+                "high",
+                False,
+                common + ["alpha silhouette invariant", "UV seam audit", "animated close-up"],
+            )
+        return (
+            "material_super_resolution_candidate",
+            "medium",
+            True,
+            common + ["UV seam audit", "palette/hue delta", "animated close-up", "mipmap reconstruction"],
+        )
+    return "deterministic_lanczos_2x", "medium", False, common + ["alpha/palette invariant"]
+
+
+def analyze_texture_reprocessing(
+    release: Path,
+    texture_items: list[TextureInfo],
+    catalog_items: list[UiCatalogEntry],
+    ui_set_items: list[UiSetItem],
+) -> tuple[list[TextureReprocessing], list[dict[str, str]]]:
+    catalog_usage: dict[str, list[int]] = {}
+    catalog_path_by_index: dict[int, str] = {}
+    for entry in catalog_items:
+        if not entry.resolved_path:
+            continue
+        key = entry.resolved_path.lower()
+        catalog_usage.setdefault(key, []).append(entry.index)
+        catalog_path_by_index[entry.index] = key
+    crop_usage = Counter(
+        catalog_path_by_index[item.texture_index]
+        for item in ui_set_items
+        if item.texture_index in catalog_path_by_index
+    )
+
+    result: list[TextureReprocessing] = []
+    failures: list[dict[str, str]] = []
+    for info in texture_items:
+        try:
+            image = decode_texture(release / info.path)
+            alpha = image.getchannel("A")
+            histogram = alpha.histogram()
+            pixels = max(1, image.width * image.height)
+            nonzero = pixels - histogram[0]
+            translucent = sum(histogram[1:255])
+            if histogram[255] == pixels:
+                alpha_mode = "opaque"
+            elif translucent == 0:
+                alpha_mode = "binary"
+            else:
+                alpha_mode = "graded"
+
+            preview = image.convert("RGB")
+            preview.thumbnail((128, 128), Image.Resampling.LANCZOS)
+            edges = preview.convert("L").filter(ImageFilter.FIND_EDGES)
+            edge_energy = float(ImageStat.Stat(edges).mean[0])
+            seam_x = _mean_rgb_difference(
+                image.crop((0, 0, 1, image.height)),
+                image.crop((image.width - 1, 0, image.width, image.height)),
+            )
+            seam_y = _mean_rgb_difference(
+                image.crop((0, 0, image.width, 1)),
+                image.crop((0, image.height - 1, image.width, image.height)),
+            )
+            recommendation, risk, ai_candidate, checks = _texture_reprocessing_policy(info, alpha_mode)
+            key = info.path.lower()
+            result.append(TextureReprocessing(
+                path=info.path,
+                category=info.category,
+                encoding=info.encoding,
+                width=info.width,
+                height=info.height,
+                alpha_mode=alpha_mode,
+                alpha_coverage_percent=round(nonzero * 100.0 / pixels, 4),
+                translucent_percent=round(translucent * 100.0 / pixels, 4),
+                edge_energy=round(edge_energy, 4),
+                seam_error_x=round(seam_x, 4),
+                seam_error_y=round(seam_y, 4),
+                ui_catalog_indices=sorted(catalog_usage.get(key, [])),
+                ui_crop_count=crop_usage.get(key, 0),
+                recommendation=recommendation,
+                risk=risk,
+                ai_candidate=ai_candidate,
+                required_checks=checks,
+            ))
+        except Exception as error:
+            failures.append({"path": info.path, "error": str(error)})
+    return result, failures
 
 
 def file_index(release: Path) -> dict[str, Path]:
@@ -463,6 +609,58 @@ def mesh_statistics(release: Path) -> dict[str, object]:
     }
 
 
+def mesh_inventory(release: Path) -> list[dict[str, object]]:
+    inventory: list[dict[str, object]] = []
+    for path in sorted(release.rglob("*.msh")):
+        data = path.read_bytes()
+        entry: dict[str, object] = {
+            "path": normalize_path(str(path.relative_to(release))),
+            "family": "MSH",
+            "bytes": len(data),
+            "recommendation": "keep_original_geometry",
+            "subdivision_allowed": False,
+            "reason": "subdivision changes silhouette, attachment seams and vertex-normal lighting",
+        }
+        if len(data) >= 32:
+            _, _, _, stride, _, _, vertices, indices = struct.unpack_from("<8I", data)
+            entry.update({"stride": stride, "vertices": vertices, "triangles": indices // 3})
+        else:
+            entry["parse_error"] = "header shorter than 32 bytes"
+        inventory.append(entry)
+    for path in sorted(release.rglob("*.msa")):
+        data = path.read_bytes()
+        entry = {
+            "path": normalize_path(str(path.relative_to(release))),
+            "family": "MSA",
+            "bytes": len(data),
+            "recommendation": "keep_original_skinned_geometry",
+            "subdivision_allowed": False,
+            "reason": "new vertices require authoritative bone weights and alter animated deformation",
+        }
+        if len(data) >= 12:
+            _, stride, attributes = struct.unpack_from("<3I", data)
+            offset = 12 + attributes * 20 + attributes * 11
+            if stride and offset + 8 <= len(data):
+                index_bytes = struct.unpack_from("<I", data, offset)[0]
+                offset += 4 + index_bytes
+                if offset + 4 <= len(data):
+                    vertex_bytes = struct.unpack_from("<I", data, offset)[0]
+                    entry.update({
+                        "stride": stride,
+                        "attributes": attributes,
+                        "vertices": vertex_bytes // stride,
+                        "triangles": (index_bytes // 2) // 3,
+                    })
+                else:
+                    entry["parse_error"] = "vertex block is truncated"
+            else:
+                entry["parse_error"] = "invalid stride/attribute block"
+        else:
+            entry["parse_error"] = "header shorter than 12 bytes"
+        inventory.append(entry)
+    return inventory
+
+
 def make_contact_sheets(
     release: Path,
     catalog: Iterable[UiCatalogEntry],
@@ -534,6 +732,8 @@ def markdown_report(report: dict[str, object]) -> str:
         f"- RC geometry errors: **{len(high_priority)}**",
         f"- RC geometry review items: **{len(review)}**",
         f"- Contact-sheet pages: **{len(report['contact_sheets'])}**",
+        f"- Per-texture reprocessing decisions: **{len(report['texture_reprocessing'])}**",
+        f"- Per-mesh decisions: **{len(report['mesh_inventory'])}**",
         "",
         "## Fidelity policy",
         "",
@@ -583,6 +783,10 @@ def main() -> int:
     rc_controls, rc_skipped = parse_all_rc(release)
     rc_findings = audit_rc_geometry(rc_controls)
     contact_sheets = make_contact_sheets(release, catalog_items, sheet_dir)
+    texture_reprocessing, texture_analysis_failures = analyze_texture_reprocessing(
+        release, texture_items, catalog_items, ui_set_items
+    )
+    meshes = mesh_inventory(release)
 
     texture_by_encoding = Counter(item.encoding for item in texture_items)
     texture_by_category = Counter(item.category for item in texture_items)
@@ -614,11 +818,16 @@ def main() -> int:
             "ui_set_failures": sum(item.status != "OK" for item in ui_set_items),
             "rc_controls": len(rc_controls),
             "rc_sources": len({item.source for item in rc_controls}),
+            "texture_reprocessing_analyzed": len(texture_reprocessing),
+            "texture_reprocessing_failures": len(texture_analysis_failures),
+            "mesh_inventory_count": len(meshes),
         },
         "texture_by_encoding": dict(sorted(texture_by_encoding.items())),
         "texture_by_category": dict(sorted(texture_by_category.items())),
         "texture_dimension_buckets": dict(texture_dimension_buckets),
         "textures": [asdict(item) for item in texture_items],
+        "texture_reprocessing": [asdict(item) for item in texture_reprocessing],
+        "texture_reprocessing_failures": texture_analysis_failures,
         "ui_catalog": [asdict(item) for item in catalog_items],
         "ui_sets": [asdict(item) for item in ui_set_items],
         "ui_set_parse_errors": ui_set_errors,
@@ -626,6 +835,7 @@ def main() -> int:
         "rc_skipped": rc_skipped,
         "rc_geometry_findings": rc_findings,
         "mesh_statistics": mesh_statistics(release),
+        "mesh_inventory": meshes,
         "contact_sheets": [str(Path(path).relative_to(repo)).replace("\\", "/") for path in contact_sheets],
     }
 

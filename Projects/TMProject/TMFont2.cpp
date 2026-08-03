@@ -10,6 +10,11 @@ unsigned int TMFont2::m_nLength = 0;
 extern "C" void wyd_d3d9_set_draw_label(const char* label);
 
 namespace {
+int WydFont2RasterScale()
+{
+	return OpenWydOptimizedEnabled() ? 2 : 1;
+}
+
 unsigned int g_wydFont2SetTextCalls = 0;
 unsigned int g_wydFont2SetTextNonEmpty = 0;
 unsigned int g_wydFont2RenderCalls = 0;
@@ -246,6 +251,9 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 		rect.top = 0;
 		rect.right = RenderDevice::m_nFontTextureSize;
 		rect.bottom = RenderDevice::m_nFontSize * m_nLineNumber;
+#if defined(__EMSCRIPTEN__)
+		rect.bottom *= WydFont2RasterScale();
+#endif
 
 		FillRect(g_pDevice->m_hDC, &rect, 0);
 		for (int nLine = 0; nLine < m_nLineNumber; ++nLine)
@@ -332,7 +340,7 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 		{
 			D3DXCreateTexture(g_pDevice->m_pd3dDevice,
 				RenderDevice::m_nFontTextureSize,
-				RenderDevice::m_nFontTextureSize / 8,
+				RenderDevice::m_nFontTextureSizeY,
 				1,
 				0,
 				fontTextureFormat,
@@ -378,7 +386,7 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 				TMFont2::m_pBuffer,
 				TMFont2::m_nLength + 18,
 				RenderDevice::m_nFontTextureSize,
-				RenderDevice::m_nFontTextureSize / 8,
+				RenderDevice::m_nFontTextureSizeY,
 				1,
 				0,
 				fontTextureFormat,
@@ -420,7 +428,15 @@ int TMFont2::SetText(const char* szString, unsigned int dwColor, int bCheckZero)
 	char* pDstRow = (char*)d3dlr.pBits;
 	unsigned short* pDst16;
 
-	for (int nY = 0; nY < m_nLineNumber * (RenderDevice::m_nFontSize + 1); ++nY)
+	const int nRasterScale =
+#if defined(__EMSCRIPTEN__)
+		WydFont2RasterScale();
+#else
+		1;
+#endif
+	for (int nY = 0;
+		nY < m_nLineNumber * (RenderDevice::m_nFontSize + 1) * nRasterScale;
+		++nY)
 	{
 		pDst16 = (unsigned short*)pDstRow;
 		for (int nX = 0; nX < RenderDevice::m_nFontTextureSize; ++nX)
@@ -521,6 +537,11 @@ int TMFont2::Render(int nPosX, int nPosY, int nRenderType)
 	g_pDevice->SetRenderStateBlock(2);
 
 	int nLength = 0;
+#if defined(__EMSCRIPTEN__)
+	const float fSourceScale = static_cast<float>(WydFont2RasterScale());
+#else
+	const float fSourceScale = 1.0f;
+#endif
 	for (int nLine = 0; nLine < m_nLineNumber; ++nLine)
 	{
 		int nLocLen = m_szStringSize[nLine];
@@ -533,15 +554,15 @@ int TMFont2::Render(int nPosX, int nPosY, int nRenderType)
 #endif
 				g_pDevice->RenderRectC(
 					0.0f,
-					(float)nLine * (float)(RenderDevice::m_nFontSize + 1),
-					(float)(nLocLen),
-					(float)RenderDevice::m_nFontSize,
+					(float)nLine * (float)(RenderDevice::m_nFontSize + 1) * fSourceScale,
+					(float)(nLocLen) * fSourceScale,
+					(float)RenderDevice::m_nFontSize * fSourceScale,
 					(float)(nPosX + 1),
 					((float)(nPosY + 1) + (float)(nLine * RenderDevice::m_nFontSize)),
 					m_pTexture,
 					m_dwShadeColor,
-					1.0f,
-					1.0f);
+					1.0f / fSourceScale,
+					1.0f / fSourceScale);
 			}
 
 #if defined(__EMSCRIPTEN__)
@@ -549,15 +570,15 @@ int TMFont2::Render(int nPosX, int nPosY, int nRenderType)
 #endif
 			g_pDevice->RenderRectC(
 				0.0f,
-				(float)nLine * (float)(RenderDevice::m_nFontSize + 1),
-				(float)nLocLen,
-				(float)RenderDevice::m_nFontSize,
+				(float)nLine * (float)(RenderDevice::m_nFontSize + 1) * fSourceScale,
+				(float)nLocLen * fSourceScale,
+				(float)RenderDevice::m_nFontSize * fSourceScale,
 				(float)(nPosX),
 				(float)((float)(nPosY) + (float)(nLine * RenderDevice::m_nFontSize)),
 				m_pTexture,
 				m_dwColor,
-				1.0f,
-				1.0f);
+				1.0f / fSourceScale,
+				1.0f / fSourceScale);
 		}
 		else
 		{
@@ -568,15 +589,15 @@ int TMFont2::Render(int nPosX, int nPosY, int nRenderType)
 #endif
 				g_pDevice->RenderRectC(
 					0.0f,
-					(float)nLine * (float)(RenderDevice::m_nFontSize + 1),
-					(float)nLocLen,
-					(float)RenderDevice::m_nFontSize,
+					(float)nLine * (float)(RenderDevice::m_nFontSize + 1) * fSourceScale,
+					(float)nLocLen * fSourceScale,
+					(float)RenderDevice::m_nFontSize * fSourceScale,
 					((float)nPosX + (float)nLength) + 1.0f,
 					(float)(nPosY + 1),
 					m_pTexture,
 					m_dwShadeColor,
-					m_fSize,
-					m_fSize);
+					m_fSize / fSourceScale,
+					m_fSize / fSourceScale);
 			}
 
 #if defined(__EMSCRIPTEN__)
@@ -584,15 +605,15 @@ int TMFont2::Render(int nPosX, int nPosY, int nRenderType)
 #endif
 			g_pDevice->RenderRectC(
 				0.0f,
-				(float)nLine * (float)(RenderDevice::m_nFontSize + 1),
-				(float)nLocLen,
-				(float)RenderDevice::m_nFontSize,
+				(float)nLine * (float)(RenderDevice::m_nFontSize + 1) * fSourceScale,
+				(float)nLocLen * fSourceScale,
+				(float)RenderDevice::m_nFontSize * fSourceScale,
 				(float)nPosX + (float)nLength,
 				(float)nPosY,
 				m_pTexture,
 				m_dwColor,
-				m_fSize,
-				m_fSize);
+				m_fSize / fSourceScale,
+				m_fSize / fSourceScale);
 		}
 
 		nLength += nLocLen;

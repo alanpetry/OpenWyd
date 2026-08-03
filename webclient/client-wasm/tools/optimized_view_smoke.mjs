@@ -40,6 +40,14 @@ const context = await browserType.launchPersistentContext(profilePath, {
   viewport: { width: 1280, height: 720 },
   deviceScaleFactor: 1,
 });
+// The production nginx configuration revalidates stable bootstrap names while
+// retaining content-addressed payloads forever.  Mirror that behavior when the
+// smoke test runs behind Python's simple local server, whose heuristic HTTP
+// cache can otherwise keep an obsolete bootstrap after an incremental build.
+await context.setExtraHTTPHeaders({
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+});
 const page = await context.newPage();
 const consoleErrors = [];
 const consoleLog = [];
@@ -157,6 +165,27 @@ try {
   result.simulationSchedule = await page.evaluate(() => Object.fromEntries(
     [60, 75, 120, 144].map(fps => [fps, window.__wydSimulateFixedScheduler(fps, 10000)]),
   ));
+
+  // Exercise repeated direct scene changes in the same runtime.  This is the
+  // fast diagnostic path used while migrating visuals: no DOM clicks, no
+  // login, no browser reload and no second asset mount.
+  result.stateSwitches = await page.evaluate(() => {
+    const sequence = [5, 7, 0, 5, 7, 0, 5, 7, 5, 0];
+    const results = [];
+    window.stopAutoTick?.();
+    for (const requested of sequence) {
+      if (requested === 0) Module._wyd_set_field_mode?.(1);
+      const accepted = Module._wyd_set_game_state?.(requested) ?? 0;
+      for (let tick = 0; tick < 4; tick += 1) Module._wyd_tick_client?.();
+      results.push({
+        requested,
+        accepted,
+        actual: Module._wyd_get_game_state?.() ?? -1,
+        glErrors: Module._wyd_d3d9_gl_error_total?.() ?? -1,
+      });
+    }
+    return results;
+  });
   await sample("1280x720");
 
   // The game canvas is continuously presented, so Playwright's locator
@@ -171,6 +200,10 @@ try {
   const scheduleCounts = Object.values(result.simulationSchedule || {});
   result.ok = consoleErrors.length === 0 &&
     scheduleCounts.length === 4 && Math.max(...scheduleCounts) - Math.min(...scheduleCounts) <= 1 &&
+    result.stateSwitches?.length === 10 &&
+    result.stateSwitches.every(entry => (
+      entry.accepted === 1 && entry.actual === entry.requested && entry.glErrors === 0
+    )) &&
     result.samples.every((entry) => (
     entry.runtime.optimized === 1 &&
     entry.runtime.webgl2 === 1 &&

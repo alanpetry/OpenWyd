@@ -206,14 +206,16 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
   // at 3x and box-filtering back to the original metrics keeps the official
   // face and dimensions while avoiding the jagged/noisy single-pixel edges.
   constexpr int kFontOversample = 3;
-  const float render_scale = scale * static_cast<float>(kFontOversample);
+  const int atlas_scale = wyd_optimized_view_enabled() != 0 ? 2 : 1;
+  const float render_scale = scale * static_cast<float>(
+      kFontOversample * atlas_scale);
   int ascent_f = 0, descent_f = 0, lg_f = 0;
   stbtt_GetFontVMetrics(&g_font_stb, &ascent_f, &descent_f, &lg_f);
-  int baseline = static_cast<int>(std::round(ascent_f * scale));
+  int baseline = static_cast<int>(std::round(ascent_f * scale * atlas_scale));
 
-  int pen_x = x;
-  int pen_y = y + baseline;
-  int max_pen = x;
+  int pen_x = x * atlas_scale;
+  int pen_y = y * atlas_scale + baseline;
+  int max_pen = pen_x;
 
   for (int i = 0; i < len; ++i) {
     unsigned char ch = static_cast<unsigned char>(text[i]);
@@ -272,18 +274,18 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
 
     int advance = 0;
     stbtt_GetCodepointHMetrics(&g_font_stb, codepoint, &advance, nullptr);
-    pen_x += static_cast<int>(std::round(advance * scale));
+    pen_x += static_cast<int>(std::round(advance * scale * atlas_scale));
     if (i + 1 < len) {
       const int next_codepoint =
           AnsiCodepoint(static_cast<unsigned char>(text[i + 1]));
       pen_x += static_cast<int>(std::round(
           stbtt_GetCodepointKernAdvance(
               &g_font_stb, codepoint, next_codepoint) *
-          scale));
+              scale * atlas_scale));
     }
     if (pen_x > max_pen) max_pen = pen_x;
   }
-  return max_pen - x;
+  return (max_pen - x * atlas_scale) / atlas_scale;
 }
 
 // Measure text width (same logic as RenderTextToDIB without drawing).
@@ -410,6 +412,9 @@ uint64_t g_tex_decode_fail = 0;
 uint64_t g_tex_upload_count = 0;
 uint64_t g_tex_draw_count = 0;
 uint64_t g_tex_alpha_promoted_opaque = 0;
+uint64_t g_optimized_ui_sharpened_textures = 0;
+uint64_t g_optimized_ui_sharpened_pixels = 0;
+int g_optimized_ui_sharpen_override = -1;
 uint64_t g_draw_fvf_xyzrhw = 0;
 uint64_t g_draw_fvf_weighted = 0;
 uint64_t g_draw_fvf_tex2plus = 0;
@@ -3396,12 +3401,13 @@ BOOL TextOutA(HDC hdc, int x, int y, LPCSTR text, int count) {
     // spaces before drawing the new text.  The old stub ignored bk_mode, so
     // the extra scanline copied by TMFont2 retained descenders from the
     // previous string and showed up as a noisy underline in WebGL.
-    const int clear_width = MeasureTextWidth(text, chars, finfo);
-    const int clear_height = std::abs(finfo ? finfo->height : 14) + 1;
-    const int left = std::max(0, x);
-    const int top = std::max(0, y);
-    const int right = std::min(dib->width, x + clear_width);
-    const int bottom = std::min(dib->height, y + clear_height);
+    const int atlas_scale = wyd_optimized_view_enabled() != 0 ? 2 : 1;
+    const int clear_width = MeasureTextWidth(text, chars, finfo) * atlas_scale;
+    const int clear_height = (std::abs(finfo ? finfo->height : 14) + 1) * atlas_scale;
+    const int left = std::max(0, x * atlas_scale);
+    const int top = std::max(0, y * atlas_scale);
+    const int right = std::min(dib->width, x * atlas_scale + clear_width);
+    const int bottom = std::min(dib->height, y * atlas_scale + clear_height);
     for (int row = top; row < bottom; ++row) {
       std::fill_n(
           dib->pixels + static_cast<size_t>(row) * static_cast<size_t>(dib->width) +
@@ -4839,10 +4845,11 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
     tex->debug_category_flags = ComputeTextureCategoryFlags(tex->debug_source_path);
     g_last_closed_debug_source_path.clear();
   }
-  // TMFont2 owns a single-line 512x64 dynamic atlas.  Keep it separate from
+  // TMFont2 owns a single-line 512x64 atlas in Legacy and a 512x128 2x-raster
+  // atlas in Optimized.  Keep both separate from
   // ordinary RC art so optimized font smoothing does not blur every panel,
   // icon and border in the interface.
-  if (w == 512u && h == 64u && MipLevels == 1u &&
+  if (w == 512u && (h == 64u || h == 128u) && MipLevels == 1u &&
       (texture_format == D3DFMT_A4R4G4B4 ||
        texture_format == D3DFMT_A8R8G8B8)) {
     tex->debug_category_flags |= kTexCatFont | kTexCatUi;
@@ -5061,7 +5068,7 @@ struct OptimizedWorldTarget {
   GLuint draw_framebuffer = 0;
   GLuint draw_color_renderbuffer = 0;
   GLuint resolve_framebuffer = 0;
-  GLuint resolve_color_renderbuffer = 0;
+  GLuint resolve_color_texture = 0;
   GLuint depth_renderbuffer = 0;
   int width = 0;
   int height = 0;
@@ -5070,6 +5077,16 @@ struct OptimizedWorldTarget {
 };
 
 OptimizedWorldTarget g_optimized_world_target;
+struct OptimizedPresentProgram {
+  GLuint program = 0;
+  GLint source = -1;
+  GLint texel_size = -1;
+  GLint sharpness = -1;
+  bool ready = false;
+  bool failed = false;
+};
+OptimizedPresentProgram g_optimized_present_program;
+int g_optimized_sharpen_override = -1;
 std::array<D3DXVECTOR3, 8> g_directional_to_light_view{};
 bool g_directional_light_view_dirty = true;
 
@@ -5474,8 +5491,8 @@ void DestroyOptimizedWorldTarget() {
   if (g_optimized_world_target.draw_color_renderbuffer != 0) {
     glDeleteRenderbuffers(1, &g_optimized_world_target.draw_color_renderbuffer);
   }
-  if (g_optimized_world_target.resolve_color_renderbuffer != 0) {
-    glDeleteRenderbuffers(1, &g_optimized_world_target.resolve_color_renderbuffer);
+  if (g_optimized_world_target.resolve_color_texture != 0) {
+    glDeleteTextures(1, &g_optimized_world_target.resolve_color_texture);
   }
   if (g_optimized_world_target.depth_renderbuffer != 0) {
     glDeleteRenderbuffers(1, &g_optimized_world_target.depth_renderbuffer);
@@ -5489,6 +5506,19 @@ void DestroyOptimizedWorldTarget() {
     glDeleteFramebuffers(1, &g_optimized_world_target.resolve_framebuffer);
   }
   g_optimized_world_target = {};
+}
+
+bool PresentOptimizedWorld(int canvas_width, int canvas_height, float sharpness);
+
+float RequestedOptimizedWorldSharpness() {
+  if (g_optimized_sharpen_override == 0) return 0.0f;
+  switch (wyd_optimized_quality_profile()) {
+    case 0: return 0.18f;
+    case 1: return 0.0f;
+    case 2: return 0.28f;
+    case 3: return 0.34f;
+    default: return 0.0f;
+  }
 }
 
 int RequestedOptimizedWorldSamples() {
@@ -5529,17 +5559,31 @@ bool EnsureOptimizedWorldTarget(int width, int height, int samples) {
   DestroyOptimizedWorldTarget();
   glGenFramebuffers(1, &g_optimized_world_target.resolve_framebuffer);
   glBindFramebuffer(GL_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
-  glGenRenderbuffers(1, &g_optimized_world_target.resolve_color_renderbuffer);
-  glBindRenderbuffer(GL_RENDERBUFFER, g_optimized_world_target.resolve_color_renderbuffer);
+  glGenTextures(1, &g_optimized_world_target.resolve_color_texture);
+  glBindTexture(GL_TEXTURE_2D, g_optimized_world_target.resolve_color_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   // The official X8R8G8B8 backbuffer has no destination alpha channel.  An
   // RGBA offscreen target let earlier world draws leak alpha into subsequent
   // D3D blend factors and changed equipment materials only in Optimized.
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, width, height);
-  glFramebufferRenderbuffer(
+  glTexImage2D(
+      GL_TEXTURE_2D,
+      0,
+      GL_RGB8,
+      width,
+      height,
+      0,
+      GL_RGB,
+      GL_UNSIGNED_BYTE,
+      nullptr);
+  glFramebufferTexture2D(
       GL_FRAMEBUFFER,
       GL_COLOR_ATTACHMENT0,
-      GL_RENDERBUFFER,
-      g_optimized_world_target.resolve_color_renderbuffer);
+      GL_TEXTURE_2D,
+      g_optimized_world_target.resolve_color_texture,
+      0);
 
   bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
 
@@ -5579,6 +5623,7 @@ bool EnsureOptimizedWorldTarget(int width, int height, int samples) {
 
   complete = complete &&
       glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  glBindTexture(GL_TEXTURE_2D, 0);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   if (!complete) {
@@ -8000,19 +8045,23 @@ extern "C" void wyd_d3d9_optimized_end_world_begin_ui() {
         GL_NEAREST);
   }
 
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-  glBlitFramebuffer(
-      0,
-      0,
-      g_optimized_world_target.width,
-      g_optimized_world_target.height,
-      0,
-      0,
-      canvas_w,
-      canvas_h,
-      GL_COLOR_BUFFER_BIT,
-      GL_LINEAR);
+  const float sharpness = RequestedOptimizedWorldSharpness();
+  if (sharpness <= 0.0f ||
+      !PresentOptimizedWorld(canvas_w, canvas_h, sharpness)) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, g_optimized_world_target.resolve_framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(
+        0,
+        0,
+        g_optimized_world_target.width,
+        g_optimized_world_target.height,
+        0,
+        0,
+        canvas_w,
+        canvas_h,
+        GL_COLOR_BUFFER_BIT,
+        GL_LINEAR);
+  }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   g_optimized_world_target.active = false;
 
@@ -8031,6 +8080,18 @@ extern "C" void wyd_d3d9_optimized_end_world_begin_ui() {
 
 extern "C" unsigned int wyd_d3d9_optimized_world_samples() {
   return g_optimized_world_target.samples;
+}
+
+extern "C" void wyd_d3d9_set_optimized_sharpen_enabled(int enabled) {
+  g_optimized_sharpen_override = enabled < 0 ? -1 : (enabled != 0 ? 1 : 0);
+}
+
+extern "C" int wyd_d3d9_optimized_sharpen_enabled() {
+  return RequestedOptimizedWorldSharpness() > 0.0f ? 1 : 0;
+}
+
+extern "C" float wyd_d3d9_optimized_sharpen_strength() {
+  return RequestedOptimizedWorldSharpness();
 }
 
 extern "C" unsigned int wyd_d3d9_is_webgl2() {
@@ -8675,6 +8736,120 @@ bool CompileShader(GLuint shader, const char* source) {
   return false;
 }
 
+bool EnsureOptimizedPresentProgram() {
+  if (g_optimized_present_program.ready) return true;
+  if (g_optimized_present_program.failed || !EnsureWasmContext() ||
+      !g_wasm_d3d9_state.webgl2) {
+    return false;
+  }
+
+  // The world is filtered separately from the UI.  This bounded adaptive
+  // unsharp pass restores detail lost by bilinear scaling while clamping the
+  // result to the local neighbourhood, which prevents bright/dark halos.
+  static const char* kVertex = R"GLSL(#version 300 es
+precision highp float;
+out vec2 vUV;
+void main() {
+  vec2 uv = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUV = uv;
+  gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+}
+)GLSL";
+
+  static const char* kFragment = R"GLSL(#version 300 es
+precision highp float;
+uniform sampler2D uSource;
+uniform vec2 uTexelSize;
+uniform float uSharpness;
+in vec2 vUV;
+out vec4 outColor;
+
+void main() {
+  vec3 center = texture(uSource, vUV).rgb;
+  vec3 north = texture(uSource, vUV + vec2(0.0, uTexelSize.y)).rgb;
+  vec3 south = texture(uSource, vUV - vec2(0.0, uTexelSize.y)).rgb;
+  vec3 east = texture(uSource, vUV + vec2(uTexelSize.x, 0.0)).rgb;
+  vec3 west = texture(uSource, vUV - vec2(uTexelSize.x, 0.0)).rgb;
+  vec3 localMin = min(center, min(min(north, south), min(east, west)));
+  vec3 localMax = max(center, max(max(north, south), max(east, west)));
+  vec3 average = (north + south + east + west) * 0.25;
+  vec3 range = localMax - localMin;
+  float contrast = max(range.r, max(range.g, range.b));
+  float adaptive = 1.0 - smoothstep(0.45, 0.90, contrast);
+  vec3 sharpened = center + (center - average) * (uSharpness * adaptive);
+  outColor = vec4(clamp(sharpened, localMin, localMax), 1.0);
+}
+)GLSL";
+
+  GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
+  if (!CompileShader(vertex, kVertex) || !CompileShader(fragment, kFragment)) {
+    if (vertex) glDeleteShader(vertex);
+    if (fragment) glDeleteShader(fragment);
+    g_optimized_present_program.failed = true;
+    return false;
+  }
+
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vertex);
+  glAttachShader(program, fragment);
+  glLinkProgram(program);
+  glDeleteShader(vertex);
+  glDeleteShader(fragment);
+
+  GLint linked = GL_FALSE;
+  glGetProgramiv(program, GL_LINK_STATUS, &linked);
+  if (linked != GL_TRUE) {
+    char log[1024]{};
+    GLsizei length = 0;
+    glGetProgramInfoLog(program, sizeof(log) - 1, &length, log);
+    std::fprintf(stderr, "[WASM optimized] present program link failed: %s\n", log);
+    glDeleteProgram(program);
+    g_optimized_present_program.failed = true;
+    return false;
+  }
+
+  g_optimized_present_program.program = program;
+  g_optimized_present_program.source = glGetUniformLocation(program, "uSource");
+  g_optimized_present_program.texel_size = glGetUniformLocation(program, "uTexelSize");
+  g_optimized_present_program.sharpness = glGetUniformLocation(program, "uSharpness");
+  g_optimized_present_program.ready = true;
+  return true;
+}
+
+bool PresentOptimizedWorld(int canvas_width, int canvas_height, float sharpness) {
+  if (!EnsureOptimizedPresentProgram() ||
+      g_optimized_world_target.resolve_color_texture == 0) {
+    return false;
+  }
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, std::max(1, canvas_width), std::max(1, canvas_height));
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_STENCIL_TEST);
+  glDepthMask(GL_FALSE);
+  glUseProgram(g_optimized_present_program.program);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, g_optimized_world_target.resolve_color_texture);
+  glUniform1i(g_optimized_present_program.source, 0);
+  glUniform2f(
+      g_optimized_present_program.texel_size,
+      1.0f / static_cast<float>(std::max(1, g_optimized_world_target.width)),
+      1.0f / static_cast<float>(std::max(1, g_optimized_world_target.height)));
+  glUniform1f(g_optimized_present_program.sharpness, sharpness);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+
+  // The fixed-function bridge caches the active program.  The post-process
+  // changed it behind that cache, so force a real bind before the first UI
+  // draw and invalidate its vertex/index setup as well.
+  g_ffp_program.program_bound = false;
+  g_ffp_program.vertex_input_bound = false;
+  g_ffp_program.index_buffer_bound = false;
+  return true;
+}
+
 bool EnsureFFPProgram() {
   if (g_ffp_program.ready) return true;
   if (!EnsureWasmContext()) return false;
@@ -9114,6 +9289,102 @@ void BuildGLTextureRGBA(const DummyDirect3DTexture9* tex, std::vector<uint8_t>* 
   }
 }
 
+float RequestedOptimizedUiSharpness() {
+  if (g_optimized_ui_sharpen_override == 0 ||
+      wyd_optimized_view_enabled() == 0) {
+    return 0.0f;
+  }
+  switch (wyd_optimized_quality_profile()) {
+    case 1: return 0.10f;
+    case 2: return 0.22f;
+    case 3: return 0.28f;
+    default: return 0.16f;
+  }
+}
+
+void ApplyOptimizedUiSharpen(
+    const DummyDirect3DTexture9* tex,
+    std::vector<uint8_t>* rgba) {
+  const float strength = RequestedOptimizedUiSharpness();
+  if (!tex || !rgba || strength <= 0.0f || tex->width < 3u || tex->height < 3u ||
+      (tex->debug_category_flags & kTexCatUi) == 0u ||
+      (tex->debug_category_flags & kTexCatFont) != 0u) {
+    return;
+  }
+
+  const std::vector<uint8_t> source = *rgba;
+  const size_t row_stride = static_cast<size_t>(tex->width) * 4u;
+  uint64_t changed_pixels = 0;
+  for (UINT y = 1; y + 1u < tex->height; ++y) {
+    for (UINT x = 1; x + 1u < tex->width; ++x) {
+      const size_t center_offset = static_cast<size_t>(y) * row_stride +
+          static_cast<size_t>(x) * 4u;
+      if (source[center_offset + 3u] == 0u) continue;
+
+      const size_t neighbors[4] = {
+          center_offset - 4u,
+          center_offset + 4u,
+          center_offset - row_stride,
+          center_offset + row_stride,
+      };
+      bool changed = false;
+      for (size_t channel = 0; channel < 3u; ++channel) {
+        const int center = source[center_offset + channel];
+        int minimum = center;
+        int maximum = center;
+        int sum = 0;
+        int count = 0;
+        for (const size_t neighbor : neighbors) {
+          // Transparent texels can contain arbitrary matte RGB; excluding
+          // them prevents color halos around antialiased panel/icon edges.
+          if (source[neighbor + 3u] == 0u) continue;
+          const int value = source[neighbor + channel];
+          minimum = std::min(minimum, value);
+          maximum = std::max(maximum, value);
+          sum += value;
+          ++count;
+        }
+        if (count == 0) continue;
+        const float average = static_cast<float>(sum) / static_cast<float>(count);
+        const float candidate = static_cast<float>(center) +
+            (static_cast<float>(center) - average) * strength;
+        const int bounded = std::max(
+            minimum,
+            std::min(maximum, static_cast<int>(std::lround(candidate))));
+        if (bounded != center) {
+          (*rgba)[center_offset + channel] = static_cast<uint8_t>(bounded);
+          changed = true;
+        }
+      }
+      if (changed) ++changed_pixels;
+    }
+  }
+  if (changed_pixels != 0u) {
+    ++g_optimized_ui_sharpened_textures;
+    g_optimized_ui_sharpened_pixels += changed_pixels;
+  }
+}
+
+extern "C" void wyd_d3d9_set_optimized_ui_sharpen_enabled(int enabled) {
+  g_optimized_ui_sharpen_override = enabled < 0 ? -1 : (enabled != 0 ? 1 : 0);
+}
+
+extern "C" int wyd_d3d9_optimized_ui_sharpen_enabled() {
+  return RequestedOptimizedUiSharpness() > 0.0f ? 1 : 0;
+}
+
+extern "C" float wyd_d3d9_optimized_ui_sharpen_strength() {
+  return RequestedOptimizedUiSharpness();
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_sharpened_textures() {
+  return static_cast<uint32_t>(g_optimized_ui_sharpened_textures);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_ui_sharpened_pixels() {
+  return static_cast<uint32_t>(g_optimized_ui_sharpened_pixels);
+}
+
 bool IsPowerOfTwo(UINT value) {
   return value != 0u && (value & (value - 1u)) == 0u;
 }
@@ -9159,12 +9430,24 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
   if (wyd_optimized_view_enabled() != 0 &&
       (tex->debug_category_flags & kTexCatFont) != 0u) {
-    // Fonts retain their exact logical metrics while A8 coverage is resolved
-    // smoothly at the physical canvas resolution.  Ordinary UI art keeps its
-    // original sampler; forcing GL_LINEAR for all RC textures made it blurrier
-    // than Legacy.
-    gl_min_filter = GL_LINEAR;
-    gl_mag_filter = GL_LINEAR;
+    // TMFont2 already stores antialiased A8 coverage and renders its atlas at
+    // exactly one logical texel per screen pixel.  Filtering that coverage a
+    // second time makes 12 px Tahoma look grey and swollen, especially around
+    // vertical stems.  At 1:1 sample the authored coverage exactly.  When the
+    // canvas has extra high-DPI pixels, interpolate the A8 mask across those
+    // physical pixels instead of expanding each texel into a block.
+    int canvas_width = 0;
+    int canvas_height = 0;
+    emscripten_get_canvas_element_size("#canvas", &canvas_width, &canvas_height);
+    const float physical_scale_x = static_cast<float>(std::max(1, canvas_width)) /
+        static_cast<float>(std::max(1, wyd_optimized_css_width()));
+    const float physical_scale_y = static_cast<float>(std::max(1, canvas_height)) /
+        static_cast<float>(std::max(1, wyd_optimized_css_height()));
+    const float physical_scale = std::max(physical_scale_x, physical_scale_y);
+    const float atlas_scale = tex->height >= 128u ? 2.0f : 1.0f;
+    const bool one_to_one = std::abs(physical_scale - atlas_scale) < 0.10f;
+    gl_min_filter = one_to_one ? GL_NEAREST : GL_LINEAR;
+    gl_mag_filter = one_to_one ? GL_NEAREST : GL_LINEAR;
   }
 
   if (tex->gl_wrap_s != wrap_u) {
@@ -9231,6 +9514,7 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
       std::vector<uint8_t> rgba;
       BuildGLTextureRGBA(tex, &rgba);
       if (rgba.empty()) return false;
+      ApplyOptimizedUiSharpen(tex, &rgba);
       glTexImage2D(
           GL_TEXTURE_2D,
           0,
@@ -10591,7 +10875,8 @@ bool UploadAndDraw(GLenum gl_mode, const std::vector<FFPVertex>& vertices, const
       (draw_mode == GL_TRIANGLES || draw_mode == GL_TRIANGLE_STRIP || draw_mode == GL_TRIANGLE_FAN)) {
     const bool force_clip_triangle_repair =
         current_sky_texture_draw ||
-        active_fvf == 578u;
+        active_fvf == 578u ||
+        (active_fvf == 594u && wyd_optimized_view_enabled() != 0);
     if (BuildClipWClippedTriangles(
             draw_mode,
             *draw_vertices,

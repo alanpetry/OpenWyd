@@ -6,14 +6,14 @@ from __future__ import annotations
 import html
 import json
 import math
+import argparse
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-REPORT_DIR = REPO_ROOT / "webclient/client-wasm/build/reports/optimized-visual-compare"
-RAW_REPORT = REPORT_DIR / "raw-report.json"
+DEFAULT_REPORT_DIR = REPO_ROOT / "webclient/client-wasm/build/reports/optimized-visual-compare"
 
 
 def _rms(image: Image.Image) -> float:
@@ -133,7 +133,19 @@ def _make_text_crop(
 
 
 def main() -> int:
-    payload = json.loads(RAW_REPORT.read_text(encoding="utf-8"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        default=DEFAULT_REPORT_DIR,
+        help="Directory containing raw-report.json (relative paths use repo root)",
+    )
+    args = parser.parse_args()
+    report_dir = args.report_dir
+    if not report_dir.is_absolute():
+        report_dir = REPO_ROOT / report_dir
+    raw_report = report_dir / "raw-report.json"
+    payload = json.loads(raw_report.read_text(encoding="utf-8"))
     legacy = _run_by_label(payload, "legacy-800x600")
     optimized = _run_by_label(payload, "optimized-800x600")
     wide = _run_by_label(payload, "optimized-1920x1080")
@@ -148,9 +160,9 @@ def main() -> int:
         wide_image = Image.open(REPO_ROOT / wide_entry["screenshot"]).convert("RGBA")
         difference = ImageChops.difference(legacy_image, optimized_image)
         enhanced = difference.convert("RGB").point(lambda value: min(255, value * 4))
-        diff_path = REPORT_DIR / f"diff-state-{state}.png"
+        diff_path = report_dir / f"diff-state-{state}.png"
         enhanced.save(diff_path, optimize=True)
-        side_path = REPORT_DIR / f"side-by-side-state-{state}.png"
+        side_path = report_dir / f"side-by-side-state-{state}.png"
         _make_montage(
             legacy_image,
             optimized_image,
@@ -158,7 +170,7 @@ def main() -> int:
             ("Legado 800x600", "Otimizado 800x600"),
         )
         wide_preview = wide_image.resize((960, 540), Image.Resampling.LANCZOS)
-        wide_path = REPORT_DIR / f"legacy-vs-wide-state-{state}.png"
+        wide_path = report_dir / f"legacy-vs-wide-state-{state}.png"
         _make_montage(
             legacy_image,
             wide_preview,
@@ -177,7 +189,7 @@ def main() -> int:
         screen_fraction_ratio = (
             (wide_pixel_scale / 1080.0) / max(0.0001, legacy_pixel_scale / 600.0)
         )
-        text_crop_path = REPORT_DIR / f"text-crop-state-{state}.png"
+        text_crop_path = report_dir / f"text-crop-state-{state}.png"
         has_text_crop = _make_text_crop(
             legacy_image,
             optimized_image,
@@ -222,7 +234,7 @@ def main() -> int:
             }
         )
 
-    metric_path = REPORT_DIR / "metrics.json"
+    metric_path = report_dir / "metrics.json"
     metric_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     rows = "\n".join(
         "<tr>"
@@ -241,7 +253,7 @@ def main() -> int:
         "</tr>"
         for item in metrics
     )
-    (REPORT_DIR / "index.html").write_text(
+    (report_dir / "index.html").write_text(
         """<!doctype html><meta charset='utf-8'><title>OpenWyd Optimized evidence</title>
 <style>body{font:14px system-ui;background:#151515;color:#eee;margin:24px}table{border-collapse:collapse}td,th{padding:7px 10px;border:1px solid #555}a{color:#8cf}</style>
 <h1>OpenWyd Optimized — deterministic visual evidence</h1>
@@ -264,7 +276,7 @@ def main() -> int:
                 "ok": passed,
                 "states": len(metrics),
                 "metrics": metric_path.relative_to(REPO_ROOT).as_posix(),
-                "html": (REPORT_DIR / "index.html").relative_to(REPO_ROOT).as_posix(),
+                "html": (report_dir / "index.html").relative_to(REPO_ROOT).as_posix(),
             },
             indent=2,
         )

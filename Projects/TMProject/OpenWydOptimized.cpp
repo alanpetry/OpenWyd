@@ -24,7 +24,7 @@ int ClampDimension(int value, int fallback)
 
 int ClampQuality(int value)
 {
-	return std::max(0, std::min(3, value));
+	return (std::max)(0, (std::min)(3, value));
 }
 
 float CalculateUiScale(int uiScalePercent)
@@ -91,7 +91,7 @@ void ApplyFullBleedShellBackground(
 		sourceHeight = 400.0f;
 	}
 
-	const float coverScale = std::max(
+	const float coverScale = (std::max)(
 		static_cast<float>(viewport.cssWidth) / sourceWidth,
 		static_cast<float>(viewport.cssHeight) / sourceHeight);
 	const float offsetX =
@@ -154,8 +154,8 @@ void RelayoutRootControl(
 		return;
 	}
 
-	const float previousScale = std::max(0.001f, previous.uiScale);
-	const float currentScale = std::max(0.001f, current.uiScale);
+	const float previousScale = (std::max)(0.001f, previous.uiScale);
+	const float currentScale = (std::max)(0.001f, current.uiScale);
 	const float ratio = currentScale / previousScale;
 	const float previousExtraWidth =
 		static_cast<float>(previous.cssWidth) - 800.0f * previousScale;
@@ -238,7 +238,7 @@ void OpenWydOptimizedConfigureRootControl(SControl* control)
 	if (!OpenWydOptimizedEnabled() || !control || control->m_bOptimizedRootLayout)
 		return;
 
-	const float scale = std::max(0.001f, g_viewport.uiScale);
+	const float scale = (std::max)(0.001f, g_viewport.uiScale);
 	control->m_fOptimizedAuthoredX = control->m_nPosX / scale;
 	control->m_fOptimizedAuthoredY = control->m_nPosY / scale;
 	control->m_fOptimizedAuthoredWidth = control->m_nWidth / scale;
@@ -277,7 +277,7 @@ void OpenWydOptimizedConfigureCenteredControl(SControl* control)
 	if (!OpenWydOptimizedEnabled() || !control || control->m_bOptimizedRootLayout)
 		return;
 
-	const float scale = std::max(0.001f, g_viewport.uiScale);
+	const float scale = (std::max)(0.001f, g_viewport.uiScale);
 	const float authoredCenterY =
 		control->m_nPosY / scale + control->m_nHeight / scale * 0.5f;
 	control->m_cOptimizedAnchorX = 1;
@@ -308,7 +308,7 @@ void OpenWydOptimizedRelayoutControls(
 
 	if (controls->m_pCursor)
 	{
-		const float ratio = current.uiScale / std::max(0.001f, previous.uiScale);
+		const float ratio = current.uiScale / (std::max)(0.001f, previous.uiScale);
 		controls->m_pCursor->m_nWidth *= ratio;
 		controls->m_pCursor->m_nHeight *= ratio;
 	}
@@ -333,8 +333,8 @@ extern "C" int wyd_configure_optimized_view(
 	g_viewport.backingHeight = ClampDimension(backingHeight, g_viewport.cssHeight);
 	// Optimized may compact the official UI on a small viewport, but it never
 	// enlarges the authored font/control metrics.
-	g_viewport.uiScalePercent = std::max(80, std::min(100, uiScalePercent));
-	g_viewport.worldScalePercent = std::max(50, std::min(100, worldScalePercent));
+	g_viewport.uiScalePercent = (std::max)(80, (std::min)(100, uiScalePercent));
+	g_viewport.worldScalePercent = (std::max)(50, (std::min)(100, worldScalePercent));
 	g_viewport.worldScale = static_cast<float>(g_viewport.worldScalePercent) / 100.0f;
 	g_viewport.uiScale = OpenWydOptimizedEnabled()
 		? CalculateUiScale(g_viewport.uiScalePercent)

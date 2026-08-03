@@ -33,6 +33,7 @@ const ticksPerState = Math.max(
 const qualityProfile = ["auto", "performance", "quality", "maximum"].includes(
   process.env.OPENWYD_VISUAL_QUALITY,
 ) ? process.env.OPENWYD_VISUAL_QUALITY : "quality";
+const debugFlags = Number.parseInt(process.env.OPENWYD_VISUAL_DEBUG_FLAGS || "0", 10) || 0;
 const allRuns = [
   { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
   { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
@@ -211,6 +212,10 @@ async function snapshot(page) {
         worldScale: call("_wyd_optimized_world_scale"),
         samples: call("_wyd_d3d9_optimized_world_samples"),
         webgl2: call("_wyd_d3d9_is_webgl2"),
+        worldSharpenStrength: call("_wyd_d3d9_optimized_sharpen_strength"),
+        uiSharpenStrength: call("_wyd_d3d9_optimized_ui_sharpen_strength"),
+        uiSharpenedTextures: call("_wyd_d3d9_optimized_ui_sharpened_textures"),
+        uiSharpenedPixels: call("_wyd_d3d9_optimized_ui_sharpened_pixels"),
       },
       camera: {
         valid: call("_wyd_debug_camera_valid"),
@@ -278,6 +283,7 @@ async function executeRun(context, run) {
   url.searchParams.set("autoboot", "0");
   url.searchParams.set("autostart", "0");
   url.searchParams.set("quiet", "1");
+  url.searchParams.set("debugFlags", String(debugFlags >>> 0));
 
   const output = { ...run, url: url.toString(), states: [], cache: null };
   // Register the run before it starts so an interrupted capture still leaves
@@ -286,7 +292,7 @@ async function executeRun(context, run) {
   try {
     await page.goto(url.toString(), { waitUntil: "load", timeout: 240000 });
     await page.waitForFunction(() => window.__runtimeReady === true, null, { timeout: 240000 });
-    await page.evaluate(() => {
+    await page.evaluate((requestedDebugFlags) => {
       window.stopAutoTick?.();
       document.body.classList.remove("loading");
       // The settings button is HTML chrome, not part of the Direct3D/WebGL
@@ -301,7 +307,8 @@ async function executeRun(context, run) {
       }
       Module._wyd_debug_set_fake_time?.(0);
       Module._wyd_compare_random_arm?.(0x4f50454e);
-    });
+      Module._wyd_d3d9_set_debug_flags?.(requestedDebugFlags >>> 0);
+    }, debugFlags);
     const boot = await page.evaluate(() => Module._wyd_boot_client(0));
     if (!boot) throw new Error("boot failed");
 
@@ -369,6 +376,12 @@ try {
     headless: true,
     viewport: { width: 800, height: 600 },
     deviceScaleFactor: 1,
+  });
+  // Revalidate only stable bootstraps, matching the public nginx policy. The
+  // large content-addressed package is still restored from IndexedDB.
+  await context.setExtraHTTPHeaders({
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
   });
   for (const run of runs) await executeRun(context, run);
   result.ok = result.consoleErrors.length === 0 && result.runs.every(run => (

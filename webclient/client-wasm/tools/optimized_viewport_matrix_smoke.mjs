@@ -44,6 +44,12 @@ try {
       viewport: { width: initialWidth, height: initialHeight },
       deviceScaleFactor: group.dpr,
     });
+    // Match docker/nginx.conf: stable bootstrap files are revalidated, whereas
+    // the content-addressed data payload remains immutable and locally cached.
+    await context.setExtraHTTPHeaders({
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    });
     const page = await context.newPage();
     page.on("console", message => {
       if (message.type() === "error") result.consoleErrors.push(message.text());
@@ -104,7 +110,13 @@ try {
     sample.backingHeight >= sample.cssHeight &&
     Math.abs(sample.mouseX - sample.cssWidth / 2) <= 2 &&
     Math.abs(sample.mouseY - sample.cssHeight / 2) <= 2 &&
-    sample.glErrors === 0 && sample.worldSamples >= 2 &&
+    sample.glErrors === 0 && sample.worldSamples >= 1 &&
+    // Four samples at a 12.5 MP backing buffer would reserve hundreds of MB
+    // for color/depth attachments.  The renderer deliberately falls back to
+    // single-sample at that scale while retaining the full physical image;
+    // require multisampling on the normal-sized buffers where it is useful
+    // and safe.
+    (sample.backingPixels > 8 * 1024 * 1024 || sample.worldSamples >= 2) &&
     sample.navigationEntries === 1
   ));
 } catch (error) {

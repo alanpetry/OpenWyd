@@ -400,6 +400,14 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 
 	RenderDevice::m_nFontSize = _nFontSize;
 	RenderDevice::m_nFontTextureSize = 512;
+#if defined(__EMSCRIPTEN__)
+	// Optimized rasterizes the official 12 px Tahoma glyphs at 2x and samples
+	// them back into the same logical geometry.  Only the atlas resolution is
+	// doubled; text metrics, control bounds and font size remain unchanged.
+	RenderDevice::m_nFontTextureSizeY = OpenWydOptimizedEnabled() ? 128 : 64;
+#else
+	RenderDevice::m_nFontTextureSizeY = 64;
+#endif
 	InitServerName2();
 	InitServerName();
 	WasmInitLog("[newapp:init] server name loaded");

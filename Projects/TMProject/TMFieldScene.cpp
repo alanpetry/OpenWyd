@@ -15477,6 +15477,37 @@ void TMFieldScene::InitBoard()
 	m_pPotalText2 = (SText*)m_pControlContainer->FindControl(12551);
 	m_pPotalText3 = (SText*)m_pControlContainer->FindControl(12552);
 
+	if (OpenWydOptimizedEnabled())
+	{
+		// The Portuguese portal headings are substantially wider than the
+		// original 60 px RC fields.  Keep the authored 12 px font, but give the
+		// three columns enough room inside the official 329 px panel so the last
+		// heading cannot be clipped by the right-hand frame.
+		struct PortalHeadingLayout
+		{
+			unsigned int id;
+			float x;
+			float width;
+		};
+		const PortalHeadingLayout headings[] = {
+			{12552, 8.0f, 96.0f},
+			{12553, 112.0f, 100.0f},
+			{12560, 216.0f, 105.0f},
+		};
+		for (const auto& heading : headings)
+		{
+			auto* control = m_pControlContainer->FindControl(heading.id);
+			if (!control)
+				continue;
+			control->SetPos(heading.x, control->m_nPosY);
+			control->SetSize(heading.width, 16.0f);
+		}
+
+		auto* title = m_pControlContainer->FindControl(12551);
+		if (title)
+			title->SetSize(title->m_nWidth, 16.0f);
+	}
+
 	m_pPotalPanel->SetPos(((float)g_pDevice->m_dwScreenWidth * 0.5f) - (m_pQuestPanel->m_nWidth * 0.5f),
 		((float)g_pDevice->m_dwScreenHeight * 0.5f) - (m_pQuestPanel->m_nHeight * 0.6f));
 

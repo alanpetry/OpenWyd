@@ -147,6 +147,11 @@ def _use_bounded_memory_indexeddb_cache(loader_path: Path) -> None:
         r"^        \}\r?\n\r?\n",
         re.MULTILINE,
     )
+    fallback_pattern = re.compile(
+        r"^        async function preloadFallback\(error\) \{[\s\S]*?"
+        r"^        \}\r?\n\r?\n",
+        re.MULTILINE,
+    )
     cache_replacement = """        async function cacheRemotePackage(db, packageName, packageData, packageMeta) {
           var chunkCount = Math.ceil(packageData.byteLength / CHUNK_SIZE);
 
@@ -158,8 +163,9 @@ def _use_bounded_memory_indexeddb_cache(loader_path: Path) -> None:
               var transaction = db.transaction([PACKAGE_STORE_NAME], IDB_RW);
               var packages = transaction.objectStore(PACKAGE_STORE_NAME);
               var request = packages.put(chunk, `package/${packageName}/${chunkId}`);
-              request.onsuccess = resolve;
               request.onerror = reject;
+              transaction.oncomplete = resolve;
+              transaction.onerror = reject;
               transaction.onabort = reject;
             });
             chunk = undefined;
@@ -172,11 +178,31 @@ def _use_bounded_memory_indexeddb_cache(loader_path: Path) -> None:
               {'uuid': packageMeta.uuid, 'chunkCount': chunkCount},
               `metadata/${packageName}`
             );
-            request.onsuccess = resolve;
             request.onerror = reject;
+            transaction.oncomplete = resolve;
+            transaction.onerror = reject;
             transaction.onabort = reject;
           });
           return packageData;
+        }
+
+        async function deleteCachedPackage(db, packageName, packageMeta) {
+          await new Promise((resolve, reject) => {
+            var transaction = db.transaction(
+              [PACKAGE_STORE_NAME, METADATA_STORE_NAME],
+              IDB_RW
+            );
+            var packages = transaction.objectStore(PACKAGE_STORE_NAME);
+            var metadata = transaction.objectStore(METADATA_STORE_NAME);
+            var chunkCount = Number(packageMeta && packageMeta['chunkCount']) || 0;
+            for (var chunkId = 0; chunkId < chunkCount; chunkId++) {
+              packages.delete(`package/${packageName}/${chunkId}`);
+            }
+            metadata.delete(`metadata/${packageName}`);
+            transaction.oncomplete = resolve;
+            transaction.onerror = reject;
+            transaction.onabort = reject;
+          });
         }
 
 """
@@ -219,12 +245,38 @@ def _use_bounded_memory_indexeddb_cache(loader_path: Path) -> None:
         }
 
 """
+    fallback_replacement = """        async function preloadFallback(error) {
+          console.warn('Asset cache miss or incomplete entry; repairing it.', error);
+          var packageData = await fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE);
+          if (db) {
+            try {
+              await deleteCachedPackage(db, PACKAGE_PATH + PACKAGE_NAME, pkgMetadata);
+              processPackageData(await cacheRemotePackage(
+                db,
+                PACKAGE_PATH + PACKAGE_NAME,
+                packageData,
+                {uuid:PACKAGE_UUID}
+              ));
+              return;
+            } catch (cacheError) {
+              console.warn('Unable to repair the asset cache; continuing in memory.', cacheError);
+            }
+          }
+          processPackageData(packageData);
+        }
+
+"""
     source, cache_count = cache_pattern.subn(cache_replacement, source)
     source, fetch_count = fetch_pattern.subn(fetch_replacement, source)
-    if cache_count != 1 or fetch_count != 1:
+    source, fallback_count = fallback_pattern.subn(
+        fallback_replacement,
+        source,
+    )
+    if cache_count != 1 or fetch_count != 1 or fallback_count != 1:
         raise RuntimeError(
             "unsupported Emscripten IndexedDB cache loader; expected one "
-            f"cache function and one fetch function, got {cache_count}/{fetch_count}"
+            "cache, fetch, and fallback function, got "
+            f"{cache_count}/{fetch_count}/{fallback_count}"
         )
     loader_path.write_text(source, encoding="utf-8", newline="\n")
 

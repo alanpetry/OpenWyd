@@ -40,6 +40,8 @@ struct WydControlAuditSample
 	unsigned int parentId;
 	int type;
 	int visible;
+	int rawVisible;
+	int depth;
 	float localX;
 	float localY;
 	float absoluteX;
@@ -53,6 +55,7 @@ WydVisibleTextControl g_wydVisibleTextControls[kWydVisibleTextControlCapacity]{}
 unsigned int g_wydVisibleTextControlCount = 0;
 constexpr unsigned int kWydControlAuditCapacity = 8192;
 WydControlAuditSample g_wydControlAuditSamples[kWydControlAuditCapacity]{};
+SControl* g_wydControlAuditPointers[kWydControlAuditCapacity]{};
 unsigned int g_wydControlAuditCount = 0;
 
 SControl* WydFindControl(unsigned int idwControlID)
@@ -145,12 +148,21 @@ void WydCollectControlAuditSamples(SControl* pControl)
 
 	if (pControl->m_dwControlID != 0)
 	{
-		auto& sample = g_wydControlAuditSamples[g_wydControlAuditCount++];
+		const unsigned int sampleIndex = g_wydControlAuditCount++;
+		auto& sample = g_wydControlAuditSamples[sampleIndex];
+		g_wydControlAuditPointers[sampleIndex] = pControl;
 		sample.id = pControl->m_dwControlID;
 		auto pParent = static_cast<SControl*>(pControl->m_pTop);
 		sample.parentId = pParent ? pParent->m_dwControlID : 0;
 		sample.type = static_cast<int>(pControl->m_eCtrlType);
 		sample.visible = WydControlIsEffectivelyVisible(pControl) ? 1 : 0;
+		sample.rawVisible = pControl->m_bVisible ? 1 : 0;
+		sample.depth = 0;
+		for (SControl* pNode = pControl; pNode && pNode->m_pTop;
+			pNode = static_cast<SControl*>(pNode->m_pTop))
+		{
+			++sample.depth;
+		}
 		sample.localX = pControl->m_nPosX;
 		sample.localY = pControl->m_nPosY;
 		sample.absoluteX = WydControlAbsX(pControl);
@@ -166,6 +178,7 @@ void WydCollectControlAuditSamples(SControl* pControl)
 void WydRefreshControlAuditSamples()
 {
 	g_wydControlAuditCount = 0;
+	memset(g_wydControlAuditPointers, 0, sizeof(g_wydControlAuditPointers));
 	if (!g_pCurrentScene || !g_pCurrentScene->m_pControlContainer)
 		return;
 	WydCollectControlAuditSamples(g_pCurrentScene->m_pControlContainer->m_pControlRoot);
@@ -334,6 +347,38 @@ extern "C" int wyd_control_audit_visible(unsigned int index)
 {
 	const auto sample = WydControlAuditSampleAt(index);
 	return sample ? sample->visible : 0;
+}
+extern "C" int wyd_control_audit_raw_visible(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->rawVisible : 0;
+}
+extern "C" int wyd_control_audit_depth(unsigned int index)
+{
+	const auto sample = WydControlAuditSampleAt(index);
+	return sample ? sample->depth : -1;
+}
+extern "C" int wyd_control_audit_set_raw_visible(unsigned int index, int visible)
+{
+	if (index >= g_wydControlAuditCount || !g_wydControlAuditPointers[index])
+		return 0;
+	// This is deliberately a visual-audit primitive.  Calling the virtual
+	// SetVisible hook can trigger gameplay/UI side effects; changing only the
+	// raw flag lets the test render an official control tree without inventing
+	// state transitions or mutating scene data.
+	g_wydControlAuditPointers[index]->m_bVisible = visible ? 1 : 0;
+	return 1;
+}
+extern "C" int wyd_control_audit_reveal_with_ancestors(unsigned int index)
+{
+	if (index >= g_wydControlAuditCount || !g_wydControlAuditPointers[index])
+		return 0;
+	for (SControl* pNode = g_wydControlAuditPointers[index]; pNode;
+		pNode = static_cast<SControl*>(pNode->m_pTop))
+	{
+		pNode->m_bVisible = 1;
+	}
+	return 1;
 }
 extern "C" float wyd_control_audit_local_x(unsigned int index)
 {
