@@ -647,6 +647,9 @@
     <ClCompile Include="OpenWydCompareRandom.cpp">
       <Filter>Source Files\Systems</Filter>
     </ClCompile>
+    <ClCompile Include="OpenWydNativeRenderer.cpp">
+      <Filter>Source Files\Systems</Filter>
+    </ClCompile>
     <ClCompile Include="DirShow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

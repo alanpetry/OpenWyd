@@ -10,6 +10,7 @@
 #include "shellapi.h"
 #include "WinInet.h"
 #include "winsock2.h"
+#include "OpenWydNativeRenderer.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -69,6 +70,7 @@ extern "C" int wyd_optimized_quality_profile();
 extern "C" int wyd_optimized_css_width();
 extern "C" int wyd_optimized_css_height();
 extern "C" float wyd_optimized_world_scale();
+extern "C" int wyd_get_scene_type();
 
 namespace {
 
@@ -430,6 +432,9 @@ uint64_t g_optimized_material_hd_model_textures = 0;
 uint64_t g_optimized_material_hd_model_source_pixels = 0;
 std::vector<std::string> g_optimized_material_hd_samples;
 int g_optimized_material_hd_override = -1;
+uint64_t g_native_buffer_uploads = 0;
+uint64_t g_native_buffer_upload_bytes = 0;
+uint64_t g_native_resident_draws = 0;
 uint64_t g_draw_fvf_xyzrhw = 0;
 uint64_t g_draw_fvf_weighted = 0;
 uint64_t g_draw_fvf_tex2plus = 0;
@@ -1190,11 +1195,19 @@ class DummyDirect3DVertexBuffer9 final : public IDirect3DVertexBuffer9, private 
   ULONG AddRef() override { return AddRefImpl(); }
   ULONG Release() override { return ReleaseImpl(); }
 
+  ~DummyDirect3DVertexBuffer9() override {
+    if (native_gl_buffer != 0) glDeleteBuffers(1, &native_gl_buffer);
+  }
+
   DWORD usage = 0;
   DWORD fvf = 0;
   D3DPOOL pool = D3DPOOL_MANAGED;
   std::vector<uint8_t> data;
   bool locked = false;
+  WydGeometryHandle native_geometry = OpenWydNativeRendererAllocateGeometry();
+  uint32_t native_generation = 1;
+  GLuint native_gl_buffer = 0;
+  uint32_t native_uploaded_generation = 0;
 };
 
 class DummyDirect3DIndexBuffer9 final : public IDirect3DIndexBuffer9, private ComRefBase {
@@ -1206,11 +1219,19 @@ class DummyDirect3DIndexBuffer9 final : public IDirect3DIndexBuffer9, private Co
   ULONG AddRef() override { return AddRefImpl(); }
   ULONG Release() override { return ReleaseImpl(); }
 
+  ~DummyDirect3DIndexBuffer9() override {
+    if (native_gl_buffer != 0) glDeleteBuffers(1, &native_gl_buffer);
+  }
+
   DWORD usage = 0;
   D3DFORMAT format = D3DFMT_INDEX16;
   D3DPOOL pool = D3DPOOL_MANAGED;
   std::vector<uint8_t> data;
   bool locked = false;
+  WydGeometryHandle native_geometry = OpenWydNativeRendererAllocateGeometry();
+  uint32_t native_generation = 1;
+  GLuint native_gl_buffer = 0;
+  uint32_t native_uploaded_generation = 0;
 };
 
 class DummyDirect3DVertexDeclaration9 final : public IDirect3DVertexDeclaration9, private ComRefBase {
@@ -5679,6 +5700,8 @@ HRESULT WydD3D9Device_BeginScene(IDirect3DDevice9*) {
   g_debug_begin_scene_calls += 1;
   BeginCompare3DStateFrame();
   ResetDrawOrderFrame();
+  OpenWydNativeRendererBeginFrame();
+  OpenWydNativeRendererSetPass(WydRenderPass::OpaqueWorld);
   g_wasm_d3d9_state.scene_active = true;
   return S_OK;
 }
@@ -5687,6 +5710,7 @@ HRESULT WydD3D9Device_EndScene(IDirect3DDevice9*) {
   if (!EnsureWasmContext()) return E_FAIL;
   g_debug_end_scene_calls += 1;
   g_wasm_d3d9_state.scene_active = false;
+  OpenWydNativeRendererEndFrame();
   if (CollectDetailedTelemetry() ||
       (g_debug_ffp_flags & kDebugTrackGlErrorsPerDraw) != 0u) {
     TrackGLErrorsPostFrame();
@@ -8081,6 +8105,7 @@ extern "C" void wyd_d3d9_optimized_end_world_begin_ui() {
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   g_optimized_world_target.active = false;
+  OpenWydNativeRendererSetPass(WydRenderPass::Ui);
 
   glDepthMask(GL_TRUE);
   glClearDepthf(1.0f);
@@ -11490,6 +11515,148 @@ HRESULT BuildVerticesFromLinearStream(
   return S_OK;
 }
 
+uint32_t CompactNativeIdentity(const std::string& value) {
+  if (value.empty()) return 0;
+  const uint64_t hash = Fnv1a64(
+      reinterpret_cast<const uint8_t*>(value.data()), value.size());
+  return static_cast<uint32_t>(hash ^ (hash >> 32u));
+}
+
+bool EnsureNativeVertexBufferResident(DummyDirect3DVertexBuffer9* buffer) {
+  if (!buffer || !OpenWydNativeRendererEnabled() || !EnsureWasmContext()) return false;
+  if (buffer->native_gl_buffer != 0 &&
+      buffer->native_uploaded_generation == buffer->native_generation) {
+    return true;
+  }
+  GLint previous = 0;
+  glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previous);
+  if (buffer->native_gl_buffer == 0)
+    glGenBuffers(1, &buffer->native_gl_buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer->native_gl_buffer);
+  glBufferData(
+      GL_ARRAY_BUFFER,
+      static_cast<GLsizeiptr>(buffer->data.size()),
+      buffer->data.empty() ? nullptr : buffer->data.data(),
+      (buffer->usage & D3DUSAGE_DYNAMIC) != 0u ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previous));
+  if (glGetError() != GL_NO_ERROR) return false;
+  buffer->native_uploaded_generation = buffer->native_generation;
+  ++g_native_buffer_uploads;
+  g_native_buffer_upload_bytes += buffer->data.size();
+  return true;
+}
+
+bool EnsureNativeIndexBufferResident(DummyDirect3DIndexBuffer9* buffer) {
+  if (!buffer || !OpenWydNativeRendererEnabled() || !EnsureWasmContext()) return false;
+  if (buffer->native_gl_buffer != 0 &&
+      buffer->native_uploaded_generation == buffer->native_generation) {
+    return true;
+  }
+  GLint previous = 0;
+  glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &previous);
+  if (buffer->native_gl_buffer == 0)
+    glGenBuffers(1, &buffer->native_gl_buffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->native_gl_buffer);
+  glBufferData(
+      GL_ELEMENT_ARRAY_BUFFER,
+      static_cast<GLsizeiptr>(buffer->data.size()),
+      buffer->data.empty() ? nullptr : buffer->data.data(),
+      (buffer->usage & D3DUSAGE_DYNAMIC) != 0u ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLuint>(previous));
+  if (glGetError() != GL_NO_ERROR) return false;
+  buffer->native_uploaded_generation = buffer->native_generation;
+  ++g_native_buffer_uploads;
+  g_native_buffer_upload_bytes += buffer->data.size();
+  return true;
+}
+
+WydRenderPass ResolveNativeRenderPass() {
+  uint32_t texture_flags = 0;
+  for (IDirect3DBaseTexture9* base : g_ffp_state.textures) {
+    if (auto* texture = AsTexture(base))
+      texture_flags |= texture->debug_category_flags;
+  }
+  if (OpenWydNativeRendererPass() == WydRenderPass::Ui)
+    return (texture_flags & kTexCatFont) != 0u
+        ? WydRenderPass::Text
+        : WydRenderPass::Ui;
+  if ((texture_flags & kTexCatSky) != 0u) return WydRenderPass::Sky;
+  if ((texture_flags & kTexCatWater) != 0u) return WydRenderPass::Water;
+  if ((texture_flags & kTexCatChar) != 0u) return WydRenderPass::Actor;
+  if ((texture_flags & kTexCatEffect) != 0u || g_wasm_d3d9_state.blend_enabled)
+    return WydRenderPass::Transparent;
+  return OpenWydNativeRendererPass();
+}
+
+void RecordNativeRenderCommand(
+    DummyDirect3DVertexBuffer9* vertex_buffer,
+    DummyDirect3DIndexBuffer9* index_buffer,
+    UINT vertex_stride,
+    UINT first_index,
+    UINT index_count,
+    bool supported = false) {
+  if (!OpenWydNativeRendererEnabled()) return;
+
+  const bool vertex_resident =
+      !vertex_buffer || EnsureNativeVertexBufferResident(vertex_buffer);
+  const bool index_resident =
+      !index_buffer || EnsureNativeIndexBufferResident(index_buffer);
+  if (vertex_resident && index_resident && (vertex_buffer || index_buffer))
+    ++g_native_resident_draws;
+
+  WydRenderCommand command{};
+  command.pass = ResolveNativeRenderPass();
+  if (vertex_buffer) {
+    command.geometry = vertex_buffer->native_geometry;
+    command.geometryGeneration = vertex_buffer->native_generation;
+  }
+  if (index_buffer) {
+    command.indexGeometry = index_buffer->native_geometry;
+    command.indexGeneration = index_buffer->native_generation;
+  }
+  command.material.vertexShaderHash = g_active_vs_hash;
+  command.material.pixelShaderHash = g_active_ps_hash;
+  command.material.texture0 = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(g_ffp_state.textures[0]));
+  command.material.texture1 = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(g_ffp_state.textures[1]));
+  command.material.fvf = g_ffp_state.current_fvf
+      ? g_ffp_state.current_fvf
+      : (vertex_buffer ? vertex_buffer->fvf : 0u);
+  command.material.blend =
+      (g_wasm_d3d9_state.blend_enabled ? 1u : 0u) |
+      ((g_wasm_d3d9_state.src_blend & 0x1Fu) << 1u) |
+      ((g_wasm_d3d9_state.dst_blend & 0x1Fu) << 6u) |
+      ((g_wasm_d3d9_state.blend_op & 0x7u) << 11u) |
+      ((g_wasm_d3d9_state.alpha_test_enable ? 1u : 0u) << 14u);
+  command.material.depth =
+      (g_wasm_d3d9_state.z_enable ? 1u : 0u) |
+      ((g_wasm_d3d9_state.z_write_enable ? 1u : 0u) << 1u) |
+      ((g_wasm_d3d9_state.z_func & 0xFu) << 2u);
+  command.material.raster =
+      (g_wasm_d3d9_state.cull_mode & 0x7u) |
+      ((g_wasm_d3d9_state.fill_mode & 0x7u) << 3u) |
+      ((g_wasm_d3d9_state.lighting_enable ? 1u : 0u) << 6u) |
+      ((g_wasm_d3d9_state.fog_enable ? 1u : 0u) << 7u);
+  command.material.textureStages =
+      (g_ffp_state.tex_stage[0][D3DTSS_COLOROP] & 0x1Fu) |
+      ((g_ffp_state.tex_stage[0][D3DTSS_ALPHAOP] & 0x1Fu) << 5u) |
+      ((g_ffp_state.tex_stage[1][D3DTSS_COLOROP] & 0x1Fu) << 10u) |
+      ((g_ffp_state.tex_stage[1][D3DTSS_ALPHAOP] & 0x1Fu) << 15u);
+  static_assert(sizeof(command.world) == sizeof(g_ffp_state.world[0]));
+  std::memcpy(&command.world, &g_ffp_state.world[0], sizeof(command.world));
+  std::memcpy(&command.view, &g_ffp_state.view, sizeof(command.view));
+  std::memcpy(&command.projection, &g_ffp_state.proj, sizeof(command.projection));
+  command.firstIndex = first_index;
+  command.indexCount = index_count;
+  command.vertexStride = vertex_stride;
+  command.originalDrawSerial = static_cast<uint32_t>(g_ffp_state.draw_calls + 1u);
+  command.sceneType = static_cast<uint32_t>(std::max(0, wyd_get_scene_type()));
+  command.objectIdentity = CompactNativeIdentity(
+      g_draw_trace_scope + std::string("\n") + g_draw_trace_label);
+  OpenWydNativeRendererRecord(command, supported);
+}
+
 void ReleaseBoundResources() {
   if (g_ffp_state.vertex_decl) {
     g_ffp_state.vertex_decl->Release();
@@ -11723,6 +11890,8 @@ HRESULT WydD3D9VertexBuffer_Unlock(IDirect3DVertexBuffer9* vb) {
   auto* buffer = AsVertexBuffer(vb);
   if (!buffer) return D3DERR_INVALIDCALL;
   buffer->locked = false;
+  ++buffer->native_generation;
+  EnsureNativeVertexBufferResident(buffer);
   return S_OK;
 }
 
@@ -11762,7 +11931,21 @@ HRESULT WydD3D9IndexBuffer_Unlock(IDirect3DIndexBuffer9* ib) {
   auto* buffer = AsIndexBuffer(ib);
   if (!buffer) return D3DERR_INVALIDCALL;
   buffer->locked = false;
+  ++buffer->native_generation;
+  EnsureNativeIndexBufferResident(buffer);
   return S_OK;
+}
+
+extern "C" uint32_t wyd_native_renderer_buffer_uploads() {
+  return static_cast<uint32_t>(g_native_buffer_uploads);
+}
+
+extern "C" uint32_t wyd_native_renderer_buffer_upload_bytes_low() {
+  return static_cast<uint32_t>(g_native_buffer_upload_bytes);
+}
+
+extern "C" uint32_t wyd_native_renderer_resident_draws() {
+  return static_cast<uint32_t>(g_native_resident_draws);
 }
 
 extern "C" void wyd_compare_latch_3d_state() {
@@ -12026,6 +12209,14 @@ HRESULT WydD3D9Device_DrawPrimitiveUP(
     UINT vertex_stream_zero_stride) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
+  const UINT native_vertex_count =
+      PrimitiveToVertexCount(primitive_type, primitive_count);
+  RecordNativeRenderCommand(
+      nullptr,
+      nullptr,
+      vertex_stream_zero_stride,
+      0,
+      native_vertex_count);
   if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_up += 1;
@@ -12097,6 +12288,14 @@ HRESULT WydD3D9Device_DrawIndexedPrimitiveUP(
     UINT vertex_stream_zero_stride) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
+  const UINT native_index_count =
+      PrimitiveToVertexCount(primitive_type, primitive_count);
+  RecordNativeRenderCommand(
+      nullptr,
+      nullptr,
+      vertex_stream_zero_stride,
+      0,
+      native_index_count);
   if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_up += 1;
@@ -12206,6 +12405,14 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
     UINT primitive_count) {
   if (!EnsureWasmContext()) return E_FAIL;
   EnsureFFPStateInitialized();
+  const UINT native_index_count =
+      PrimitiveToVertexCount(primitive_type, primitive_count);
+  RecordNativeRenderCommand(
+      AsVertexBuffer(g_ffp_state.stream0),
+      AsIndexBuffer(g_ffp_state.indices),
+      g_ffp_state.stream0_stride,
+      start_index,
+      native_index_count);
   if (CurrentDrawUsesTextureCategory(kTexCatSky)) {
     g_draw_attempts_with_sky_texture += 1;
     g_draw_attempts_with_sky_texture_indexed += 1;

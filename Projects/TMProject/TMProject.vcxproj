@@ -198,6 +198,7 @@
     <ClInclude Include="MrItemMix.h" />
     <ClInclude Include="NewApp.h" />
     <ClInclude Include="OpenWydCompare.h" />
+    <ClInclude Include="OpenWydNativeRenderer.h" />
     <ClInclude Include="OpenWydCompareRandom.h" />
     <ClInclude Include="NewClientB.h" />
     <ClInclude Include="ObjectManager.h" />
@@ -332,6 +333,7 @@
     <ClCompile Include="OpenWydCompare.cpp" />
     <ClCompile Include="OpenWydCompareRandom.cpp" />
     <ClCompile Include="OpenWydLab.cpp" />
+	<ClCompile Include="OpenWydNativeRenderer.cpp" />
     <ClCompile Include="ObjectManager.cpp" />
 	<ClCompile Include="OpenWydOptimized.cpp" />
     <ClCompile Include="pch.cpp">

@@ -34,6 +34,9 @@ const qualityProfile = ["auto", "performance", "quality", "maximum"].includes(
   process.env.OPENWYD_VISUAL_QUALITY,
 ) ? process.env.OPENWYD_VISUAL_QUALITY : "quality";
 const debugFlags = Number.parseInt(process.env.OPENWYD_VISUAL_DEBUG_FLAGS || "0", 10) || 0;
+const rendererBackend = process.env.OPENWYD_VISUAL_RENDERER === "native-webgl2"
+  ? "native-webgl2"
+  : "bridge";
 const allRuns = [
   { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
   { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
@@ -218,6 +221,18 @@ async function snapshot(page) {
         uiSharpenedTextures: call("_wyd_d3d9_optimized_ui_sharpened_textures"),
         uiSharpenedPixels: call("_wyd_d3d9_optimized_ui_sharpened_pixels"),
       },
+      renderer: {
+        backend: call("_wyd_renderer_backend"),
+        nativeEnabled: call("_wyd_native_renderer_enabled"),
+        frameId: call("_wyd_native_renderer_last_frame_id_low"),
+        commands: call("_wyd_native_renderer_last_command_count"),
+        supportedDraws: call("_wyd_native_renderer_last_supported_draws"),
+        fallbackDraws: call("_wyd_native_renderer_last_fallback_draws"),
+        streamHash: call("_wyd_native_renderer_last_stream_hash_low"),
+        bufferUploads: call("_wyd_native_renderer_buffer_uploads"),
+        bufferUploadBytes: call("_wyd_native_renderer_buffer_upload_bytes_low"),
+        residentDraws: call("_wyd_native_renderer_resident_draws"),
+      },
       camera: {
         valid: call("_wyd_debug_camera_valid"),
         x: call("_wyd_debug_camera_x"),
@@ -276,6 +291,7 @@ async function executeRun(context, run) {
   url.searchParams.set("mode", "play");
   url.searchParams.set("displayMode", run.mode);
   url.searchParams.set("quality", qualityProfile);
+  url.searchParams.set("renderer", rendererBackend);
   url.searchParams.set("uiScale", "100");
   url.searchParams.set("fps", "60");
   url.searchParams.set("state", "0");

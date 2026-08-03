@@ -27,6 +27,8 @@ struct WydViewportMetrics
 	float uiScale;
 	int worldScalePercent;
 	float worldScale;
+	float devicePixelRatio;
+	float verticalFov;
 };
 
 bool OpenWydOptimizedEnabled();

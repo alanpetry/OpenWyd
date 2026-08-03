@@ -641,6 +641,7 @@
       layout: query.get('layout') || 'panel',
       displayMode: publicDisplayMode,
       quality: optimizedQuality,
+      renderer: query.get('renderer') === 'native-webgl2' ? 'native-webgl2' : 'bridge',
       uiScale: optimizedUiScale,
       fps: optimizedFps,
       fit: publicPlayMode ? publicFit : (query.get('fit') || 'actual'),
@@ -1792,6 +1793,13 @@
         write('runtime initialized', 'ok');
         setStatus('runtime initialized; booting client');
         syncCanvasSize();
+        if (typeof Module._wyd_renderer_set_backend === 'function') {
+          Module._wyd_renderer_set_backend(
+            autoConfig.displayMode === 'optimized' && autoConfig.renderer === 'native-webgl2'
+              ? 1
+              : 0
+          );
+        }
         applyFieldMode();
         if (!autoConfig.autoboot) {
           setStatus('runtime initialized; autoboot disabled');

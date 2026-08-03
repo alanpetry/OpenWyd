@@ -15,7 +15,8 @@ namespace
 {
 WydDisplayMode g_displayMode = WydDisplayMode::Legacy;
 WydQualityProfile g_qualityProfile = WydQualityProfile::Auto;
-WydViewportMetrics g_viewport{800, 600, 800, 600, 100, 1.0f, 100, 1.0f};
+WydViewportMetrics g_viewport{
+	800, 600, 800, 600, 100, 1.0f, 100, 1.0f, 1.0f, 45.0f};
 
 int ClampDimension(int value, int fallback)
 {
@@ -334,6 +335,10 @@ extern "C" int wyd_configure_optimized_view(
 	next.cssHeight = ClampDimension(cssHeight, 600);
 	next.backingWidth = ClampDimension(backingWidth, next.cssWidth);
 	next.backingHeight = ClampDimension(backingHeight, next.cssHeight);
+	next.devicePixelRatio = (std::min)(
+		static_cast<float>(next.backingWidth) / next.cssWidth,
+		static_cast<float>(next.backingHeight) / next.cssHeight);
+	next.verticalFov = RenderDevice::m_fFOVY * 180.0f;
 	// Optimized may compact the official UI on a small viewport, but it never
 	// enlarges the authored font/control metrics.
 	next.uiScalePercent = (std::max)(80, (std::min)(100, uiScalePercent));
