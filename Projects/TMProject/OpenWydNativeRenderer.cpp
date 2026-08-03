@@ -16,7 +16,7 @@ std::vector<WydRenderCommand> g_commands;
 WydNativeRendererFrameStats g_current{};
 WydNativeRendererFrameStats g_last{};
 
-constexpr std::uint64_t kFnvOffset = 1469598103934665603ull;
+constexpr std::uint64_t kFnvOffset = 0xcbf29ce484222325ull;
 constexpr std::uint64_t kFnvPrime = 1099511628211ull;
 
 void HashBytes(std::uint64_t* hash, const void* bytes, std::size_t size)
@@ -118,6 +118,15 @@ void OpenWydNativeRendererRecord(const WydRenderCommand& source, bool supported)
 		++g_current.fallbackDraws;
 }
 
+void OpenWydNativeRendererPromoteLastCommand()
+{
+	if (!OpenWydNativeRendererEnabled() || g_commands.empty())
+		return;
+	if (g_current.fallbackDraws > 0)
+		--g_current.fallbackDraws;
+	++g_current.supportedDraws;
+}
+
 void OpenWydNativeRendererEndFrame()
 {
 	if (!OpenWydNativeRendererEnabled())
@@ -128,6 +137,11 @@ void OpenWydNativeRendererEndFrame()
 const WydNativeRendererFrameStats& OpenWydNativeRendererLastFrameStats()
 {
 	return g_last;
+}
+
+const WydRenderCommand* NativeCommandAt(unsigned int index)
+{
+	return index < g_commands.size() ? &g_commands[index] : nullptr;
 }
 
 extern "C" int wyd_renderer_set_backend(int backend)
@@ -172,3 +186,65 @@ extern "C" unsigned int wyd_native_renderer_last_stream_hash_low()
 {
 	return static_cast<unsigned int>(OpenWydNativeRendererLastFrameStats().streamHash);
 }
+
+extern "C" unsigned int wyd_native_renderer_command_pass(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command ? static_cast<unsigned int>(command->pass) : 0u;
+}
+
+extern "C" unsigned int wyd_native_renderer_command_fvf(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command ? command->material.fvf : 0u;
+}
+
+extern "C" unsigned int wyd_native_renderer_command_vs_hash_low(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command ? static_cast<unsigned int>(command->material.vertexShaderHash) : 0u;
+}
+
+extern "C" unsigned int wyd_native_renderer_command_vs_hash_high(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command
+		? static_cast<unsigned int>(command->material.vertexShaderHash >> 32u)
+		: 0u;
+}
+
+extern "C" unsigned int wyd_native_renderer_command_ps_hash_low(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command ? static_cast<unsigned int>(command->material.pixelShaderHash) : 0u;
+}
+
+extern "C" unsigned int wyd_native_renderer_command_ps_hash_high(unsigned int index)
+{
+	const auto* command = NativeCommandAt(index);
+	return command
+		? static_cast<unsigned int>(command->material.pixelShaderHash >> 32u)
+		: 0u;
+}
+
+#define WYD_NATIVE_COMMAND_FIELD_EXPORT(name, field) \
+	extern "C" unsigned int name(unsigned int index) \
+	{ \
+		const auto* command = NativeCommandAt(index); \
+		return command ? static_cast<unsigned int>(command->field) : 0u; \
+	}
+
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_blend, material.blend)
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_depth, material.depth)
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_raster, material.raster)
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_texture_stages, material.textureStages)
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_stride, vertexStride)
+WYD_NATIVE_COMMAND_FIELD_EXPORT(
+	wyd_native_renderer_command_index_count, indexCount)
+
+#undef WYD_NATIVE_COMMAND_FIELD_EXPORT

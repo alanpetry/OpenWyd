@@ -111,6 +111,7 @@ void OpenWydNativeRendererBeginFrame();
 void OpenWydNativeRendererSetPass(WydRenderPass pass);
 WydRenderPass OpenWydNativeRendererPass();
 void OpenWydNativeRendererRecord(const WydRenderCommand& command, bool supported);
+void OpenWydNativeRendererPromoteLastCommand();
 void OpenWydNativeRendererEndFrame();
 const WydNativeRendererFrameStats& OpenWydNativeRendererLastFrameStats();
 
@@ -127,4 +128,16 @@ extern "C"
 	unsigned int wyd_native_renderer_buffer_uploads();
 	unsigned int wyd_native_renderer_buffer_upload_bytes_low();
 	unsigned int wyd_native_renderer_resident_draws();
+	unsigned int wyd_native_renderer_command_pass(unsigned int index);
+	unsigned int wyd_native_renderer_command_fvf(unsigned int index);
+	unsigned int wyd_native_renderer_command_vs_hash_low(unsigned int index);
+	unsigned int wyd_native_renderer_command_vs_hash_high(unsigned int index);
+	unsigned int wyd_native_renderer_command_ps_hash_low(unsigned int index);
+	unsigned int wyd_native_renderer_command_ps_hash_high(unsigned int index);
+	unsigned int wyd_native_renderer_command_blend(unsigned int index);
+	unsigned int wyd_native_renderer_command_depth(unsigned int index);
+	unsigned int wyd_native_renderer_command_raster(unsigned int index);
+	unsigned int wyd_native_renderer_command_texture_stages(unsigned int index);
+	unsigned int wyd_native_renderer_command_stride(unsigned int index);
+	unsigned int wyd_native_renderer_command_index_count(unsigned int index);
 }

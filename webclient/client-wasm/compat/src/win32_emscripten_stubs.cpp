@@ -6124,6 +6124,49 @@ struct WasmFixedFunctionState {
   uint64_t shader_draw_skipped = 0;
 };
 
+struct WasmNativeActorProgram {
+  GLuint program = 0;
+  GLuint bone_ubo = 0;
+  GLint uni_clip_rows = -1;
+  GLint uni_normal_rows = -1;
+  GLint uni_c0 = -1;
+  GLint uni_light = -1;
+  GLint uni_fog_params = -1;
+  GLint uni_ambient = -1;
+  GLint uni_diffuse = -1;
+  GLint uni_viewport_inv = -1;
+  GLint uni_influence_count = -1;
+  GLint uni_palette_size = -1;
+  GLint uni_index_swizzle = -1;
+  GLint uni_skinmesh_variant = -1;
+  GLint uni_sampler0 = -1;
+  GLint uni_sampler1 = -1;
+  GLint uni_use_texture0 = -1;
+  GLint uni_use_texture1 = -1;
+  GLint uni_color_op0 = -1;
+  GLint uni_color_arg10 = -1;
+  GLint uni_color_arg20 = -1;
+  GLint uni_alpha_op0 = -1;
+  GLint uni_alpha_arg10 = -1;
+  GLint uni_alpha_arg20 = -1;
+  GLint uni_color_op1 = -1;
+  GLint uni_color_arg11 = -1;
+  GLint uni_color_arg21 = -1;
+  GLint uni_alpha_op1 = -1;
+  GLint uni_alpha_arg11 = -1;
+  GLint uni_alpha_arg21 = -1;
+  GLint uni_texture_factor = -1;
+  GLint uni_alpha_test_enable = -1;
+  GLint uni_alpha_ref = -1;
+  GLint uni_alpha_func = -1;
+  GLint uni_fog_color = -1;
+  GLint uni_fog_enable = -1;
+  GLint uni_additive_bright = -1;
+  GLint uni_linear_color = -1;
+  bool ready = false;
+  bool failed = false;
+};
+
 struct Compare3DState {
   bool armed = false;
   bool valid = false;
@@ -6135,6 +6178,7 @@ struct Compare3DState {
 };
 
 WasmFFPProgram g_ffp_program;
+WasmNativeActorProgram g_native_actor_program;
 WasmFixedFunctionState g_ffp_state;
 Compare3DState g_compare_3d_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
@@ -6195,7 +6239,9 @@ T ReadUnaligned(const uint8_t* ptr) {
 }
 
 uint64_t Fnv1a64(const uint8_t* data, size_t size) {
-  constexpr uint64_t kOffset = 1469598103934665603ull;
+  // 64-bit FNV-1a offset basis.  Keep this in hexadecimal so a missing
+  // decimal digit cannot silently disable every hash-selected shader path.
+  constexpr uint64_t kOffset = 0xcbf29ce484222325ull;
   constexpr uint64_t kPrime = 1099511628211ull;
   uint64_t h = kOffset;
   for (size_t i = 0; i < size; ++i) {
@@ -11657,6 +11703,663 @@ void RecordNativeRenderCommand(
   OpenWydNativeRendererRecord(command, supported);
 }
 
+constexpr uint64_t kNativeSkinMesh1Hash = 0x1c5fbfa394385e90ull;
+constexpr uint64_t kNativeSkinMesh2Hash = 0x851b469b88956e6aull;
+constexpr uint64_t kNativeSkinMesh3Hash = 0x7502e7de3a0f9798ull;
+constexpr uint64_t kNativeSkinMesh4Hash = 0xc73a19e04a083e83ull;
+
+bool IsNativeActorShader(uint64_t hash) {
+  return hash == kNativeSkinMesh1Hash ||
+         hash == kNativeSkinMesh2Hash ||
+         hash == kNativeSkinMesh3Hash ||
+         hash == kNativeSkinMesh4Hash;
+}
+
+const D3DVERTEXELEMENT9* FindDeclarationElement(
+    const DummyDirect3DVertexDeclaration9& declaration,
+    BYTE usage,
+    BYTE usage_index = 0) {
+  for (const D3DVERTEXELEMENT9& element : declaration.elements) {
+    if (IsDeclEnd(element)) break;
+    if (element.Stream == 0 && element.Usage == usage &&
+        element.UsageIndex == usage_index) {
+      return &element;
+    }
+  }
+  return nullptr;
+}
+
+bool EnsureNativeActorProgram() {
+  if (g_native_actor_program.ready) return true;
+  if (g_native_actor_program.failed || !g_wasm_d3d9_state.webgl2 ||
+      !EnsureWasmContext()) {
+    return false;
+  }
+
+  static const char* kVertex = R"GLSL(#version 300 es
+precision highp float;
+precision highp int;
+
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec4 aWeights;
+layout(location = 2) in uvec4 aIndices;
+layout(location = 3) in vec3 aNormal;
+layout(location = 4) in vec2 aUV0;
+
+layout(std140) uniform BoneBlock {
+  vec4 uBones[240];
+};
+
+uniform vec4 uClipRows[4];
+uniform vec4 uNormalRows[3];
+uniform vec4 uC0;
+uniform vec4 uLight;
+uniform vec4 uFogParams;
+uniform vec2 uViewportInv;
+uniform int uInfluenceCount;
+uniform int uPaletteSize;
+uniform int uIndexSwizzle;
+uniform int uSkinMeshVariant;
+
+out highp vec2 vUV0;
+out highp vec2 vUV1;
+out highp vec3 vLightNormal;
+out highp float vFogFactor;
+
+int safeBone(uint value) {
+  return clamp(int(value), 0, max(uPaletteSize - 1, 0));
+}
+
+vec3 bonePosition(vec3 position, int bone) {
+  int row = bone * 3;
+  vec4 p = vec4(position, 1.0);
+  return vec3(
+      dot(p, uBones[row + 0]),
+      dot(p, uBones[row + 1]),
+      dot(p, uBones[row + 2]));
+}
+
+vec3 boneNormal(vec3 normal, int bone) {
+  int row = bone * 3;
+  return vec3(
+      dot(normal, uBones[row + 0].xyz),
+      dot(normal, uBones[row + 1].xyz),
+      dot(normal, uBones[row + 2].xyz));
+}
+
+void main() {
+  uvec4 indices = (uIndexSwizzle != 0) ? aIndices.zyxw : aIndices;
+  vec4 weights = vec4(1.0, 0.0, 0.0, 0.0);
+  if (uInfluenceCount == 2) {
+    weights = vec4(aWeights.x, 1.0 - aWeights.x, 0.0, 0.0);
+  } else if (uInfluenceCount == 3) {
+    weights = vec4(aWeights.xy, 1.0 - aWeights.x - aWeights.y, 0.0);
+  } else if (uInfluenceCount >= 4) {
+    weights = vec4(aWeights.xyz,
+        1.0 - aWeights.x - aWeights.y - aWeights.z);
+  }
+
+  vec3 cameraPosition = vec3(0.0);
+  vec3 cameraNormal = vec3(0.0);
+  for (int influence = 0; influence < 4; ++influence) {
+    if (influence >= uInfluenceCount) break;
+    float weight = weights[influence];
+    if (abs(weight) <= 1.0e-7) continue;
+    int bone = safeBone(indices[influence]);
+    cameraPosition += bonePosition(aPosition, bone) * weight;
+    cameraNormal += boneNormal(aNormal, bone) * weight;
+  }
+  if (dot(cameraNormal, cameraNormal) <= 1.0e-12)
+    cameraNormal = vec3(0.0, 0.0, 1.0);
+  else
+    cameraNormal = normalize(cameraNormal);
+
+  vec4 cameraPoint = vec4(cameraPosition, 1.0);
+  vec4 clip = vec4(
+      dot(cameraPoint, uClipRows[0]),
+      dot(cameraPoint, uClipRows[1]),
+      dot(cameraPoint, uClipRows[2]),
+      dot(cameraPoint, uClipRows[3]));
+  clip.x += clip.w * uViewportInv.x;
+  clip.y -= clip.w * uViewportInv.y;
+  clip.z = 2.0 * clip.z - clip.w;
+  gl_Position = clip;
+
+  vec3 lightingNormal = cameraNormal;
+  if (uInfluenceCount > 1) {
+    lightingNormal = normalize(vec3(
+        dot(cameraNormal, uNormalRows[0].xyz),
+        dot(cameraNormal, uNormalRows[1].xyz),
+        dot(cameraNormal, uNormalRows[2].xyz)));
+  }
+  vLightNormal = lightingNormal;
+  vUV0 = aUV0;
+  float generatedOffset = (uSkinMeshVariant == 1) ? uC0.y : uC0.z;
+  vUV1 = vec2(cameraNormal.x + generatedOffset,
+              cameraPosition.y + generatedOffset);
+  vFogFactor = min(uFogParams.x,
+      max((uFogParams.y - cameraPosition.z) * uFogParams.z,
+          uFogParams.w));
+}
+)GLSL";
+
+  static const char* kFragment = R"GLSL(#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uSampler0;
+uniform sampler2D uSampler1;
+uniform int uUseTexture0;
+uniform int uUseTexture1;
+uniform int uColorOp0;
+uniform int uColorArg10;
+uniform int uColorArg20;
+uniform int uAlphaOp0;
+uniform int uAlphaArg10;
+uniform int uAlphaArg20;
+uniform int uColorOp1;
+uniform int uColorArg11;
+uniform int uColorArg21;
+uniform int uAlphaOp1;
+uniform int uAlphaArg11;
+uniform int uAlphaArg21;
+uniform vec4 uTextureFactor;
+uniform vec4 uLight;
+uniform vec4 uAmbient;
+uniform vec4 uDiffuse;
+uniform int uAlphaTestEnable;
+uniform float uAlphaRef;
+uniform int uAlphaFunc;
+uniform vec4 uFogColor;
+uniform int uFogEnable;
+uniform int uAdditiveBright;
+uniform int uLinearColor;
+
+in highp vec2 vUV0;
+in highp vec2 vUV1;
+in highp vec3 vLightNormal;
+in highp float vFogFactor;
+layout(location = 0) out vec4 outColor;
+
+vec4 resolveArg(int arg, vec4 texel, vec4 diffuse, vec4 currentColor) {
+  int source = arg & 15;
+  vec4 value = diffuse;
+  if (source == 2) value = texel;
+  else if (source == 1) value = currentColor;
+  else if (source == 3) value = uTextureFactor;
+  if ((arg & 16) != 0) value = vec4(1.0) - value;
+  if ((arg & 32) != 0) value = value.aaaa;
+  return value;
+}
+
+vec4 applyColorOp(
+    int op, vec4 a1, vec4 a2, vec4 currentColor, vec4 diffuse, vec4 texel) {
+  if (op == 1) return currentColor;
+  if (op == 2) return a1;
+  if (op == 3) return a2;
+  if (op == 4) return a1 * a2;
+  if (op == 5) return min(a1 * a2 * 2.0, vec4(1.0));
+  if (op == 6) return min(a1 * a2 * 4.0, vec4(1.0));
+  if (op == 7) return min(a1 + a2, vec4(1.0));
+  if (op == 8) return clamp(a1 + a2 - vec4(0.5), 0.0, 1.0);
+  if (op == 9) return clamp((a1 + a2 - vec4(0.5)) * 2.0, 0.0, 1.0);
+  if (op == 10) return clamp(a1 - a2, 0.0, 1.0);
+  if (op == 11) return min(a1 + a2 * (vec4(1.0) - a1), vec4(1.0));
+  if (op == 12) return a1 * diffuse.a + a2 * (1.0 - diffuse.a);
+  if (op == 13) return a1 * texel.a + a2 * (1.0 - texel.a);
+  if (op == 14) return a1 * uTextureFactor.a + a2 * (1.0 - uTextureFactor.a);
+  if (op == 15) return min(a1 + a2 * (1.0 - texel.a), vec4(1.0));
+  if (op == 16) return a1 * currentColor.a + a2 * (1.0 - currentColor.a);
+  if (op == 18) return vec4(min(a1.rgb * a1.a + a2.rgb, vec3(1.0)), currentColor.a);
+  if (op == 19) return vec4(min(a1.rgb + a2.rgb * a1.a, vec3(1.0)), currentColor.a);
+  if (op == 20) return vec4(min((vec3(1.0) - a1.aaa) * a2.rgb + a1.rgb, vec3(1.0)), currentColor.a);
+  if (op == 21) return vec4(min((vec3(1.0) - a1.rgb) * a2.rgb + a1.aaa, vec3(1.0)), currentColor.a);
+  if (op == 24) {
+    float value = clamp(dot((a1.rgb - vec3(0.5)) * 2.0,
+                            (a2.rgb - vec3(0.5)) * 2.0), 0.0, 1.0);
+    return vec4(value, value, value, currentColor.a);
+  }
+  return a1 * a2;
+}
+
+float applyAlphaOp(
+    int op, float a1, float a2, float currentA, float diffuseA, float texA) {
+  if (op == 1) return currentA;
+  if (op == 2) return a1;
+  if (op == 3) return a2;
+  if (op == 4) return a1 * a2;
+  if (op == 5) return min(a1 * a2 * 2.0, 1.0);
+  if (op == 6) return min(a1 * a2 * 4.0, 1.0);
+  if (op == 7) return min(a1 + a2, 1.0);
+  if (op == 8) return clamp(a1 + a2 - 0.5, 0.0, 1.0);
+  if (op == 9) return clamp((a1 + a2 - 0.5) * 2.0, 0.0, 1.0);
+  if (op == 10) return clamp(a1 - a2, 0.0, 1.0);
+  if (op == 11) return min(a1 + a2 * (1.0 - a1), 1.0);
+  if (op == 12) return a1 * diffuseA + a2 * (1.0 - diffuseA);
+  if (op == 13) return a1 * texA + a2 * (1.0 - texA);
+  if (op == 14) return a1 * uTextureFactor.a + a2 * (1.0 - uTextureFactor.a);
+  if (op == 15) return min(a1 + a2 * (1.0 - texA), 1.0);
+  if (op == 16) return a1 * currentA + a2 * (1.0 - currentA);
+  return a1 * a2;
+}
+
+bool alphaTestPass(float alpha, float reference, int functionValue) {
+  if (functionValue == 1) return false;
+  if (functionValue == 2) return alpha < reference;
+  if (functionValue == 3) return abs(alpha - reference) < (1.0 / 255.0);
+  if (functionValue == 4) return alpha <= reference;
+  if (functionValue == 5) return alpha > reference;
+  if (functionValue == 6) return abs(alpha - reference) >= (1.0 / 255.0);
+  if (functionValue == 7) return alpha >= reference;
+  return true;
+}
+
+vec3 srgbToLinear(vec3 value) {
+  bvec3 lower = lessThanEqual(value, vec3(0.04045));
+  vec3 low = value / 12.92;
+  vec3 high = pow((value + 0.055) / 1.055, vec3(2.4));
+  return mix(high, low, vec3(lower));
+}
+
+vec3 linearToSrgb(vec3 value) {
+  value = max(value, vec3(0.0));
+  bvec3 lower = lessThanEqual(value, vec3(0.0031308));
+  vec3 low = value * 12.92;
+  vec3 high = 1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055;
+  return mix(high, low, vec3(lower));
+}
+
+void main() {
+  float ndotl = max(dot(normalize(vLightNormal), normalize(uLight.xyz)), 0.0);
+  vec4 diffuse = uAmbient + uDiffuse * ndotl;
+  if (uAdditiveBright != 0) diffuse.a = 1.0;
+
+  vec4 texel0 = (uUseTexture0 != 0)
+      ? texture(uSampler0, vUV0) : vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 texel1 = (uUseTexture1 != 0)
+      ? texture(uSampler1, vUV1) : vec4(0.0, 0.0, 0.0, 1.0);
+  vec3 fogColor = uFogColor.rgb;
+  if (uLinearColor != 0) {
+    texel0.rgb = srgbToLinear(texel0.rgb);
+    texel1.rgb = srgbToLinear(texel1.rgb);
+    fogColor = srgbToLinear(fogColor);
+  }
+  vec4 current = diffuse;
+
+  if (uColorOp0 != 1) {
+    vec4 a1 = resolveArg(uColorArg10, texel0, diffuse, current);
+    vec4 a2 = resolveArg(uColorArg20, texel0, diffuse, current);
+    current.rgb = applyColorOp(uColorOp0, a1, a2, current, diffuse, texel0).rgb;
+  }
+  if (uAlphaOp0 != 1) {
+    vec4 a1 = resolveArg(uAlphaArg10, texel0, diffuse, current);
+    vec4 a2 = resolveArg(uAlphaArg20, texel0, diffuse, current);
+    current.a = applyAlphaOp(
+        uAlphaOp0, a1.a, a2.a, current.a, diffuse.a, texel0.a);
+  }
+  if (uColorOp1 != 1) {
+    vec4 a1 = resolveArg(uColorArg11, texel1, diffuse, current);
+    vec4 a2 = resolveArg(uColorArg21, texel1, diffuse, current);
+    current.rgb = applyColorOp(uColorOp1, a1, a2, current, diffuse, texel1).rgb;
+  }
+  if (uAlphaOp1 != 1) {
+    vec4 a1 = resolveArg(uAlphaArg11, texel1, diffuse, current);
+    vec4 a2 = resolveArg(uAlphaArg21, texel1, diffuse, current);
+    current.a = applyAlphaOp(
+        uAlphaOp1, a1.a, a2.a, current.a, diffuse.a, texel1.a);
+  }
+
+  current = clamp(current, 0.0, 1.0);
+  if (uAlphaTestEnable != 0 &&
+      !alphaTestPass(current.a, uAlphaRef, uAlphaFunc)) discard;
+  if (uFogEnable != 0)
+    current.rgb = mix(fogColor, current.rgb, clamp(vFogFactor, 0.0, 1.0));
+  if (uLinearColor != 0) current.rgb = linearToSrgb(current.rgb);
+  outColor = current;
+}
+)GLSL";
+
+  GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
+  if (!CompileShader(vertex, kVertex) || !CompileShader(fragment, kFragment)) {
+    if (vertex) glDeleteShader(vertex);
+    if (fragment) glDeleteShader(fragment);
+    g_native_actor_program.failed = true;
+    return false;
+  }
+
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vertex);
+  glAttachShader(program, fragment);
+  glLinkProgram(program);
+  glDeleteShader(vertex);
+  glDeleteShader(fragment);
+  GLint linked = GL_FALSE;
+  glGetProgramiv(program, GL_LINK_STATUS, &linked);
+  if (linked != GL_TRUE) {
+    char log[2048]{};
+    GLsizei length = 0;
+    glGetProgramInfoLog(program, sizeof(log) - 1, &length, log);
+    std::fprintf(stderr, "[WASM Native Actor] program link failed: %s\n", log);
+    glDeleteProgram(program);
+    g_native_actor_program.failed = true;
+    return false;
+  }
+
+  GLuint bone_block = glGetUniformBlockIndex(program, "BoneBlock");
+  if (bone_block == GL_INVALID_INDEX) {
+    std::fprintf(stderr, "[WASM Native Actor] BoneBlock was optimized out\n");
+    glDeleteProgram(program);
+    g_native_actor_program.failed = true;
+    return false;
+  }
+  glUniformBlockBinding(program, bone_block, 0);
+  glGenBuffers(1, &g_native_actor_program.bone_ubo);
+  glBindBuffer(GL_UNIFORM_BUFFER, g_native_actor_program.bone_ubo);
+  glBufferData(GL_UNIFORM_BUFFER, 240 * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+  glBindBufferBase(GL_UNIFORM_BUFFER, 0, g_native_actor_program.bone_ubo);
+  glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+  g_native_actor_program.program = program;
+#define NATIVE_ACTOR_UNIFORM(field, name) \
+  g_native_actor_program.field = glGetUniformLocation(program, name)
+  NATIVE_ACTOR_UNIFORM(uni_clip_rows, "uClipRows[0]");
+  NATIVE_ACTOR_UNIFORM(uni_normal_rows, "uNormalRows[0]");
+  NATIVE_ACTOR_UNIFORM(uni_c0, "uC0");
+  NATIVE_ACTOR_UNIFORM(uni_light, "uLight");
+  NATIVE_ACTOR_UNIFORM(uni_fog_params, "uFogParams");
+  NATIVE_ACTOR_UNIFORM(uni_ambient, "uAmbient");
+  NATIVE_ACTOR_UNIFORM(uni_diffuse, "uDiffuse");
+  NATIVE_ACTOR_UNIFORM(uni_viewport_inv, "uViewportInv");
+  NATIVE_ACTOR_UNIFORM(uni_influence_count, "uInfluenceCount");
+  NATIVE_ACTOR_UNIFORM(uni_palette_size, "uPaletteSize");
+  NATIVE_ACTOR_UNIFORM(uni_index_swizzle, "uIndexSwizzle");
+  NATIVE_ACTOR_UNIFORM(uni_skinmesh_variant, "uSkinMeshVariant");
+  NATIVE_ACTOR_UNIFORM(uni_sampler0, "uSampler0");
+  NATIVE_ACTOR_UNIFORM(uni_sampler1, "uSampler1");
+  NATIVE_ACTOR_UNIFORM(uni_use_texture0, "uUseTexture0");
+  NATIVE_ACTOR_UNIFORM(uni_use_texture1, "uUseTexture1");
+  NATIVE_ACTOR_UNIFORM(uni_color_op0, "uColorOp0");
+  NATIVE_ACTOR_UNIFORM(uni_color_arg10, "uColorArg10");
+  NATIVE_ACTOR_UNIFORM(uni_color_arg20, "uColorArg20");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_op0, "uAlphaOp0");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_arg10, "uAlphaArg10");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_arg20, "uAlphaArg20");
+  NATIVE_ACTOR_UNIFORM(uni_color_op1, "uColorOp1");
+  NATIVE_ACTOR_UNIFORM(uni_color_arg11, "uColorArg11");
+  NATIVE_ACTOR_UNIFORM(uni_color_arg21, "uColorArg21");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_op1, "uAlphaOp1");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_arg11, "uAlphaArg11");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_arg21, "uAlphaArg21");
+  NATIVE_ACTOR_UNIFORM(uni_texture_factor, "uTextureFactor");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_test_enable, "uAlphaTestEnable");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_ref, "uAlphaRef");
+  NATIVE_ACTOR_UNIFORM(uni_alpha_func, "uAlphaFunc");
+  NATIVE_ACTOR_UNIFORM(uni_fog_color, "uFogColor");
+  NATIVE_ACTOR_UNIFORM(uni_fog_enable, "uFogEnable");
+  NATIVE_ACTOR_UNIFORM(uni_additive_bright, "uAdditiveBright");
+  NATIVE_ACTOR_UNIFORM(uni_linear_color, "uLinearColor");
+#undef NATIVE_ACTOR_UNIFORM
+  g_native_actor_program.ready = true;
+  return glGetError() == GL_NO_ERROR;
+}
+
+bool ConfigureNativeActorAttributes(
+    const DummyDirect3DVertexDeclaration9& declaration,
+    UINT stride,
+    size_t base_offset,
+    int* influence_count,
+    int* index_swizzle) {
+  if (!influence_count || !index_swizzle || stride == 0) return false;
+  const D3DVERTEXELEMENT9* position =
+      FindDeclarationElement(declaration, kDeclUsagePosition);
+  const D3DVERTEXELEMENT9* weights =
+      FindDeclarationElement(declaration, kDeclUsageBlendWeight);
+  const D3DVERTEXELEMENT9* indices =
+      FindDeclarationElement(declaration, kDeclUsageBlendIndices);
+  const D3DVERTEXELEMENT9* normal =
+      FindDeclarationElement(declaration, kDeclUsageNormal);
+  const D3DVERTEXELEMENT9* uv0 =
+      FindDeclarationElement(declaration, kDeclUsageTexCoord, 0);
+  if (!position || position->Type != kDeclTypeFloat3 ||
+      !indices || (indices->Type != kDeclTypeD3DColor &&
+                   indices->Type != kDeclTypeUByte4) ||
+      !normal || normal->Type != kDeclTypeFloat3 || !uv0 ||
+      (uv0->Type != kDeclTypeFloat1 && uv0->Type != kDeclTypeFloat2)) {
+    return false;
+  }
+  for (const D3DVERTEXELEMENT9* element : {position, indices, normal, uv0}) {
+    if (static_cast<size_t>(element->Offset) + VertexDeclTypeSize(element->Type) >
+        stride) {
+      return false;
+    }
+  }
+  if (weights &&
+      (static_cast<size_t>(weights->Offset) + VertexDeclTypeSize(weights->Type) >
+       stride)) {
+    return false;
+  }
+
+  for (GLuint attribute = 0; attribute <= 6; ++attribute)
+    glDisableVertexAttribArray(attribute);
+
+  const auto pointer_offset = [base_offset](WORD offset) {
+    return reinterpret_cast<const void*>(base_offset + static_cast<size_t>(offset));
+  };
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, pointer_offset(position->Offset));
+
+  *influence_count = static_cast<int>(BlendInfluenceCountFromDeclaration(declaration));
+  if (weights) {
+    GLint components = 0;
+    if (weights->Type == kDeclTypeFloat1) components = 1;
+    else if (weights->Type == kDeclTypeFloat2) components = 2;
+    else if (weights->Type == kDeclTypeFloat3) components = 3;
+    else if (weights->Type == kDeclTypeFloat4) components = 4;
+    if (components == 0) return false;
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, components, GL_FLOAT, GL_FALSE, stride,
+                          pointer_offset(weights->Offset));
+  } else {
+    glVertexAttrib4f(1, 0.0f, 0.0f, 0.0f, 0.0f);
+    *influence_count = 1;
+  }
+
+  glEnableVertexAttribArray(2);
+  glVertexAttribIPointer(2, 4, GL_UNSIGNED_BYTE, stride,
+                         pointer_offset(indices->Offset));
+  *index_swizzle = indices->Type == kDeclTypeUByte4 ? 1 : 0;
+
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride,
+                        pointer_offset(normal->Offset));
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, uv0->Type == kDeclTypeFloat1 ? 1 : 2, GL_FLOAT,
+                        GL_FALSE, stride, pointer_offset(uv0->Offset));
+  return glGetError() == GL_NO_ERROR;
+}
+
+bool TryDrawNativeActor(
+    D3DPRIMITIVETYPE primitive_type,
+    INT base_vertex_index,
+    UINT start_index,
+    UINT primitive_count,
+    DummyDirect3DVertexBuffer9* vertex_buffer,
+    DummyDirect3DIndexBuffer9* index_buffer,
+    const DummyDirect3DVertexDeclaration9& declaration) {
+  if (!OpenWydNativeRendererEnabled() || !IsNativeActorShader(g_active_vs_hash) ||
+      g_active_ps_hash != 0 || !vertex_buffer || !index_buffer ||
+      !EnsureNativeActorProgram() ||
+      !EnsureNativeVertexBufferResident(vertex_buffer) ||
+      !EnsureNativeIndexBufferResident(index_buffer)) {
+    return false;
+  }
+
+  const UINT stride = g_ffp_state.stream0_stride;
+  const UINT index_count = PrimitiveToVertexCount(primitive_type, primitive_count);
+  if (stride == 0 || index_count == 0) return false;
+  const size_t index_size =
+      index_buffer->format == D3DFMT_INDEX32 ? sizeof(uint32_t) : sizeof(uint16_t);
+  const size_t index_offset = static_cast<size_t>(start_index) * index_size;
+  if (index_offset + static_cast<size_t>(index_count) * index_size >
+      index_buffer->data.size()) {
+    return false;
+  }
+  const int64_t signed_vertex_offset =
+      static_cast<int64_t>(g_ffp_state.stream0_offset) +
+      static_cast<int64_t>(base_vertex_index) * static_cast<int64_t>(stride);
+  if (signed_vertex_offset < 0 ||
+      static_cast<uint64_t>(signed_vertex_offset) >= vertex_buffer->data.size()) {
+    return false;
+  }
+
+  glUseProgram(g_native_actor_program.program);
+  glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->native_gl_buffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer->native_gl_buffer);
+  int influence_count = 1;
+  int index_swizzle = 0;
+  if (!ConfigureNativeActorAttributes(
+          declaration, stride, static_cast<size_t>(signed_vertex_offset),
+          &influence_count, &index_swizzle)) {
+    g_ffp_program.program_bound = false;
+    g_ffp_program.vertex_input_bound = false;
+    g_ffp_program.index_buffer_bound = false;
+    return false;
+  }
+
+  glBindBuffer(GL_UNIFORM_BUFFER, g_native_actor_program.bone_ubo);
+  glBufferSubData(
+      GL_UNIFORM_BUFFER, 0, 240 * 4 * sizeof(float),
+      g_ffp_state.vertex_shader_constants.data() + 9 * 4);
+  glBindBufferBase(GL_UNIFORM_BUFFER, 0, g_native_actor_program.bone_ubo);
+  glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+  glUniform4fv(g_native_actor_program.uni_clip_rows, 4,
+               g_ffp_state.vertex_shader_constants.data() + 2 * 4);
+  glUniform4fv(g_native_actor_program.uni_normal_rows, 3,
+               g_ffp_state.vertex_shader_constants.data() + 92 * 4);
+  glUniform4fv(g_native_actor_program.uni_c0, 1,
+               g_ffp_state.vertex_shader_constants.data() + 0 * 4);
+  glUniform4fv(g_native_actor_program.uni_light, 1,
+               g_ffp_state.vertex_shader_constants.data() + 1 * 4);
+  glUniform4fv(g_native_actor_program.uni_fog_params, 1,
+               g_ffp_state.vertex_shader_constants.data() + 6 * 4);
+  glUniform4fv(g_native_actor_program.uni_ambient, 1,
+               g_ffp_state.vertex_shader_constants.data() + 7 * 4);
+  glUniform4fv(g_native_actor_program.uni_diffuse, 1,
+               g_ffp_state.vertex_shader_constants.data() + 8 * 4);
+  glUniform2f(
+      g_native_actor_program.uni_viewport_inv,
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+  glUniform1i(g_native_actor_program.uni_influence_count, influence_count);
+  glUniform1i(g_native_actor_program.uni_palette_size,
+              static_cast<GLint>(EstimateSkinPaletteSizeFromConstants()));
+  glUniform1i(g_native_actor_program.uni_index_swizzle, index_swizzle);
+  int skinmesh_variant = 4;
+  if (g_active_vs_hash == kNativeSkinMesh1Hash) skinmesh_variant = 1;
+  else if (g_active_vs_hash == kNativeSkinMesh2Hash) skinmesh_variant = 2;
+  else if (g_active_vs_hash == kNativeSkinMesh3Hash) skinmesh_variant = 3;
+  glUniform1i(g_native_actor_program.uni_skinmesh_variant, skinmesh_variant);
+
+  const bool has_texture0 = BindTextureStage(0);
+  const bool has_texture1 = BindTextureStage(1);
+  glUniform1i(g_native_actor_program.uni_sampler0, 0);
+  glUniform1i(g_native_actor_program.uni_sampler1, 1);
+  glUniform1i(g_native_actor_program.uni_use_texture0, has_texture0 ? 1 : 0);
+  glUniform1i(g_native_actor_program.uni_use_texture1, has_texture1 ? 1 : 0);
+#define SET_NATIVE_STAGE_UNIFORM(field, stage, type, fallback) \
+  glUniform1i(g_native_actor_program.field, \
+              static_cast<GLint>(StageStateValue(stage, type, fallback)))
+  SET_NATIVE_STAGE_UNIFORM(uni_color_op0, 0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+  SET_NATIVE_STAGE_UNIFORM(uni_color_arg10, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+  SET_NATIVE_STAGE_UNIFORM(uni_color_arg20, 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_op0, 0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_arg10, 0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_arg20, 0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+  SET_NATIVE_STAGE_UNIFORM(uni_color_op1, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+  SET_NATIVE_STAGE_UNIFORM(uni_color_arg11, 1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+  SET_NATIVE_STAGE_UNIFORM(uni_color_arg21, 1, D3DTSS_COLORARG2, D3DTA_CURRENT);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_op1, 1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_arg11, 1, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+  SET_NATIVE_STAGE_UNIFORM(uni_alpha_arg21, 1, D3DTSS_ALPHAARG2, D3DTA_CURRENT);
+#undef SET_NATIVE_STAGE_UNIFORM
+
+  const D3DCOLORVALUE texture_factor =
+      ColorValueFromARGB(g_wasm_d3d9_state.texture_factor);
+  const D3DCOLORVALUE fog_color =
+      ColorValueFromARGB(g_wasm_d3d9_state.fog_color);
+  glUniform4f(g_native_actor_program.uni_texture_factor,
+              texture_factor.r, texture_factor.g, texture_factor.b,
+              texture_factor.a);
+  glUniform4f(g_native_actor_program.uni_fog_color,
+              fog_color.r, fog_color.g, fog_color.b, fog_color.a);
+  const bool alpha_test_enabled =
+      ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
+      g_wasm_d3d9_state.alpha_test_enable != 0u &&
+      g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS;
+  glUniform1i(g_native_actor_program.uni_alpha_test_enable,
+              alpha_test_enabled ? 1 : 0);
+  glUniform1f(g_native_actor_program.uni_alpha_ref,
+              static_cast<float>(g_wasm_d3d9_state.alpha_ref & 0xFFu) / 255.0f);
+  glUniform1i(g_native_actor_program.uni_alpha_func,
+              static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
+  glUniform1i(g_native_actor_program.uni_fog_enable,
+              g_wasm_d3d9_state.fog_enable != 0u ? 1 : 0);
+  const bool additive_bright =
+      g_wasm_d3d9_state.blend_enabled &&
+      g_wasm_d3d9_state.src_blend == D3DBLEND_SRCALPHA &&
+      g_wasm_d3d9_state.dst_blend == D3DBLEND_ONE;
+  glUniform1i(g_native_actor_program.uni_additive_bright,
+              additive_bright ? 1 : 0);
+  // Opaque actor materials are authored as sRGB albedo.  The optimized path
+  // performs lighting and fog in linear space, then explicitly encodes the
+  // result.  Blended glow/effect draws retain their original color math.
+  glUniform1i(g_native_actor_program.uni_linear_color,
+              g_wasm_d3d9_state.blend_enabled ? 0 : 1);
+
+  const bool depth_test_enabled =
+      g_wasm_d3d9_state.z_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthTest) == 0u);
+  const bool depth_write_enabled =
+      g_wasm_d3d9_state.z_write_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthWrite) == 0u);
+  SetCapabilityCached(GL_DEPTH_TEST, depth_test_enabled);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(depth_write_enabled ? GL_TRUE : GL_FALSE);
+  const bool blend_enabled =
+      g_wasm_d3d9_state.blend_enabled &&
+      ((g_debug_ffp_flags & kDebugDisableBlend) == 0u);
+  SetCapabilityCached(GL_BLEND, blend_enabled);
+  if (blend_enabled) ApplyBlendState();
+  D3DMATRIX world_view{};
+  D3DXMatrixMultiply(
+      reinterpret_cast<D3DXMATRIX*>(&world_view),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
+  if ((g_debug_ffp_flags & kDebugDisableCull) != 0u)
+    SetCapabilityCached(GL_CULL_FACE, false);
+  else
+    ApplyCullState(IsMirroredMatrix3x3(world_view));
+  const bool alpha_to_coverage =
+      g_optimized_world_target.active &&
+      g_optimized_world_target.samples > 1 && alpha_test_enabled && !blend_enabled;
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, alpha_to_coverage);
+
+  glDrawElements(
+      PrimitiveToGL(primitive_type), static_cast<GLsizei>(index_count),
+      index_buffer->format == D3DFMT_INDEX32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+      reinterpret_cast<const void*>(index_offset));
+  const GLenum draw_error = glGetError();
+
+  // Both renderers share a context.  The native draw changed bindings behind
+  // the bridge's cache, so its next draw must restore its own program/input.
+  g_ffp_program.program_bound = false;
+  g_ffp_program.vertex_input_bound = false;
+  g_ffp_program.index_buffer_bound = false;
+  return draw_error == GL_NO_ERROR;
+}
+
 void ReleaseBoundResources() {
   if (g_ffp_state.vertex_decl) {
     g_ffp_state.vertex_decl->Release();
@@ -12466,6 +13169,24 @@ HRESULT WydD3D9Device_DrawIndexedPrimitive(
         &invalid_index);
     if (FAILED(hr)) return hr;
     if (invalid_index) return S_OK;
+
+    if (TryDrawNativeActor(
+            primitive_type,
+            base_vertex_index,
+            start_index,
+            primitive_count,
+            vb,
+            ib,
+            *decl)) {
+      OpenWydNativeRendererPromoteLastCommand();
+      if (g_active_vs_hash != 0) {
+        g_draws_with_vs += 1;
+        TrackShaderDrawUsed(&g_vs_telemetry, g_active_vs_hash);
+      }
+      g_ffp_state.draw_calls += 1;
+      g_ffp_state.primitive_count += primitive_count;
+      return S_OK;
+    }
 
     std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
     vertices.clear();

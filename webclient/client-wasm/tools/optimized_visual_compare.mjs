@@ -200,6 +200,37 @@ async function snapshot(page) {
     const packageEntry = performance.getEntriesByType("resource")
       .find(entry => /openwyd_assets\..*\.data(?:$|\?)/.test(entry.name));
     const preload = Object.values(M.preloadResults || {})[0] || null;
+    const nativeCommandCount = Math.min(
+      4096,
+      Number(call("_wyd_native_renderer_last_command_count")) || 0,
+    );
+    const nativeCommandGroups = new Map();
+    for (let index = 0; index < nativeCommandCount; index += 1) {
+      const values = [
+        call("_wyd_native_renderer_command_pass", index),
+        call("_wyd_native_renderer_command_fvf", index),
+        call("_wyd_native_renderer_command_vs_hash_high", index),
+        call("_wyd_native_renderer_command_vs_hash_low", index),
+        call("_wyd_native_renderer_command_ps_hash_high", index),
+        call("_wyd_native_renderer_command_ps_hash_low", index),
+        call("_wyd_native_renderer_command_blend", index),
+        call("_wyd_native_renderer_command_depth", index),
+        call("_wyd_native_renderer_command_raster", index),
+        call("_wyd_native_renderer_command_texture_stages", index),
+        call("_wyd_native_renderer_command_stride", index),
+      ].map(value => Number(value) >>> 0);
+      const key = values.join(":");
+      const group = nativeCommandGroups.get(key) || {
+        pass: values[0], fvf: values[1],
+        vsHash: `${values[2].toString(16).padStart(8, "0")}${values[3].toString(16).padStart(8, "0")}`,
+        psHash: `${values[4].toString(16).padStart(8, "0")}${values[5].toString(16).padStart(8, "0")}`,
+        blend: values[6], depth: values[7], raster: values[8],
+        textureStages: values[9], stride: values[10], draws: 0, indices: 0,
+      };
+      group.draws += 1;
+      group.indices += Number(call("_wyd_native_renderer_command_index_count", index)) || 0;
+      nativeCommandGroups.set(key, group);
+    }
     return {
       state: call("_wyd_get_game_state"),
       sceneType: call("_wyd_get_scene_type"),
@@ -232,6 +263,9 @@ async function snapshot(page) {
         bufferUploads: call("_wyd_native_renderer_buffer_uploads"),
         bufferUploadBytes: call("_wyd_native_renderer_buffer_upload_bytes_low"),
         residentDraws: call("_wyd_native_renderer_resident_draws"),
+        commandGroups: [...nativeCommandGroups.values()]
+          .sort((left, right) => right.draws - left.draws)
+          .slice(0, 64),
       },
       camera: {
         valid: call("_wyd_debug_camera_valid"),
