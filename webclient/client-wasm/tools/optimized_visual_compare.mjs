@@ -37,6 +37,9 @@ const debugFlags = Number.parseInt(process.env.OPENWYD_VISUAL_DEBUG_FLAGS || "0"
 const rendererBackend = process.env.OPENWYD_VISUAL_RENDERER === "native-webgl2"
   ? "native-webgl2"
   : "bridge";
+const selectServerDemoType = [0, 1, 2].includes(
+  Number.parseInt(process.env.OPENWYD_VISUAL_SELECT_SERVER_DEMO || "", 10),
+) ? Number.parseInt(process.env.OPENWYD_VISUAL_SELECT_SERVER_DEMO, 10) : -1;
 const allRuns = [
   { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
   { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
@@ -343,7 +346,7 @@ async function executeRun(context, run) {
   try {
     await page.goto(url.toString(), { waitUntil: "load", timeout: 240000 });
     await page.waitForFunction(() => window.__runtimeReady === true, null, { timeout: 240000 });
-    await page.evaluate((requestedDebugFlags) => {
+    await page.evaluate(({ requestedDebugFlags, requestedSelectServerDemoType }) => {
       window.stopAutoTick?.();
       document.body.classList.remove("loading");
       // The settings button is HTML chrome, not part of the Direct3D/WebGL
@@ -359,7 +362,11 @@ async function executeRun(context, run) {
       Module._wyd_debug_set_fake_time?.(0);
       Module._wyd_compare_random_arm?.(0x4f50454e);
       Module._wyd_d3d9_set_debug_flags?.(requestedDebugFlags >>> 0);
-    }, debugFlags);
+      Module._wyd_selserver_set_demo_type_override?.(requestedSelectServerDemoType);
+    }, {
+      requestedDebugFlags: debugFlags,
+      requestedSelectServerDemoType: selectServerDemoType,
+    });
     const boot = await page.evaluate(() => Module._wyd_boot_client(0));
     if (!boot) throw new Error("boot failed");
 
