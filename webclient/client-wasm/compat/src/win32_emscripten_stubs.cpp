@@ -10395,6 +10395,60 @@ void UploadTexTransformUniforms(
       reinterpret_cast<const GLfloat*>(&g_ffp_state.tex[stage]));
 }
 
+struct ResolvedTextureStageState {
+  DWORD color_op = D3DTOP_DISABLE;
+  DWORD color_arg1 = D3DTA_TEXTURE;
+  DWORD color_arg2 = D3DTA_CURRENT;
+  DWORD alpha_op = D3DTOP_DISABLE;
+  DWORD alpha_arg1 = D3DTA_TEXTURE;
+  DWORD alpha_arg2 = D3DTA_CURRENT;
+};
+
+ResolvedTextureStageState ResolveTextureStageState(
+    DWORD stage,
+    bool has_texture,
+    bool force_disable = false) {
+  const DWORD default_color_op =
+      (stage == 0) ? D3DTOP_MODULATE : D3DTOP_DISABLE;
+  const DWORD default_alpha_op =
+      (stage == 0) ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE;
+  ResolvedTextureStageState state{};
+  state.color_op = StageStateValue(
+      stage, D3DTSS_COLOROP, default_color_op);
+  state.color_arg1 = StageStateValue(
+      stage, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+  state.color_arg2 = StageStateValue(
+      stage, D3DTSS_COLORARG2,
+      (stage == 0) ? D3DTA_DIFFUSE : D3DTA_CURRENT);
+  state.alpha_op = StageStateValue(
+      stage, D3DTSS_ALPHAOP, default_alpha_op);
+  state.alpha_arg1 = StageStateValue(
+      stage, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+  state.alpha_arg2 = StageStateValue(
+      stage, D3DTSS_ALPHAARG2,
+      (stage == 0) ? D3DTA_DIFFUSE : D3DTA_CURRENT);
+  if (state.color_op == 0) state.color_op = D3DTOP_DISABLE;
+  if (state.alpha_op == 0) state.alpha_op = D3DTOP_DISABLE;
+  if (force_disable) {
+    state.color_op = D3DTOP_DISABLE;
+    state.alpha_op = D3DTOP_DISABLE;
+  }
+
+  if (!has_texture) {
+    // A NULL texture terminates a stage whose COLORARG1 selects it. This is
+    // how the original client safely leaves stale stage operations behind.
+    if ((state.color_arg1 & 0xFu) == D3DTA_TEXTURE) {
+      state.color_op = D3DTOP_DISABLE;
+      state.alpha_op = D3DTOP_DISABLE;
+    } else if ((state.alpha_arg1 & 0xFu) == D3DTA_TEXTURE) {
+      state.alpha_arg1 = D3DTA_DIFFUSE;
+    }
+  }
+  if (state.color_op == D3DTOP_DISABLE)
+    state.alpha_op = D3DTOP_DISABLE;
+  return state;
+}
+
 bool ApplyStageUniforms(
     DWORD stage,
     bool has_texture,
@@ -10406,50 +10460,20 @@ bool ApplyStageUniforms(
     GLint uni_alpha_op,
     GLint uni_alpha_arg1,
     GLint uni_alpha_arg2) {
-  const DWORD default_color_op = (stage == 0) ? D3DTOP_MODULATE : D3DTOP_DISABLE;
-  const DWORD default_alpha_op = (stage == 0) ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE;
-  DWORD color_op = StageStateValue(stage, D3DTSS_COLOROP, default_color_op);
-  DWORD color_arg1 = StageStateValue(stage, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-  DWORD color_arg2 = StageStateValue(stage, D3DTSS_COLORARG2, (stage == 0) ? D3DTA_DIFFUSE : D3DTA_CURRENT);
-  DWORD alpha_op = StageStateValue(stage, D3DTSS_ALPHAOP, default_alpha_op);
-  DWORD alpha_arg1 = StageStateValue(stage, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-  DWORD alpha_arg2 = StageStateValue(stage, D3DTSS_ALPHAARG2, (stage == 0) ? D3DTA_DIFFUSE : D3DTA_CURRENT);
-  if (color_op == 0) color_op = D3DTOP_DISABLE;
-  if (alpha_op == 0) alpha_op = D3DTOP_DISABLE;
-  if (force_disable) {
-    color_op = D3DTOP_DISABLE;
-    alpha_op = D3DTOP_DISABLE;
-  }
-
-  if (!has_texture) {
-    // Direct3D terminates the texture cascade when COLORARG1 selects a NULL
-    // texture. This is how the original client leaves stale stage operations
-    // behind safely when it calls SetTexture(stage, nullptr). For an active
-    // stage whose other color argument references that NULL texture, hardware
-    // supplies black; only ALPHAARG1 has the documented diffuse fallback.
-    if ((color_arg1 & 0xFu) == D3DTA_TEXTURE) {
-      color_op = D3DTOP_DISABLE;
-      alpha_op = D3DTOP_DISABLE;
-    } else if ((alpha_arg1 & 0xFu) == D3DTA_TEXTURE) {
-      alpha_arg1 = D3DTA_DIFFUSE;
-    }
-  }
-
-  if (color_op == D3DTOP_DISABLE) {
-    alpha_op = D3DTOP_DISABLE;
-  }
+  const ResolvedTextureStageState state = ResolveTextureStageState(
+      stage, has_texture, force_disable);
   // D3DTOP_DISABLE for alpha means the alpha value from the previous stage
   // passes through unchanged (D3D9 spec).  The shader already handles this
   // by skipping the alpha operation when uAlphaOp == 1.
 
   SetUniform1iCached(uni_use_texture, has_texture ? 1 : 0);
-  SetUniform1iCached(uni_color_op, static_cast<GLint>(color_op));
-  SetUniform1iCached(uni_color_arg1, static_cast<GLint>(color_arg1));
-  SetUniform1iCached(uni_color_arg2, static_cast<GLint>(color_arg2));
-  SetUniform1iCached(uni_alpha_op, static_cast<GLint>(alpha_op));
-  SetUniform1iCached(uni_alpha_arg1, static_cast<GLint>(alpha_arg1));
-  SetUniform1iCached(uni_alpha_arg2, static_cast<GLint>(alpha_arg2));
-  return color_op != D3DTOP_DISABLE;
+  SetUniform1iCached(uni_color_op, static_cast<GLint>(state.color_op));
+  SetUniform1iCached(uni_color_arg1, static_cast<GLint>(state.color_arg1));
+  SetUniform1iCached(uni_color_arg2, static_cast<GLint>(state.color_arg2));
+  SetUniform1iCached(uni_alpha_op, static_cast<GLint>(state.alpha_op));
+  SetUniform1iCached(uni_alpha_arg1, static_cast<GLint>(state.alpha_arg1));
+  SetUniform1iCached(uni_alpha_arg2, static_cast<GLint>(state.alpha_arg2));
+  return state.color_op != D3DTOP_DISABLE;
 }
 
 void ApplyFFPUniforms(bool has_stage0_texture, bool has_stage1_texture) {
@@ -13682,22 +13706,20 @@ bool TryDrawNativeColorVertexUP(
   const bool supported_pass = screen_space
       ? supported_screen_pass
       : supported_world_pass;
-  const DummyDirect3DTexture9* screen_texture =
-      screen_space ? AsTexture(g_ffp_state.textures[0]) : nullptr;
-  const bool screen_texture_ready =
-      screen_texture && !screen_texture->pixels.empty();
-  const DWORD color_op0 = StageStateValue(
-      0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-  const DWORD alpha_op0 = StageStateValue(
-      0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+  const DummyDirect3DTexture9* texture0 =
+      AsTexture(g_ffp_state.textures[0]);
+  const bool texture0_ready = texture0 && !texture0->pixels.empty();
+  const ResolvedTextureStageState preflight_stage0 =
+      ResolveTextureStageState(0, texture0_ready);
   const DWORD color_op1 = StageStateValue(
       1, D3DTSS_COLOROP, D3DTOP_DISABLE);
   if (!OpenWydNativeRendererEnabled() || !supported_pass ||
       vertex_count == 0u || !vertex_data || !supported_layout ||
-      (screen_space && !screen_texture_ready) ||
       g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
-      color_op1 != D3DTOP_DISABLE || !NativeColorOpSupported(color_op0) ||
-      !NativeColorOpSupported(alpha_op0) || !EnsureNativeColorProgram()) {
+      color_op1 != D3DTOP_DISABLE ||
+      !NativeColorOpSupported(preflight_stage0.color_op) ||
+      !NativeColorOpSupported(preflight_stage0.alpha_op) ||
+      !EnsureNativeColorProgram()) {
     return false;
   }
 
@@ -13749,18 +13771,16 @@ bool TryDrawNativeColorVertexUP(
       static_cast<float>(g_wasm_d3d9_state.viewport.Y));
   glUniform1i(color.uni_screen_space, screen_space ? 1 : 0);
   const bool has_texture0 = BindTextureStage(0);
+  const ResolvedTextureStageState stage0 =
+      ResolveTextureStageState(0, has_texture0);
   glUniform1i(color.uni_sampler0, 0);
   glUniform1i(color.uni_use_texture0, has_texture0 ? 1 : 0);
-  glUniform1i(color.uni_color_op0, static_cast<GLint>(color_op0));
-  glUniform1i(color.uni_color_arg10, static_cast<GLint>(StageStateValue(
-      0, D3DTSS_COLORARG1, D3DTA_TEXTURE)));
-  glUniform1i(color.uni_color_arg20, static_cast<GLint>(StageStateValue(
-      0, D3DTSS_COLORARG2, D3DTA_DIFFUSE)));
-  glUniform1i(color.uni_alpha_op0, static_cast<GLint>(alpha_op0));
-  glUniform1i(color.uni_alpha_arg10, static_cast<GLint>(StageStateValue(
-      0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE)));
-  glUniform1i(color.uni_alpha_arg20, static_cast<GLint>(StageStateValue(
-      0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE)));
+  glUniform1i(color.uni_color_op0, static_cast<GLint>(stage0.color_op));
+  glUniform1i(color.uni_color_arg10, static_cast<GLint>(stage0.color_arg1));
+  glUniform1i(color.uni_color_arg20, static_cast<GLint>(stage0.color_arg2));
+  glUniform1i(color.uni_alpha_op0, static_cast<GLint>(stage0.alpha_op));
+  glUniform1i(color.uni_alpha_arg10, static_cast<GLint>(stage0.alpha_arg1));
+  glUniform1i(color.uni_alpha_arg20, static_cast<GLint>(stage0.alpha_arg2));
   const D3DCOLORVALUE texture_factor =
       ColorValueFromARGB(g_wasm_d3d9_state.texture_factor);
   glUniform4f(color.uni_texture_factor,
