@@ -800,14 +800,18 @@
       }
     };
 
-    const optimizedWorldScale = () => {
-      if (autoConfig.quality === 'performance') return Math.min(0.85, adaptiveResolutionScale);
-      if (autoConfig.quality === 'quality' || autoConfig.quality === 'maximum') return 1;
-      return adaptiveResolutionScale;
-    };
+    // The stabilized renderer always draws the world at backing resolution.
+    // Dynamic downscale/upscale is intentionally disabled until the native
+    // WebGL2 backend has measured bottlenecks of its own.
+    const optimizedWorldScale = () => 1;
 
     const configureOptimizedRuntime = (cssWidth, cssHeight, backingWidth, backingHeight) => {
-      if (!window.Module || typeof Module._wyd_configure_optimized_view !== 'function') return;
+      // Emscripten installs exported function wrappers before the runtime may
+      // legally call them. ResizeObserver can fire in that interval on a warm
+      // cache, so wait for onRuntimeInitialized; it calls syncCanvasSize again.
+      if (window.__runtimeReady !== true ||
+          !window.Module ||
+          typeof Module._wyd_configure_optimized_view !== 'function') return;
       Module._wyd_configure_optimized_view(
         1,
         QUALITY_PROFILE_CODES[autoConfig.quality] ?? 0,
@@ -1371,11 +1375,10 @@
       return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
     };
 
-    const resolveOptimizedTargetFps = () => {
-      if (autoConfig.fps !== 'auto') return Number(autoConfig.fps) || 60;
-      const refreshLimit = Math.min(144, Math.max(60, schedulerRefreshHz + 3));
-      return [144, 120, 75, 60].find(tier => tier <= refreshLimit && tier <= adaptiveFpsCap) || 60;
-    };
+    // One simulation and one real present per accepted browser frame. Higher
+    // presentation tiers stay disabled until update/render separation and
+    // interpolation are complete.
+    const resolveOptimizedTargetFps = () => 60;
 
     window.__wydSimulateFixedScheduler = (presentationHz, durationMs = 10000) => {
       const hz = Math.max(1, Number(presentationHz) || 60);
@@ -1465,21 +1468,9 @@
         schedulerLastTick = rafNow;
         const tickStarted = performance.now();
         const simulationStep = 1000 / 60;
-        if (schedulerLastPresentation > 0) {
-          schedulerSimulationAccumulator += Math.min(100, rafNow - schedulerLastPresentation);
-        } else {
-          schedulerSimulationAccumulator = simulationStep;
-        }
         schedulerLastPresentation = rafNow;
-        let rc = 1;
-        let simulationSteps = 0;
-        while (schedulerSimulationAccumulator >= simulationStep && simulationSteps < 3) {
-          rc = window.tickClient(true, true);
-          schedulerSimulationAccumulator -= simulationStep;
-          simulationSteps += 1;
-          if (rc < 0) break;
-        }
-        if (simulationSteps === 0) rc = window.renderClient();
+        schedulerSimulationAccumulator = 0;
+        const rc = window.tickClient(true, true);
         schedulerTickDurations.push(performance.now() - tickStarted);
         updateOptimizedScheduler(rafNow, targetFps);
         autoTickFrames += 1;

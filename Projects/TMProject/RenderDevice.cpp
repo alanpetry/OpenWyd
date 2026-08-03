@@ -1911,31 +1911,10 @@ int RenderDevice::SetViewVector(TMVector3 ivCamera, TMVector3 ivLookat)
 HRESULT RenderDevice::SetProjectionMatrix()
 {
 	float fovYRadians = RenderDevice::m_fFOVY * D3DXToRadian(180);
-	const bool preserveCinematicVerticalFraming =
-		g_pCurrentScene && g_pCurrentScene->GetSceneType() == ESCENE_TYPE::ESCENE_DEMO;
-	if (OpenWydOptimizedEnabled() && !preserveCinematicVerticalFraming)
-	{
-		// Keep the physical size of world objects close to the official
-		// 800x600 view.  Reusing the same vertical FOV at 1080p made a character
-		// occupy the same fraction of a much taller canvas, effectively drawing
-		// it 1.8x larger.  Increasing the FOV from the tangent of the base
-		// projection reveals more world vertically and horizontally while the
-		// UI remains at its authored 1:1 size.
-		// Use the complete logical viewport height.  Capping this at 900 made a
-		// 1080p character roughly 20% larger in screen pixels than the official
-		// 800x600 framing -- exactly the opposite of an expanded viewport.  The
-		// optimized renderer must reveal more world while preserving the authored
-		// on-screen scale of characters and objects.
-		const float viewportHeight =
-			static_cast<float>(std::max<DWORD>(1, m_dwScreenHeight - m_nHeightShift));
-		const float baseHeight = 600.0f;
-		const float halfTangent = tanf(fovYRadians * 0.5f)
-			* (viewportHeight / baseHeight);
-		fovYRadians = 2.0f * atanf(halfTangent);
-		fovYRadians = (std::max)(
-			D3DXToRadian(20.0f),
-			(std::min)(D3DXToRadian(120.0f), fovYRadians));
-	}
+	// The authored camera owns the vertical framing. Widescreen expands only
+	// the horizontal field through the aspect ratio passed below. Scaling the
+	// vertical tangent by viewport height made resize and teleport change the
+	// apparent camera distance and was the source of the extreme 4K zoom-out.
 
 	D3DXMatrixPerspectiveFovLH(&m_matProj, 
 		fovYRadians,

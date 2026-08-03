@@ -325,22 +325,41 @@ extern "C" int wyd_configure_optimized_view(
 	int worldScalePercent)
 {
 	const WydViewportMetrics previous = g_viewport;
-	g_displayMode = enabled ? WydDisplayMode::Optimized : WydDisplayMode::Legacy;
-	g_qualityProfile = static_cast<WydQualityProfile>(ClampQuality(quality));
-	g_viewport.cssWidth = ClampDimension(cssWidth, 800);
-	g_viewport.cssHeight = ClampDimension(cssHeight, 600);
-	g_viewport.backingWidth = ClampDimension(backingWidth, g_viewport.cssWidth);
-	g_viewport.backingHeight = ClampDimension(backingHeight, g_viewport.cssHeight);
+	const WydDisplayMode nextDisplayMode =
+		enabled ? WydDisplayMode::Optimized : WydDisplayMode::Legacy;
+	const WydQualityProfile nextQuality =
+		static_cast<WydQualityProfile>(ClampQuality(quality));
+	WydViewportMetrics next = g_viewport;
+	next.cssWidth = ClampDimension(cssWidth, 800);
+	next.cssHeight = ClampDimension(cssHeight, 600);
+	next.backingWidth = ClampDimension(backingWidth, next.cssWidth);
+	next.backingHeight = ClampDimension(backingHeight, next.cssHeight);
 	// Optimized may compact the official UI on a small viewport, but it never
 	// enlarges the authored font/control metrics.
-	g_viewport.uiScalePercent = (std::max)(80, (std::min)(100, uiScalePercent));
-	g_viewport.worldScalePercent = (std::max)(50, (std::min)(100, worldScalePercent));
-	g_viewport.worldScale = static_cast<float>(g_viewport.worldScalePercent) / 100.0f;
-	g_viewport.uiScale = OpenWydOptimizedEnabled()
-		? CalculateUiScale(g_viewport.uiScalePercent)
-		: static_cast<float>(g_viewport.cssWidth) / 800.0f;
+	next.uiScalePercent = (std::max)(80, (std::min)(100, uiScalePercent));
+	next.worldScalePercent = (std::max)(50, (std::min)(100, worldScalePercent));
+	next.worldScale = static_cast<float>(next.worldScalePercent) / 100.0f;
+	next.uiScale = nextDisplayMode == WydDisplayMode::Optimized
+		? CalculateUiScale(next.uiScalePercent)
+		: static_cast<float>(next.cssWidth) / 800.0f;
 
-	if (OpenWydOptimizedEnabled())
+	const bool viewportChanged =
+		g_displayMode != nextDisplayMode ||
+		previous.cssWidth != next.cssWidth ||
+		previous.cssHeight != next.cssHeight ||
+		previous.backingWidth != next.backingWidth ||
+		previous.backingHeight != next.backingHeight ||
+		previous.uiScalePercent != next.uiScalePercent ||
+		previous.worldScalePercent != next.worldScalePercent;
+
+	g_displayMode = nextDisplayMode;
+	g_qualityProfile = nextQuality;
+	g_viewport = next;
+
+	// ResizeObserver and visualViewport can report the same dimensions in the
+	// same browser turn. Reapplying the layout mutated already-resolved control
+	// positions and reset projection/state, which showed up as UI flicker.
+	if (OpenWydOptimizedEnabled() && viewportChanged)
 		ApplyRuntimeViewport(previous);
 
 	return 1;

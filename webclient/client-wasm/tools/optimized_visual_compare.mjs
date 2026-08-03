@@ -38,6 +38,7 @@ const allRuns = [
   { label: "legacy-800x600", mode: "legacy", width: 800, height: 600 },
   { label: "optimized-800x600", mode: "optimized", width: 800, height: 600 },
   { label: "optimized-1920x1080", mode: "optimized", width: 1920, height: 1080 },
+  { label: "optimized-3840x2160", mode: "optimized", width: 3840, height: 2160 },
 ];
 const requestedRuns = new Set((process.env.OPENWYD_VISUAL_RUNS || "")
   .split(",")

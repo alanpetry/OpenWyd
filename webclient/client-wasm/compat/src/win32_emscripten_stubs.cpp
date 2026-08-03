@@ -5529,14 +5529,10 @@ void DestroyOptimizedWorldTarget() {
 bool PresentOptimizedWorld(int canvas_width, int canvas_height, float sharpness);
 
 float RequestedOptimizedWorldSharpness() {
-  if (g_optimized_sharpen_override == 0) return 0.0f;
-  switch (wyd_optimized_quality_profile()) {
-    case 0: return 0.18f;
-    case 1: return 0.0f;
-    case 2: return 0.28f;
-    case 3: return 0.34f;
-    default: return 0.0f;
-  }
+  // Screen-space sharpening cannot restore geometry, normals or texture
+  // detail discarded by the legacy bridge. It also amplifies ground shimmer
+  // and UI halos, so the stabilized optimized path resolves without it.
+  return 0.0f;
 }
 
 int RequestedOptimizedWorldSamples() {
@@ -8021,7 +8017,10 @@ extern "C" int wyd_d3d9_optimized_begin_world() {
     g_ffp_program.index_buffer_bound = false;
   }
 
-  const float scale = std::max(0.5f, std::min(1.0f, wyd_optimized_world_scale()));
+  // Render at the physical backing resolution. Runtime downscale/upscale was
+  // masking the bridge's real limitations and made quality depend on the
+  // adaptive scheduler rather than the scene data.
+  const float scale = 1.0f;
   int canvas_w = 0;
   int canvas_h = 0;
   emscripten_get_canvas_element_size("#canvas", &canvas_w, &canvas_h);
@@ -9308,16 +9307,7 @@ void BuildGLTextureRGBA(const DummyDirect3DTexture9* tex, std::vector<uint8_t>* 
 }
 
 float RequestedOptimizedUiSharpness() {
-  if (g_optimized_ui_sharpen_override == 0 ||
-      wyd_optimized_view_enabled() == 0) {
-    return 0.0f;
-  }
-  switch (wyd_optimized_quality_profile()) {
-    case 1: return 0.10f;
-    case 2: return 0.22f;
-    case 3: return 0.28f;
-    default: return 0.16f;
-  }
+  return 0.0f;
 }
 
 void ApplyOptimizedUiSharpen(
@@ -9404,17 +9394,10 @@ extern "C" uint32_t wyd_d3d9_optimized_ui_sharpened_pixels() {
 }
 
 int RequestedOptimizedUiHdScale() {
-  if (g_optimized_ui_hd_override == 0 || wyd_optimized_view_enabled() == 0) {
-    return 1;
-  }
-  // The performance profile is the explicit low-memory path. Auto, Quality
-  // and Maximum reconstruct official UI atlases at two physical texels per
-  // authored texel. This does not change logical dimensions, RC crops,
-  // hitboxes or the original files bundled in the virtual filesystem.
-  if (g_optimized_ui_hd_override < 0 && wyd_optimized_quality_profile() == 1) {
-    return 1;
-  }
-  return 2;
+  // HD derivatives are generated offline only after individual approval.
+  // Reconstructing every atlas while the client runs blurred borders and
+  // needlessly invalidated texture uploads.
+  return 1;
 }
 
 struct PremultipliedRgbaSample {
@@ -9655,11 +9638,7 @@ extern "C" uint32_t wyd_d3d9_optimized_ui_hd_microseconds() {
 }
 
 int RequestedOptimizedMaterialHdScale() {
-  if (g_optimized_material_hd_override == 0 || wyd_optimized_view_enabled() == 0)
-    return 1;
-  if (g_optimized_material_hd_override < 0 && wyd_optimized_quality_profile() == 1)
-    return 1;
-  return 2;
+  return 1;
 }
 
 bool OptimizedTextureIsOpaque(const DummyDirect3DTexture9* tex) {
@@ -9851,7 +9830,8 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   const DWORD mag_filter = g_ffp_state.sampler[stage][D3DSAMP_MAGFILTER];
   const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
   const bool mipmaps_available =
-      tex->mip_levels != 1u && IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
+      tex->embedded_mips.size() > 1u &&
+      IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
   GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
   GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
   if (wyd_optimized_view_enabled() != 0 &&
@@ -9923,10 +9903,9 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
     tex->gl_dirty = true;
   }
   if (tex->gl_dirty) {
-    const bool material_hd_requested = IsOptimizedMaterialHdCandidate(tex);
     const bool use_embedded_mips =
-        g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u &&
-        !tex->embedded_mips.empty() && !material_hd_requested;
+      g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u &&
+        !tex->embedded_mips.empty();
     if (use_embedded_mips) {
       for (size_t level = 0; level < tex->embedded_mips.size(); ++level) {
         const DecodedTextureMip& mip = tex->embedded_mips[level];
@@ -9978,9 +9957,8 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
           GL_RGBA,
           GL_UNSIGNED_BYTE,
           upload_pixels);
-      if (tex->mip_levels != 1u && IsPowerOfTwo(upload_width) && IsPowerOfTwo(upload_height)) {
-        glGenerateMipmap(GL_TEXTURE_2D);
-      }
+      if (g_wasm_d3d9_state.webgl2)
+        glTexParameteri(GL_TEXTURE_2D, 0x813D, 0); // GL_TEXTURE_MAX_LEVEL
     }
     tex->gl_dirty = false;
     g_tex_upload_count += 1;
