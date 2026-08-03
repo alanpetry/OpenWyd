@@ -8960,11 +8960,16 @@ bool PresentOptimizedWorld(int canvas_width, int canvas_height, float sharpness)
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glViewport(0, 0, std::max(1, canvas_width), std::max(1, canvas_height));
-  glDisable(GL_DEPTH_TEST);
-  glDisable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-  glDisable(GL_STENCIL_TEST);
-  glDepthMask(GL_FALSE);
+  // The present pass shares the bridge's GL state cache.  Mutating these
+  // states with raw glDisable/glDepthMask left the cache claiming that blend
+  // was still enabled at the start of the next frame.  Alpha billboards could
+  // consequently render as opaque black quads until another draw happened to
+  // toggle blending.  Keep the actual context and the cache synchronized.
+  SetCapabilityCached(GL_DEPTH_TEST, false);
+  SetCapabilityCached(GL_BLEND, false);
+  SetCapabilityCached(GL_CULL_FACE, false);
+  SetCapabilityCached(GL_STENCIL_TEST, false);
+  SetDepthMaskCached(GL_FALSE);
   glUseProgram(g_optimized_present_program.program);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, g_optimized_world_target.resolve_color_texture);
