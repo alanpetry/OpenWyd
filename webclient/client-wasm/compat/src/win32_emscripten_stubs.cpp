@@ -13611,7 +13611,8 @@ bool TryDrawNativeColorVertexUP(
       pass == WydRenderPass::Vegetation || pass == WydRenderPass::Water ||
       pass == WydRenderPass::Transparent || pass == WydRenderPass::WorldText;
   const bool supported_screen_pass =
-      pass == WydRenderPass::Ui || pass == WydRenderPass::Text;
+      pass == WydRenderPass::Ui || pass == WydRenderPass::Text ||
+      pass == WydRenderPass::Transparent;
   const bool supported_pass = screen_space
       ? supported_screen_pass
       : supported_world_pass;
