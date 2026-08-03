@@ -11959,13 +11959,19 @@ constexpr uint64_t kNativeSkinMesh2Hash = 0x851b469b88956e6aull;
 constexpr uint64_t kNativeSkinMesh3Hash = 0x7502e7de3a0f9798ull;
 constexpr uint64_t kNativeSkinMesh4Hash = 0xc73a19e04a083e83ull;
 constexpr uint64_t kNativeSkinMesh5Hash = 0x64c1cfa12def9648ull;
+constexpr uint64_t kNativeSkinMesh6Hash = 0xe5a5dfb6b216f392ull;
+constexpr uint64_t kNativeSkinMesh7Hash = 0x2dd04e906789c060ull;
+constexpr uint64_t kNativeSkinMesh8Hash = 0xecfd7d76250484cbull;
 
 bool IsNativeActorShader(uint64_t hash) {
   return hash == kNativeSkinMesh1Hash ||
          hash == kNativeSkinMesh2Hash ||
          hash == kNativeSkinMesh3Hash ||
          hash == kNativeSkinMesh4Hash ||
-         hash == kNativeSkinMesh5Hash;
+         hash == kNativeSkinMesh5Hash ||
+         hash == kNativeSkinMesh6Hash ||
+         hash == kNativeSkinMesh7Hash ||
+         hash == kNativeSkinMesh8Hash;
 }
 
 const D3DVERTEXELEMENT9* FindDeclarationElement(
@@ -12588,6 +12594,9 @@ bool TryDrawNativeActor(
   else if (g_active_vs_hash == kNativeSkinMesh2Hash) skinmesh_variant = 2;
   else if (g_active_vs_hash == kNativeSkinMesh3Hash) skinmesh_variant = 3;
   else if (g_active_vs_hash == kNativeSkinMesh5Hash) skinmesh_variant = 5;
+  else if (g_active_vs_hash == kNativeSkinMesh6Hash) skinmesh_variant = 6;
+  else if (g_active_vs_hash == kNativeSkinMesh7Hash) skinmesh_variant = 7;
+  else if (g_active_vs_hash == kNativeSkinMesh8Hash) skinmesh_variant = 8;
   glUniform1i(g_native_actor_program.uni_skinmesh_variant, skinmesh_variant);
 
   const bool has_texture0 = BindTextureStage(0);
