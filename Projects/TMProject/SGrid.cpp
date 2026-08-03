@@ -50,6 +50,35 @@ void SkillCellBounds(
 	top = SnapOptimizedUiCoordinate(top, false);
 	bottom = SnapOptimizedUiCoordinate(bottom, false);
 }
+
+int GridHitCell(
+	const SGridControl* grid,
+	float point,
+	float origin,
+	float extent,
+	int cellCount,
+	int legacyCellExtent)
+{
+	if (!OpenWydOptimizedEnabled() || grid->m_eGridType != TMEGRIDTYPE::GRID_SKILLB ||
+		extent <= 0.0f || cellCount <= 0)
+	{
+		return legacyCellExtent > 0
+			? static_cast<int>((point - origin) / static_cast<float>(legacyCellExtent))
+			: -1;
+	}
+
+	// The official shortcut belt is 197 pixels wide for ten skills.  Rendering
+	// necessarily distributes the remainder as alternating 19/20 px cells.
+	// Hit testing must use the same fractional boundaries; dividing by the
+	// truncated 19 px width makes the last slots select a different skill than
+	// the icon underneath the pointer.
+	int cell = static_cast<int>(std::floor(((point - origin) * cellCount) / extent));
+	if (cell < 0)
+		return -1;
+	if (cell >= cellCount)
+		return cellCount - 1;
+	return cell;
+}
 }
 
 SGridControlItem* SGridControl::m_pLastMouseOverItem;
@@ -191,8 +220,10 @@ int SGridControl::OnMouseEvent(unsigned int dwFlags, unsigned int wParam, int nX
 
 	int nCellVWidth = (int)(m_nWidth / (float)m_nColumnGridCount);
 	int nCellVHeight = (int)(m_nHeight / (float)m_nRowGridCount);
-	int nCellX = (int)(((float)nX - m_nPosX) / (float)nCellVWidth);
-	int nCellY = (int)(((float)nY - m_nPosY) / (float)nCellVHeight);
+	int nCellX = GridHitCell(
+		this, static_cast<float>(nX), m_nPosX, m_nWidth, m_nColumnGridCount, nCellVWidth);
+	int nCellY = GridHitCell(
+		this, static_cast<float>(nY), m_nPosY, m_nHeight, m_nRowGridCount, nCellVHeight);
 	int bPtInRect = PointInRect(nX, nY, m_nPosX, m_nPosY, m_nWidth, m_nHeight);
 	bool bClick = false;
 

@@ -99,6 +99,8 @@ async function runProbe(context, run) {
           itemCount: count,
           itemWidths: Array.from({ length: count }, (_, i) => Module._wyd_control_grid_item_width(id, i)),
           itemHeights: Array.from({ length: count }, (_, i) => Module._wyd_control_grid_item_height(id, i)),
+          itemCells: Array.from({ length: count }, (_, i) => Module._wyd_control_grid_item_cell_x(id, i)),
+          itemSIndices: Array.from({ length: count }, (_, i) => Module._wyd_control_grid_item_sindex(id, i)),
         };
       };
       const initialGrids = [grid(65644), grid(65645)];
@@ -125,8 +127,31 @@ async function runProbe(context, run) {
         grids: initialGrids,
         alternateGrids,
         glErrors: Module._wyd_d3d9_gl_error_total(),
+        assignedSkills: Array.from({ length: 20 }, (_, i) => Module._wyd_control_assigned_short_skill(i)),
       };
     });
+
+    const clickBank = (id, bankOffset) => page.evaluate(({ gridId, offset }) => (
+      Array.from({ length: 10 }, (_, cell) => ({
+        cell,
+        expected: offset + cell,
+        selected: Module._wyd_control_audit_click_skill_cell(gridId, cell),
+      }))
+    ), { gridId: id, offset: bankOffset });
+
+    // Verify the complete browser-input path, not just render geometry.  The
+    // second bank is already active after the setup evaluation above.
+    metrics.secondBankClicks = await clickBank(65645, 10);
+    await page.evaluate(() => {
+      const count = Module._wyd_control_audit_count();
+      for (let index = 0; index < count; index += 1) {
+        const id = Module._wyd_control_audit_id(index);
+        if (id === 65644) Module._wyd_control_audit_set_raw_visible(index, 1);
+        if (id === 65645) Module._wyd_control_audit_set_raw_visible(index, 0);
+      }
+      Module._wyd_tick_client();
+    });
+    metrics.firstBankClicks = await clickBank(65644, 0);
 
     const capture = await cdp.send("Page.captureScreenshot", {
       format: "png",
@@ -162,6 +187,13 @@ try {
     run.metrics.populated === 20 && run.metrics.glErrors === 0 &&
     run.metrics.grids.every(grid => grid.itemCount === 10) &&
     run.metrics.alternateGrids.every(grid => grid.itemCount === 10) &&
+    run.metrics.assignedSkills.every((skill, index) => skill === index) &&
+    run.metrics.grids.every((grid, bank) => (
+      grid.itemCells.every((cell, index) => cell === index) &&
+      grid.itemSIndices.every((sIndex, index) => sIndex === 5000 + bank * 10 + index)
+    )) &&
+    run.metrics.firstBankClicks.every(click => click.selected === click.expected) &&
+    run.metrics.secondBankClicks.every(click => click.selected === click.expected) &&
     // The active optimized bank must cover the official 197 logical pixels
     // exactly after physical-pixel snapping.  This catches the historic
     // icon/cooldown/shortcut-box drift in both ten-skill pages.

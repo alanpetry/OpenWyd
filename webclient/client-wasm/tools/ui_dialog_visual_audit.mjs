@@ -96,6 +96,14 @@ async function enterState(page, state) {
 }
 
 async function auditState(page, cdp, state) {
+  const preparedRuntimePanels = await page.evaluate(() => {
+    const prepared = [];
+    for (const id of [289]) {
+      if (Module._wyd_control_audit_prepare_runtime_panel?.(id) === 1) prepared.push(id);
+    }
+    if (prepared.length) Module._wyd_tick_client();
+    return prepared;
+  });
   const setup = await page.evaluate(() => {
     const count = Math.min(8192, Module._wyd_control_audit_count());
     const controls = Array.from({ length: count }, (_, index) => ({
@@ -143,6 +151,7 @@ async function auditState(page, cdp, state) {
   const originalRawVisibility = setup.controls.map(control => control.rawVisible);
   const scene = {
     state,
+    preparedRuntimePanels,
     controlCount: setup.controls.length,
     candidateCount: candidates.length,
     capturedCount: 0,
@@ -169,7 +178,9 @@ async function auditState(page, cdp, state) {
       const textCount = Math.min(512, Module._wyd_control_visible_text_count());
       const texts = Array.from({ length: textCount }, (_, index) => ({
         id: Module._wyd_control_visible_text_id(index),
+        type: Module._wyd_control_visible_text_type(index),
         align: Module._wyd_control_visible_text_align(index),
+        comma: Module._wyd_control_visible_text_comma(index),
         x: Module._wyd_control_visible_text_x(index),
         y: Module._wyd_control_visible_text_y(index),
         width: Module._wyd_control_visible_text_width(index),
@@ -193,6 +204,12 @@ async function auditState(page, cdp, state) {
         .filter(control => control.type === 12 || control.type === 13)
         .map(control => control.id),
     );
+    const canvasBounds = {
+      left: 0,
+      top: 0,
+      right: setup.canvas.width,
+      bottom: setup.canvas.height,
+    };
     for (const text of snapshot.texts) {
       text.value = await page.evaluate(pointer => {
         if (!pointer) return "";
@@ -202,17 +219,78 @@ async function auditState(page, cdp, state) {
       }, text.valuePointer);
       delete text.valuePointer;
       if (!text.value.trim() || !targetTextIds.has(text.id)) continue;
-      if (text.extentWidth > text.width + 2) {
-        entry.findings.push({ type: "text_width_overflow", ...text });
+      const rendered = {
+        left: text.renderX,
+        top: text.renderY,
+        right: text.renderX + text.extentWidth,
+        bottom: text.renderY + text.extentHeight,
+      };
+      const declared = {
+        left: text.x,
+        top: text.y,
+        right: text.x + text.width,
+        bottom: text.y + text.height,
+      };
+      const expectedX = text.align === 0 ? text.x + 8
+        : text.align === 1 ? text.x + (text.width - text.extentWidth) / 2
+        : text.align === 2 ? text.x + text.width - text.extentWidth - 8
+        : text.align === 3 ? text.x + 2
+        : text.align === 4 ? text.x + 112
+        : null;
+      const expectedY = text.y + (text.height - 16) / 2 + 2;
+      const outsideViewport = rendered.right <= canvasBounds.left ||
+        rendered.bottom <= canvasBounds.top || rendered.left >= canvasBounds.right ||
+        rendered.top >= canvasBounds.bottom;
+      if (outsideViewport) {
+        entry.findings.push({
+          ...text,
+          severity: "ERROR",
+          type: "rendered_text_outside_viewport",
+          rendered,
+        });
       }
-      if (text.extentHeight > text.height + 2) {
-        entry.findings.push({ type: "text_height_overflow", ...text });
+      const deltaX = expectedX === null ? 0 : text.renderX - expectedX;
+      const deltaY = text.renderY - expectedY;
+      if ((expectedX !== null && Math.abs(deltaX) > 1.1) || Math.abs(deltaY) > 1.1) {
+        entry.findings.push({
+          ...text,
+          severity: text.comma === 2 ? "REVIEW" : "ERROR",
+          type: "text_alignment_formula_mismatch",
+          expectedX,
+          expectedY,
+          deltaX,
+          deltaY,
+        });
       }
-      if (text.renderX < text.x - 2 || text.renderX + text.extentWidth > text.x + text.width + 2) {
-        entry.findings.push({ type: "text_horizontal_alignment", ...text });
+      const exceedsDeclared = rendered.left < declared.left - 1 ||
+        rendered.top < declared.top - 1 || rendered.right > declared.right + 1 ||
+        rendered.bottom > declared.bottom + 1;
+      if (exceedsDeclared) {
+        entry.findings.push({
+          ...text,
+          severity: text.type === 13 ? "ERROR" : "REVIEW",
+          type: text.type === 13
+            ? "editable_text_exceeds_input"
+            : "text_exceeds_authored_declaration",
+          rendered,
+          declared,
+        });
       }
-      if (text.renderY < text.y - 2 || text.renderY + text.extentHeight > text.y + text.height + 2) {
-        entry.findings.push({ type: "text_vertical_alignment", ...text });
+      const panel = {
+        left: candidate.x,
+        top: candidate.y,
+        right: candidate.x + candidate.width,
+        bottom: candidate.y + candidate.height,
+      };
+      if (rendered.left < panel.left - 8 || rendered.top < panel.top - 8 ||
+          rendered.right > panel.right + 8 || rendered.bottom > panel.bottom + 8) {
+        entry.findings.push({
+          ...text,
+          severity: "REVIEW",
+          type: "text_exceeds_captured_panel",
+          rendered,
+          panel,
+        });
       }
     }
 
@@ -284,7 +362,11 @@ try {
     result.scenes.push(scene);
   }
   await page.close();
-  result.ok = result.errors.length === 0 &&
+  const errorFindings = result.scenes.flatMap(scene => scene.candidates)
+    .flatMap(candidate => candidate.findings)
+    .filter(finding => finding.severity === "ERROR");
+  result.errorFindingCount = errorFindings.length;
+  result.ok = result.errors.length === 0 && errorFindings.length === 0 &&
     result.scenes.length === states.length &&
     result.scenes.every(scene => scene.boot.glErrors === 0 &&
       scene.candidates.every(candidate => (candidate.glErrors ?? 0) === 0));
@@ -304,6 +386,12 @@ console.log(JSON.stringify({
     candidates: scene.candidateCount,
     captured: scene.capturedCount,
     findings: scene.candidates.reduce((sum, candidate) => sum + candidate.findings.length, 0),
+    errors: scene.candidates.reduce((sum, candidate) => (
+      sum + candidate.findings.filter(finding => finding.severity === "ERROR").length
+    ), 0),
+    reviews: scene.candidates.reduce((sum, candidate) => (
+      sum + candidate.findings.filter(finding => finding.severity === "REVIEW").length
+    ), 0),
   })),
   errors: result.errors,
   output: path.relative(repoRoot, outputDir).replaceAll("\\", "/"),

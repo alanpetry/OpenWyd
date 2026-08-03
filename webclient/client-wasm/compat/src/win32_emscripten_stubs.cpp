@@ -420,6 +420,16 @@ uint64_t g_optimized_ui_hd_source_pixels = 0;
 uint64_t g_optimized_ui_hd_physical_pixels = 0;
 uint64_t g_optimized_ui_hd_microseconds = 0;
 int g_optimized_ui_hd_override = -1;
+uint64_t g_optimized_material_hd_textures = 0;
+uint64_t g_optimized_material_hd_source_pixels = 0;
+uint64_t g_optimized_material_hd_physical_pixels = 0;
+uint64_t g_optimized_material_hd_microseconds = 0;
+uint64_t g_optimized_material_hd_repeat_x = 0;
+uint64_t g_optimized_material_hd_repeat_y = 0;
+uint64_t g_optimized_material_hd_model_textures = 0;
+uint64_t g_optimized_material_hd_model_source_pixels = 0;
+std::vector<std::string> g_optimized_material_hd_samples;
+int g_optimized_material_hd_override = -1;
 uint64_t g_draw_fvf_xyzrhw = 0;
 uint64_t g_draw_fvf_weighted = 0;
 uint64_t g_draw_fvf_tex2plus = 0;
@@ -827,6 +837,7 @@ constexpr uint32_t kTexCatLightmap = 1u << 9;
 constexpr uint32_t kTexCatRain = 1u << 10;
 constexpr uint32_t kTexCatPattern = 1u << 11;
 constexpr uint32_t kTexCatFont = 1u << 12;
+constexpr uint32_t kTexCatModel = 1u << 13;
 
 uint32_t ComputeTextureCategoryFlags(const std::string& path) {
   uint32_t flags = 0;
@@ -847,6 +858,7 @@ uint32_t ComputeTextureCategoryFlags(const std::string& path) {
     flags |= kTexCatUi;
   }
   if (has("char/")) flags |= kTexCatChar;
+  if (has("mesh/")) flags |= kTexCatModel;
   if (has("sky")) flags |= kTexCatSky;
   if (has("water")) flags |= kTexCatWater;
   if (has("effect/bright.wys")) flags |= kTexCatBright;
@@ -1326,6 +1338,7 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
   GLfloat gl_anisotropy = -1.0f;
   std::string debug_source_path;
   uint32_t debug_category_flags = 0;
+  mutable int debug_alpha_opaque = -1;
 };
 
 DummyDirect3DSurface9::~DummyDirect3DSurface9() {
@@ -9421,35 +9434,51 @@ PremultipliedRgbaSample ReadPremultipliedRgba(const uint8_t* pixel) {
   return sample;
 }
 
-int CubicMidpointComponent(int outer_left, int left, int right, int outer_right) {
-  // Catmull-Rom evaluated exactly at t=0.5. Clamp to the adjacent authored
-  // samples so block-compression noise cannot create ringing or new extrema.
-  const int interpolated =
-      (-outer_left + 9 * left + 9 * right - outer_right + 8) / 16;
+int CubicQuarterComponent(
+    int outer_left,
+    int left,
+    int right,
+    int outer_right,
+    bool favor_right) {
+  // A 2x texture is sampled with the same normalized UVs as its authored
+  // source. Pixel centres therefore land at -0.25/+0.25 source texels, not at
+  // source centres and midpoints. These are the exact Catmull-Rom t=.75/.25
+  // weights. Keeping centre alignment prevents the half-physical-pixel shift
+  // that is visible on thin panel borders and shortcut-key labels.
+  const int numerator = favor_right
+      ? -3 * outer_left + 29 * left + 111 * right - 9 * outer_right
+      : -9 * outer_left + 111 * left + 29 * right - 3 * outer_right;
+  const int interpolated = numerator >= 0
+      ? (numerator + 64) / 128
+      : (numerator - 64) / 128;
+  // Clamp to the two samples surrounding the requested coordinate so DXT
+  // noise cannot create halos or new colour/alpha extrema.
   return std::max(std::min(left, right), std::min(std::max(left, right), interpolated));
 }
 
-void WritePremultipliedCubicMidpoint(
+void WritePremultipliedCubicQuarter(
     const uint8_t* outer_left,
     const uint8_t* left,
     const uint8_t* right,
     const uint8_t* outer_right,
+    bool favor_right,
     uint8_t* destination) {
   if (!destination) return;
   const PremultipliedRgbaSample a = ReadPremultipliedRgba(outer_left);
   const PremultipliedRgbaSample b = ReadPremultipliedRgba(left);
   const PremultipliedRgbaSample c = ReadPremultipliedRgba(right);
   const PremultipliedRgbaSample d = ReadPremultipliedRgba(outer_right);
-  const int alpha = CubicMidpointComponent(a.alpha, b.alpha, c.alpha, d.alpha);
+  const int alpha = CubicQuarterComponent(
+      a.alpha, b.alpha, c.alpha, d.alpha, favor_right);
   destination[3] = static_cast<uint8_t>(alpha);
   if (alpha <= 0) {
     destination[0] = destination[1] = destination[2] = 0u;
     return;
   }
   const int premultiplied[3] = {
-      CubicMidpointComponent(a.red, b.red, c.red, d.red),
-      CubicMidpointComponent(a.green, b.green, c.green, d.green),
-      CubicMidpointComponent(a.blue, b.blue, c.blue, d.blue),
+      CubicQuarterComponent(a.red, b.red, c.red, d.red, favor_right),
+      CubicQuarterComponent(a.green, b.green, c.green, d.green, favor_right),
+      CubicQuarterComponent(a.blue, b.blue, c.blue, d.blue, favor_right),
   };
   for (size_t channel = 0; channel < 3u; ++channel) {
     const int value = (premultiplied[channel] + alpha / 2) / alpha;
@@ -9457,16 +9486,27 @@ void WritePremultipliedCubicMidpoint(
   }
 }
 
-bool BuildOptimizedUiHdTexture(
+UINT ResolveHdSampleIndex(int index, UINT length, bool repeat) {
+  if (length == 0u) return 0u;
+  if (repeat) {
+    const int signed_length = static_cast<int>(length);
+    int wrapped = index % signed_length;
+    if (wrapped < 0) wrapped += signed_length;
+    return static_cast<UINT>(wrapped);
+  }
+  return static_cast<UINT>(std::max(0, std::min(static_cast<int>(length) - 1, index)));
+}
+
+bool BuildOptimizedHdTexture2x(
     const DummyDirect3DTexture9* tex,
     const std::vector<uint8_t>& source,
+    bool repeat_x,
+    bool repeat_y,
     std::vector<uint8_t>* destination,
     UINT* destination_width,
     UINT* destination_height) {
   if (!tex || !destination || !destination_width || !destination_height ||
-      RequestedOptimizedUiHdScale() != 2 || tex->width < 2u || tex->height < 2u ||
-      (tex->debug_category_flags & kTexCatUi) == 0u ||
-      (tex->debug_category_flags & kTexCatFont) != 0u ||
+      tex->width < 2u || tex->height < 2u ||
       source.size() < static_cast<size_t>(tex->width) * tex->height * 4u) {
     return false;
   }
@@ -9481,10 +9521,7 @@ bool BuildOptimizedUiHdTexture(
     return false;
   }
 
-  const auto started_at = std::chrono::steady_clock::now();
-
-  // Separable 2x Catmull-Rom. Authored texels occupy every even coordinate;
-  // only the midpoint texels are reconstructed. RGB is interpolated after
+  // Separable, centre-aligned 2x Catmull-Rom. RGB is interpolated after
   // premultiplying by alpha, preventing the matte colours of transparent DXT
   // blocks from leaking into icons, rounded panels and skill silhouettes.
   std::vector<uint8_t> horizontal(
@@ -9496,17 +9533,23 @@ bool BuildOptimizedUiHdTexture(
     uint8_t* horizontal_row =
         horizontal.data() + static_cast<size_t>(y) * output_width * 4u;
     for (UINT x = 0; x < tex->width; ++x) {
-      const UINT previous = x > 0u ? x - 1u : x;
-      const UINT next = std::min(tex->width - 1u, x + 1u);
-      const UINT after_next = std::min(tex->width - 1u, x + 2u);
-      std::memcpy(horizontal_row + static_cast<size_t>(x * 2u) * 4u,
-                  source_row + static_cast<size_t>(x) * 4u,
-                  4u);
-      WritePremultipliedCubicMidpoint(
+      const UINT two_before = ResolveHdSampleIndex(static_cast<int>(x) - 2, tex->width, repeat_x);
+      const UINT previous = ResolveHdSampleIndex(static_cast<int>(x) - 1, tex->width, repeat_x);
+      const UINT next = ResolveHdSampleIndex(static_cast<int>(x) + 1, tex->width, repeat_x);
+      const UINT after_next = ResolveHdSampleIndex(static_cast<int>(x) + 2, tex->width, repeat_x);
+      WritePremultipliedCubicQuarter(
+          source_row + static_cast<size_t>(two_before) * 4u,
+          source_row + static_cast<size_t>(previous) * 4u,
+          source_row + static_cast<size_t>(x) * 4u,
+          source_row + static_cast<size_t>(next) * 4u,
+          true,
+          horizontal_row + static_cast<size_t>(x * 2u) * 4u);
+      WritePremultipliedCubicQuarter(
           source_row + static_cast<size_t>(previous) * 4u,
           source_row + static_cast<size_t>(x) * 4u,
           source_row + static_cast<size_t>(next) * 4u,
           source_row + static_cast<size_t>(after_next) * 4u,
+          false,
           horizontal_row + static_cast<size_t>(x * 2u + 1u) * 4u);
     }
   }
@@ -9516,32 +9559,67 @@ bool BuildOptimizedUiHdTexture(
       0u);
   const size_t horizontal_stride = static_cast<size_t>(output_width) * 4u;
   for (UINT y = 0; y < tex->height; ++y) {
-    const UINT previous = y > 0u ? y - 1u : y;
-    const UINT next = std::min(tex->height - 1u, y + 1u);
-    const UINT after_next = std::min(tex->height - 1u, y + 2u);
+    const UINT two_before = ResolveHdSampleIndex(static_cast<int>(y) - 2, tex->height, repeat_y);
+    const UINT previous = ResolveHdSampleIndex(static_cast<int>(y) - 1, tex->height, repeat_y);
+    const UINT next = ResolveHdSampleIndex(static_cast<int>(y) + 1, tex->height, repeat_y);
+    const UINT after_next = ResolveHdSampleIndex(static_cast<int>(y) + 2, tex->height, repeat_y);
+    const uint8_t* two_before_row = horizontal.data() + static_cast<size_t>(two_before) * horizontal_stride;
     const uint8_t* previous_row = horizontal.data() + static_cast<size_t>(previous) * horizontal_stride;
     const uint8_t* current_row = horizontal.data() + static_cast<size_t>(y) * horizontal_stride;
     const uint8_t* next_row = horizontal.data() + static_cast<size_t>(next) * horizontal_stride;
     const uint8_t* after_next_row = horizontal.data() + static_cast<size_t>(after_next) * horizontal_stride;
     uint8_t* even_row = destination->data() + static_cast<size_t>(y * 2u) * horizontal_stride;
     uint8_t* odd_row = even_row + horizontal_stride;
-    std::memcpy(even_row, current_row, horizontal_stride);
     for (UINT x = 0; x < output_width; ++x) {
       const size_t offset = static_cast<size_t>(x) * 4u;
-      WritePremultipliedCubicMidpoint(
+      WritePremultipliedCubicQuarter(
+          two_before_row + offset,
+          previous_row + offset,
+          current_row + offset,
+          next_row + offset,
+          true,
+          even_row + offset);
+      WritePremultipliedCubicQuarter(
           previous_row + offset,
           current_row + offset,
           next_row + offset,
           after_next_row + offset,
+          false,
           odd_row + offset);
     }
   }
 
   *destination_width = output_width;
   *destination_height = output_height;
+  return true;
+}
+
+bool BuildOptimizedUiHdTexture(
+    const DummyDirect3DTexture9* tex,
+    const std::vector<uint8_t>& source,
+    std::vector<uint8_t>* destination,
+    UINT* destination_width,
+    UINT* destination_height) {
+  if (!tex || RequestedOptimizedUiHdScale() != 2 ||
+      (tex->debug_category_flags & kTexCatUi) == 0u ||
+      (tex->debug_category_flags & kTexCatFont) != 0u) {
+    return false;
+  }
+  const auto started_at = std::chrono::steady_clock::now();
+  if (!BuildOptimizedHdTexture2x(
+          tex,
+          source,
+          false,
+          false,
+          destination,
+          destination_width,
+          destination_height)) {
+    return false;
+  }
   ++g_optimized_ui_hd_textures;
   g_optimized_ui_hd_source_pixels += static_cast<uint64_t>(tex->width) * tex->height;
-  g_optimized_ui_hd_physical_pixels += static_cast<uint64_t>(output_width) * output_height;
+  g_optimized_ui_hd_physical_pixels +=
+      static_cast<uint64_t>(*destination_width) * *destination_height;
   g_optimized_ui_hd_microseconds += static_cast<uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::steady_clock::now() - started_at).count());
@@ -9574,6 +9652,163 @@ extern "C" uint32_t wyd_d3d9_optimized_ui_hd_physical_pixels() {
 
 extern "C" uint32_t wyd_d3d9_optimized_ui_hd_microseconds() {
   return static_cast<uint32_t>(g_optimized_ui_hd_microseconds);
+}
+
+int RequestedOptimizedMaterialHdScale() {
+  if (g_optimized_material_hd_override == 0 || wyd_optimized_view_enabled() == 0)
+    return 1;
+  if (g_optimized_material_hd_override < 0 && wyd_optimized_quality_profile() == 1)
+    return 1;
+  return 2;
+}
+
+bool OptimizedTextureIsOpaque(const DummyDirect3DTexture9* tex) {
+  if (!tex) return false;
+  if (tex->debug_alpha_opaque >= 0) return tex->debug_alpha_opaque != 0;
+  uint8_t rgba[4]{};
+  bool opaque = true;
+  for (UINT y = 0; y < tex->height && opaque; ++y) {
+    const uint8_t* row = tex->pixels.data() + static_cast<size_t>(y) * tex->pitch;
+    for (UINT x = 0; x < tex->width; ++x) {
+      TexturePixelToRGBA(
+          tex,
+          row + static_cast<size_t>(x) * tex->bytes_per_pixel,
+          rgba);
+      if (rgba[3] != 255u) {
+        opaque = false;
+        break;
+      }
+    }
+  }
+  tex->debug_alpha_opaque = opaque ? 1 : 0;
+  return opaque;
+}
+
+uint64_t OptimizedModelHdSourcePixelBudget() {
+  switch (wyd_optimized_quality_profile()) {
+    case 1: return 0u;
+    case 2: return 6u * 1024u * 1024u;
+    case 3: return 12u * 1024u * 1024u;
+    default: return 3u * 1024u * 1024u;
+  }
+}
+
+bool IsOptimizedMaterialHdCandidate(const DummyDirect3DTexture9* tex) {
+  if (!tex || RequestedOptimizedMaterialHdScale() != 2 ||
+      tex->width < 2u || tex->height < 2u ||
+      tex->width > 256u || tex->height > 256u)
+    return false;
+  constexpr uint32_t kUnsafeMaterialCategories =
+      kTexCatEffect | kTexCatUi | kTexCatSky | kTexCatWater |
+      kTexCatBright | kTexCatShadow | kTexCatLightmap | kTexCatRain |
+      kTexCatPattern | kTexCatFont;
+  if ((tex->debug_category_flags & kUnsafeMaterialCategories) != 0u)
+    return false;
+  const bool model = (tex->debug_category_flags & kTexCatModel) != 0u;
+  const bool environment = (tex->debug_category_flags & kTexCatEnv) != 0u &&
+      !model && (tex->debug_category_flags & kTexCatChar) == 0u;
+  if (environment) return true;
+  if (!model || !OptimizedTextureIsOpaque(tex)) return false;
+  const uint64_t source_pixels = static_cast<uint64_t>(tex->width) * tex->height;
+  return g_optimized_material_hd_model_source_pixels + source_pixels <=
+      OptimizedModelHdSourcePixelBudget();
+}
+
+bool BuildOptimizedMaterialHdTexture(
+    const DummyDirect3DTexture9* tex,
+    const std::vector<uint8_t>& source,
+    std::vector<uint8_t>* destination,
+    UINT* destination_width,
+    UINT* destination_height) {
+  if (!IsOptimizedMaterialHdCandidate(tex)) return false;
+  const auto started_at = std::chrono::steady_clock::now();
+  if (!BuildOptimizedHdTexture2x(
+          tex,
+          source,
+          tex->gl_wrap_s == GL_REPEAT,
+          tex->gl_wrap_t == GL_REPEAT,
+          destination,
+          destination_width,
+          destination_height)) {
+    return false;
+  }
+  ++g_optimized_material_hd_textures;
+  if ((tex->debug_category_flags & kTexCatModel) != 0u) {
+    ++g_optimized_material_hd_model_textures;
+    g_optimized_material_hd_model_source_pixels +=
+        static_cast<uint64_t>(tex->width) * tex->height;
+  }
+  if (tex->gl_wrap_s == GL_REPEAT) ++g_optimized_material_hd_repeat_x;
+  if (tex->gl_wrap_t == GL_REPEAT) ++g_optimized_material_hd_repeat_y;
+  if (g_optimized_material_hd_samples.size() < 128u) {
+    g_optimized_material_hd_samples.push_back(
+        tex->debug_source_path + " " + std::to_string(tex->width) + "x" +
+        std::to_string(tex->height) + " wrap=" +
+        (tex->gl_wrap_s == GL_REPEAT ? "R" : "C") +
+        (tex->gl_wrap_t == GL_REPEAT ? "R" : "C"));
+  }
+  g_optimized_material_hd_source_pixels +=
+      static_cast<uint64_t>(tex->width) * tex->height;
+  g_optimized_material_hd_physical_pixels +=
+      static_cast<uint64_t>(*destination_width) * *destination_height;
+  g_optimized_material_hd_microseconds += static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - started_at).count());
+  return true;
+}
+
+extern "C" void wyd_d3d9_set_optimized_material_hd_enabled(int enabled) {
+  g_optimized_material_hd_override = enabled < 0 ? -1 : (enabled != 0 ? 1 : 0);
+}
+
+extern "C" int wyd_d3d9_optimized_material_hd_enabled() {
+  return RequestedOptimizedMaterialHdScale() == 2 ? 1 : 0;
+}
+
+extern "C" int wyd_d3d9_optimized_material_hd_scale() {
+  return RequestedOptimizedMaterialHdScale();
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_textures() {
+  return static_cast<uint32_t>(g_optimized_material_hd_textures);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_source_pixels() {
+  return static_cast<uint32_t>(g_optimized_material_hd_source_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_physical_pixels() {
+  return static_cast<uint32_t>(g_optimized_material_hd_physical_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_microseconds() {
+  return static_cast<uint32_t>(g_optimized_material_hd_microseconds);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_repeat_x() {
+  return static_cast<uint32_t>(g_optimized_material_hd_repeat_x);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_repeat_y() {
+  return static_cast<uint32_t>(g_optimized_material_hd_repeat_y);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_model_textures() {
+  return static_cast<uint32_t>(g_optimized_material_hd_model_textures);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_model_source_pixels() {
+  return static_cast<uint32_t>(g_optimized_material_hd_model_source_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_material_hd_sample_count() {
+  return static_cast<uint32_t>(g_optimized_material_hd_samples.size());
+}
+
+extern "C" const char* wyd_d3d9_optimized_material_hd_sample(uint32_t index) {
+  return index < g_optimized_material_hd_samples.size()
+      ? g_optimized_material_hd_samples[index].c_str()
+      : "";
 }
 
 bool IsPowerOfTwo(UINT value) {
@@ -9688,8 +9923,10 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
     tex->gl_dirty = true;
   }
   if (tex->gl_dirty) {
+    const bool material_hd_requested = IsOptimizedMaterialHdCandidate(tex);
     const bool use_embedded_mips =
-        g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u && !tex->embedded_mips.empty();
+        g_wasm_d3d9_state.webgl2 && tex->mip_levels > 1u &&
+        !tex->embedded_mips.empty() && !material_hd_requested;
     if (use_embedded_mips) {
       for (size_t level = 0; level < tex->embedded_mips.size(); ++level) {
         const DecodedTextureMip& mip = tex->embedded_mips[level];
@@ -9716,12 +9953,20 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
       std::vector<uint8_t> hd_rgba;
       UINT upload_width = tex->width;
       UINT upload_height = tex->height;
-      const bool uploaded_hd = BuildOptimizedUiHdTexture(
+      bool uploaded_hd = BuildOptimizedUiHdTexture(
           tex,
           rgba,
           &hd_rgba,
           &upload_width,
           &upload_height);
+      if (!uploaded_hd) {
+        uploaded_hd = BuildOptimizedMaterialHdTexture(
+            tex,
+            rgba,
+            &hd_rgba,
+            &upload_width,
+            &upload_height);
+      }
       const uint8_t* upload_pixels = uploaded_hd ? hd_rgba.data() : rgba.data();
       glTexImage2D(
           GL_TEXTURE_2D,
@@ -9779,6 +10024,10 @@ extern "C" int wyd_d3d9_preupload_texture(IDirect3DBaseTexture9* texture) {
     tex->gl_dirty = true;
   }
   glBindTexture(GL_TEXTURE_2D, tex->gl_texture);
+  // Preloading must use the same stage-0 addressing as the first real draw.
+  // Otherwise a repeating terrain tile can be reconstructed with clamped
+  // edges and later switched to GL_REPEAT, exposing a seam around every tile.
+  ApplyTextureSamplerState(0, tex);
   const bool uploaded = UploadBoundTexture(tex);
 
   glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_binding));
