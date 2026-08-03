@@ -38,6 +38,9 @@ INDEX_HTML = """<!doctype html>
       let resolution = incoming.get('logical') || '';
       let fit = incoming.get('fit') || '';
       let displayMode = incoming.get('displayMode') || incoming.get('display') || '';
+      const renderer = incoming.get('renderer') === 'native-webgl2'
+        ? 'native-webgl2'
+        : '';
       try {
         if (!validResolutions.has(resolution)) {
           resolution = window.localStorage.getItem(resolutionKey) || '';
@@ -64,6 +67,7 @@ INDEX_HTML = """<!doctype html>
       params.set('logical', resolution);
       params.set('fit', fit);
       params.set('displayMode', displayMode);
+      if (renderer) params.set('renderer', renderer);
       params.set('fieldMode', 'real');
       params.set('autoboot', '1');
       params.set('autostart', '1');
