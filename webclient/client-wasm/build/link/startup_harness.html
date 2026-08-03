@@ -1788,11 +1788,31 @@
       },
       print: (txt) => write(`[stdout] ${txt}`),
       printErr: (txt) => write(`[stderr] ${txt}`, 'err'),
-      onRuntimeInitialized() {
+      async onRuntimeInitialized() {
         window.__runtimeReady = true;
         write('runtime initialized', 'ok');
         setStatus('runtime initialized; booting client');
         syncCanvasSize();
+        Module.__wydBrowserFontReady = false;
+        if (autoConfig.displayMode === 'optimized' &&
+            typeof FontFace === 'function' && Module.FS) {
+          try {
+            const fontBytes = Module.FS.readFile('/Tahoma.ttf');
+            const fontCopy = new Uint8Array(fontBytes).slice();
+            const face = new FontFace('OpenWyd Tahoma', fontCopy.buffer, {
+              style: 'normal',
+              weight: '400'
+            });
+            await face.load();
+            document.fonts.add(face);
+            await document.fonts.load('12px "OpenWyd Tahoma"');
+            Module.__wydBrowserFontFamily = 'OpenWyd Tahoma';
+            Module.__wydBrowserFontReady = true;
+            write('bundled Tahoma loaded through browser rasterizer', 'ok');
+          } catch (error) {
+            write(`browser font fallback: ${error?.message || error}`, 'err');
+          }
+        }
         if (typeof Module._wyd_renderer_set_backend === 'function') {
           Module._wyd_renderer_set_backend(
             autoConfig.displayMode === 'optimized' && autoConfig.renderer === 'native-webgl2'

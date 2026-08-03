@@ -399,7 +399,8 @@ HRESULT NewApp::Initialize(HINSTANCE hInstance, int nFull)
 	}
 
 	RenderDevice::m_nFontSize = _nFontSize;
-	RenderDevice::m_nFontTextureSize = 512;
+	RenderDevice::m_nFontTextureSize =
+		OpenWydOptimizedEnabled() ? 1024 : 512;
 #if defined(__EMSCRIPTEN__)
 	// Optimized rasterizes the official 12 px Tahoma glyphs at 2x and samples
 	// them back into the same logical geometry.  Only the atlas resolution is

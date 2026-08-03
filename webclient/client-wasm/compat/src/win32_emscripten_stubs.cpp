@@ -160,6 +160,128 @@ std::vector<unsigned char> g_font_file_data;
 stbtt_fontinfo g_font_stb;
 bool g_font_stb_ok = false;
 
+EM_JS(int, WydBrowserFontReady, (), {
+  return Module.__wydBrowserFontReady === true ? 1 : 0;
+});
+
+EM_JS(int, WydBrowserMeasureText,
+      (const char* text, int len, int font_height, int weight, int italic,
+       int atlas_scale), {
+  if (Module.__wydBrowserFontReady !== true || !text || len <= 0) return -1;
+  try {
+    const bytes = HEAPU8.subarray(text, text + len);
+    const value = new TextDecoder('windows-1252').decode(bytes);
+    const canvas = Module.__wydFontMeasureCanvas ||
+        (Module.__wydFontMeasureCanvas =
+          typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(16, 16)
+            : document.createElement('canvas'));
+    const context = canvas.getContext('2d', {alpha: true});
+    const scale = Math.max(1, atlas_scale | 0);
+    // Win32 CreateFont(12) describes the character cell, while Canvas 12px
+    // describes the em square. Tahoma's matching browser em is 5/6 of the
+    // GDI cell; keeping that conversion preserves the official text bounds.
+    const size = Math.max(1,
+        Math.round(Math.abs(font_height | 0) * scale * (5 / 6)));
+    const family = Module.__wydBrowserFontFamily || 'OpenWyd Tahoma';
+    context.font = (italic ? 'italic ' : '') + Math.max(100, weight | 0) +
+        ' ' + size + 'px "' + family + '"';
+    return Math.max(0, Math.round(context.measureText(value).width / scale));
+  } catch (_) {
+    return -1;
+  }
+});
+
+EM_JS(void, WydBrowserClearFontSurface,
+      (uint32_t* pixels, int width, int height,
+       int left, int top, int right, int bottom), {
+  if (Module.__wydBrowserFontReady !== true || !pixels || width <= 0 || height <= 0)
+    return;
+  try {
+    const key = pixels >>> 0;
+    const surfaces = Module.__wydFontSurfaces ||
+        (Module.__wydFontSurfaces = new Map());
+    let surface = surfaces.get(key);
+    if (!surface || surface.width !== width || surface.height !== height) {
+      const canvas = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(width, height)
+          : document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      surface = {canvas, context: canvas.getContext('2d', {alpha: true}), width, height};
+      surfaces.set(key, surface);
+    }
+    const x0 = Math.max(0, left | 0);
+    const y0 = Math.max(0, top | 0);
+    const x1 = Math.min(width, right | 0);
+    const y1 = Math.min(height, bottom | 0);
+    if (x1 > x0 && y1 > y0) surface.context.clearRect(x0, y0, x1 - x0, y1 - y0);
+  } catch (_) {}
+});
+
+EM_JS(int, WydBrowserRenderText,
+      (uint32_t* pixels, int width, int height, int x, int y,
+       const char* text, int len, int font_height, int weight, int italic,
+       int atlas_scale, int opaque), {
+  if (Module.__wydBrowserFontReady !== true || !pixels || !text || len <= 0)
+    return -1;
+  try {
+    const key = pixels >>> 0;
+    const surfaces = Module.__wydFontSurfaces ||
+        (Module.__wydFontSurfaces = new Map());
+    let surface = surfaces.get(key);
+    if (!surface || surface.width !== width || surface.height !== height) {
+      const canvas = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(width, height)
+          : document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      surface = {canvas, context: canvas.getContext('2d', {alpha: true}), width, height};
+      surfaces.set(key, surface);
+    }
+    const bytes = HEAPU8.subarray(text, text + len);
+    const value = new TextDecoder('windows-1252').decode(bytes);
+    const context = surface.context;
+    const scale = Math.max(1, atlas_scale | 0);
+    const size = Math.max(1,
+        Math.round(Math.abs(font_height | 0) * scale * (5 / 6)));
+    const px = (x | 0) * scale;
+    const py = (y | 0) * scale;
+    const family = Module.__wydBrowserFontFamily || 'OpenWyd Tahoma';
+    context.font = (italic ? 'italic ' : '') + Math.max(100, weight | 0) +
+        ' ' + size + 'px "' + family + '"';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.globalCompositeOperation = 'source-over';
+    const measured = context.measureText(value).width;
+    const copyLeft = Math.max(0, px - 2);
+    const copyTop = Math.max(0, py - 2);
+    const copyRight = Math.min(width, Math.ceil(px + measured + 4));
+    const copyBottom = Math.min(height, py + size + 4);
+    if (opaque) {
+      context.clearRect(px, py, Math.ceil(measured + 2), size + scale);
+    }
+    context.fillStyle = 'rgba(255,255,255,1)';
+    context.fillText(value, px, py);
+    if (copyRight > copyLeft && copyBottom > copyTop) {
+      const image = context.getImageData(
+          copyLeft, copyTop, copyRight - copyLeft, copyBottom - copyTop);
+      const base = pixels >>> 2;
+      const rowWidth = copyRight - copyLeft;
+      for (let row = 0; row < copyBottom - copyTop; row += 1) {
+        for (let col = 0; col < rowWidth; col += 1) {
+          const alpha = image.data[(row * rowWidth + col) * 4 + 3];
+          HEAPU32[base + (copyTop + row) * width + copyLeft + col] =
+              alpha === 0 ? 0 : ((alpha << 24) | 0x00ffffff) >>> 0;
+        }
+      }
+    }
+    return Math.max(0, Math.round(measured / scale));
+  } catch (_) {
+    return -1;
+  }
+});
+
 void EnsureFontRenderer() {
   if (g_font_stb_ok) return;
   g_font_stb_ok = true;
@@ -293,6 +415,16 @@ int RenderTextToDIB(DibSection* dib, int x, int y,
 // Measure text width (same logic as RenderTextToDIB without drawing).
 int MeasureTextWidth(const char* text, int len, FontInfo* finfo) {
   if (!text || len <= 0) return 0;
+  if (wyd_optimized_view_enabled() != 0 && WydBrowserFontReady()) {
+    const int browser_width = WydBrowserMeasureText(
+        text,
+        len,
+        finfo ? finfo->height : 14,
+        finfo ? finfo->weight : 400,
+        finfo && finfo->italic ? 1 : 0,
+        2);
+    if (browser_width >= 0) return browser_width;
+  }
   EnsureFontRenderer();
   if (g_font_file_data.empty()) return len * 8;
 
@@ -3204,6 +3336,10 @@ BOOL FillRect(HDC hdc, const RECT* rect, HBRUSH) {
         right - left,
         0u);
   }
+  if (wyd_optimized_view_enabled() != 0 && WydBrowserFontReady()) {
+    WydBrowserClearFontSurface(
+        dib->pixels, dib->width, dib->height, left, top, right, bottom);
+  }
   return TRUE;
 }
 
@@ -3456,6 +3592,22 @@ BOOL TextOutA(HDC hdc, int x, int y, LPCSTR text, int count) {
     }
   }
   uint32_t text_color = 0xFF000000u | static_cast<uint32_t>(state->text_color & 0x00FFFFFFu);
+  if (wyd_optimized_view_enabled() != 0 && WydBrowserFontReady()) {
+    const int browser_width = WydBrowserRenderText(
+        dib->pixels,
+        dib->width,
+        dib->height,
+        x,
+        y,
+        text,
+        chars,
+        finfo ? finfo->height : 14,
+        finfo ? finfo->weight : 400,
+        finfo && finfo->italic ? 1 : 0,
+        2,
+        state->bk_mode == OPAQUE ? 1 : 0);
+    if (browser_width >= 0) return TRUE;
+  }
   RenderTextToDIB(dib, x, y, text, chars, finfo, text_color);
   return TRUE;
 }
@@ -4888,7 +5040,7 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
   // atlas in Optimized.  Keep both separate from
   // ordinary RC art so optimized font smoothing does not blur every panel,
   // icon and border in the interface.
-  if (w == 512u && (h == 64u || h == 128u) && MipLevels == 1u &&
+  if ((w == 512u || w == 1024u) && (h == 64u || h == 128u) && MipLevels == 1u &&
       (texture_format == D3DFMT_A4R4G4B4 ||
        texture_format == D3DFMT_A8R8G8B8)) {
     tex->debug_category_flags |= kTexCatFont | kTexCatUi;
