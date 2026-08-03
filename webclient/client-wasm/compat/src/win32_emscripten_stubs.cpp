@@ -12916,7 +12916,9 @@ bool TryDrawNativeTerrainUP(
   return draw_error == GL_NO_ERROR;
 }
 
-bool ConfigureNativeFixedObjectState(D3DXMATRIX* world_view_out) {
+bool ConfigureNativeFixedObjectState(
+    D3DXMATRIX* world_view_out,
+    bool allow_second_texture_stage) {
   const DWORD color_op0 = StageStateValue(
       0, D3DTSS_COLOROP, D3DTOP_MODULATE);
   const DWORD color_arg10 = StageStateValue(
@@ -12932,9 +12934,15 @@ bool ConfigureNativeFixedObjectState(D3DXMATRIX* world_view_out) {
        (color_source20 == D3DTA_DIFFUSE || color_source20 == D3DTA_CURRENT)) ||
       (color_source20 == D3DTA_TEXTURE &&
        (color_source10 == D3DTA_DIFFUSE || color_source10 == D3DTA_CURRENT));
+  const bool supported_second_stage =
+      color_op1 == D3DTOP_DISABLE || color_op1 == D3DTOP_SELECTARG1 ||
+      color_op1 == D3DTOP_MODULATE || color_op1 == D3DTOP_MODULATE2X ||
+      color_op1 == D3DTOP_ADD;
   if (color_op0 != D3DTOP_MODULATE ||
       !stage0_modulates_texture_and_diffuse ||
-      color_op1 != D3DTOP_DISABLE) {
+      (allow_second_texture_stage
+           ? !supported_second_stage
+           : color_op1 != D3DTOP_DISABLE)) {
     return false;
   }
 
@@ -13002,13 +13010,18 @@ bool ConfigureNativeFixedObjectState(D3DXMATRIX* world_view_out) {
       1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
 
   const bool has_texture0 = BindTextureStage(0);
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, 0);
+  const bool has_texture1 =
+      allow_second_texture_stage && BindTextureStage(1);
+  if (!allow_second_texture_stage) {
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
   glUniform1i(fixed.uni_sampler0, 0);
   glUniform1i(fixed.uni_sampler1, 1);
   glUniform1i(fixed.uni_use_texture0, has_texture0 ? 1 : 0);
-  glUniform1i(fixed.uni_use_texture1, 0);
-  glUniform1i(fixed.uni_color_op1, static_cast<GLint>(D3DTOP_DISABLE));
+  glUniform1i(fixed.uni_use_texture1, has_texture1 ? 1 : 0);
+  glUniform1i(fixed.uni_color_op1, static_cast<GLint>(
+      allow_second_texture_stage ? color_op1 : D3DTOP_DISABLE));
   glUniform1i(fixed.uni_lighting_enable,
               g_wasm_d3d9_state.lighting_enable != 0u ? 1 : 0);
 
@@ -13102,9 +13115,13 @@ bool TryDrawNativeStaticObject(
     DummyDirect3DIndexBuffer9* index_buffer,
     DWORD fvf,
     UINT stride) {
+  const bool static_mesh = fvf == 530u && stride == 40u;
+  const bool sea_mesh =
+      fvf == 578u && stride == 32u &&
+      OpenWydNativeRendererPass() == WydRenderPass::Water;
   if (!OpenWydNativeRendererEnabled() || primitive_type != D3DPT_TRIANGLELIST ||
-      g_active_vs_hash != 0 || g_active_ps_hash != 0 || fvf != 530u ||
-      stride != 40u || !vertex_buffer || !index_buffer ||
+      g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
+      (!static_mesh && !sea_mesh) || !vertex_buffer || !index_buffer ||
       !EnsureNativeTerrainProgram() ||
       !EnsureNativeVertexBufferResident(vertex_buffer) ||
       !EnsureNativeIndexBufferResident(index_buffer)) {
@@ -13128,7 +13145,7 @@ bool TryDrawNativeStaticObject(
   }
 
   D3DXMATRIX world_view{};
-  if (!ConfigureNativeFixedObjectState(&world_view)) return false;
+  if (!ConfigureNativeFixedObjectState(&world_view, sea_mesh)) return false;
   glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->native_gl_buffer);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer->native_gl_buffer);
   for (GLuint attribute = 0; attribute <= 6; ++attribute)
@@ -13139,13 +13156,26 @@ bool TryDrawNativeStaticObject(
   };
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset(0));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, offset(12));
-  glVertexAttrib4f(2, 1.0f, 1.0f, 1.0f, 1.0f);
-  glEnableVertexAttribArray(3);
-  glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, offset(24));
-  glEnableVertexAttribArray(4);
-  glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, offset(32));
+  if (static_mesh) {
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, offset(12));
+    glVertexAttrib4f(2, 1.0f, 1.0f, 1.0f, 1.0f);
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, offset(24));
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, offset(32));
+  } else {
+    // TMSea's RDLVERTEX2 is XYZ + D3DCOLOR + two UV sets.  Its plane normal
+    // is fixed upward; keeping it constant avoids manufacturing per-vertex
+    // data and preserves the original 32-byte stream unchanged on the GPU.
+    glVertexAttrib3f(1, 0.0f, 1.0f, 0.0f);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, offset(12));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, offset(16));
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, offset(24));
+  }
 
   glDrawElements(
       GL_TRIANGLES, static_cast<GLsizei>(index_count),
