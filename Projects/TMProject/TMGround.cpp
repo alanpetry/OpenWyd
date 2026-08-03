@@ -9,6 +9,9 @@
 #include "TMEffectBillBoard.h"
 #include "TMSkillFire.h"
 #include "TMUtil.h"
+#if defined(__EMSCRIPTEN__)
+#include "OpenWydNativeRenderer.h"
+#endif
 
 float TMGround::TileCoordList[8][4][2] =
 {
@@ -2827,6 +2830,18 @@ int TMGround::Render()
         nMaxY = nLen + nYList[2];
     }
 
+    // The original DX9 client halves distant terrain density by replacing
+    // pairs of one-tile quads with a single two-tile quad.  On a high-DPI
+    // WebGL2 canvas that topology change is plainly visible whenever the
+    // camera crosses the 16/17 tile threshold: the ground appears to move
+    // under a stationary camera.  Keep the authored height field at full
+    // resolution only in the new renderer; legacy/native Windows retain the
+    // exact original LOD behavior.
+#if defined(__EMSCRIPTEN__)
+    const bool useLegacyTerrainLod = !OpenWydNativeRendererEnabled();
+#else
+    const bool useLegacyTerrainLod = true;
+#endif
     int nTickX = 1, nTickY = 1;
     for (int nY = nMinY; nY < nMaxY; ++nY)
     {
@@ -2840,7 +2855,7 @@ int TMGround::Render()
                 nTickX = 1;
                 nTickY = 1;
 
-                if (nCamPosX % 2)
+                if (useLegacyTerrainLod && nCamPosX % 2)
                 {
                     if (std::abs(nX - nCamPosX) > 17)
                     {
@@ -2850,7 +2865,7 @@ int TMGround::Render()
                         nTickX = 2;
                     }
                 }
-                else
+                else if (useLegacyTerrainLod)
                 {
                     if (std::abs(nX - nCamPosX) > 16)
                     {
@@ -2861,7 +2876,7 @@ int TMGround::Render()
                     }
                 }
 
-                if (nCamPosY % 2)
+                if (useLegacyTerrainLod && nCamPosY % 2)
                 {
                     if (std::abs(nY - nCamPosY) > 17)
                     {
@@ -2871,7 +2886,7 @@ int TMGround::Render()
                         nTickY = 2;
                     }
                 }
-                else
+                else if (useLegacyTerrainLod)
                 {
                     if (std::abs(nY - nCamPosY) > 16)
                     {

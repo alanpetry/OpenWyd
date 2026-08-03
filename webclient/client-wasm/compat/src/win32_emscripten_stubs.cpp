@@ -6167,6 +6167,52 @@ struct WasmNativeActorProgram {
   bool failed = false;
 };
 
+struct WasmNativeTerrainProgram {
+  GLuint program = 0;
+  std::array<GLuint, 3> vbo{};
+  std::array<GLsizeiptr, 3> capacities{};
+  size_t ring_index = 0;
+  GLint uni_world_view = -1;
+  GLint uni_world_view_normal = -1;
+  GLint uni_wvp = -1;
+  GLint uni_viewport_inv = -1;
+  GLint uni_sampler0 = -1;
+  GLint uni_sampler1 = -1;
+  GLint uni_use_texture0 = -1;
+  GLint uni_use_texture1 = -1;
+  GLint uni_color_op1 = -1;
+  GLint uni_lighting_enable = -1;
+  GLint uni_global_ambient = -1;
+  GLint uni_material_diffuse = -1;
+  GLint uni_material_ambient = -1;
+  GLint uni_material_emissive = -1;
+  GLint uni_diffuse_source = -1;
+  GLint uni_ambient_source = -1;
+  GLint uni_emissive_source = -1;
+  GLint uni_light_count = -1;
+  GLint uni_light_type = -1;
+  GLint uni_light_position = -1;
+  GLint uni_light_direction = -1;
+  GLint uni_light_diffuse = -1;
+  GLint uni_light_ambient = -1;
+  GLint uni_light_range = -1;
+  GLint uni_light_attenuation = -1;
+  GLint uni_light_spot = -1;
+  GLint uni_fog_enable = -1;
+  GLint uni_fog_mode = -1;
+  GLint uni_fog_start = -1;
+  GLint uni_fog_end = -1;
+  GLint uni_fog_density = -1;
+  GLint uni_range_fog_enable = -1;
+  GLint uni_fog_color = -1;
+  GLint uni_alpha_test_enable = -1;
+  GLint uni_alpha_ref = -1;
+  GLint uni_alpha_func = -1;
+  GLint uni_linear_color = -1;
+  bool ready = false;
+  bool failed = false;
+};
+
 struct Compare3DState {
   bool armed = false;
   bool valid = false;
@@ -6179,6 +6225,7 @@ struct Compare3DState {
 
 WasmFFPProgram g_ffp_program;
 WasmNativeActorProgram g_native_actor_program;
+WasmNativeTerrainProgram g_native_terrain_program;
 WasmFixedFunctionState g_ffp_state;
 Compare3DState g_compare_3d_state;
 DummyDirect3DSurface9* g_default_color_surface = nullptr;
@@ -12360,6 +12407,507 @@ bool TryDrawNativeActor(
   return draw_error == GL_NO_ERROR;
 }
 
+bool EnsureNativeTerrainProgram() {
+  if (g_native_terrain_program.ready) return true;
+  if (g_native_terrain_program.failed || !g_wasm_d3d9_state.webgl2 ||
+      !EnsureWasmContext()) {
+    return false;
+  }
+
+  static const char* kVertex = R"GLSL(#version 300 es
+precision highp float;
+
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec4 aColorBGRA;
+layout(location = 3) in vec2 aUV0;
+layout(location = 4) in vec2 aUV1;
+
+uniform mat4 uWorldView;
+uniform mat4 uWorldViewNormal;
+uniform mat4 uWvp;
+uniform vec2 uViewportInv;
+
+out highp vec3 vViewPosition;
+out highp vec3 vViewNormal;
+out highp vec2 vUV0;
+out highp vec2 vUV1;
+out highp vec4 vVertexColor;
+
+void main() {
+  vec4 local = vec4(aPosition, 1.0);
+  vec4 clip = uWvp * local;
+  clip.x += clip.w * uViewportInv.x;
+  clip.y -= clip.w * uViewportInv.y;
+  clip.z = 2.0 * clip.z - clip.w;
+  gl_Position = clip;
+  vViewPosition = (uWorldView * local).xyz;
+  vViewNormal = normalize((uWorldViewNormal * vec4(aNormal, 0.0)).xyz);
+  vUV0 = aUV0;
+  vUV1 = aUV1;
+  // D3DCOLOR is stored little-endian as BGRA in the raw vertex stream.
+  vVertexColor = aColorBGRA.bgra;
+}
+)GLSL";
+
+  static const char* kFragment = R"GLSL(#version 300 es
+precision highp float;
+precision highp int;
+
+uniform sampler2D uSampler0;
+uniform sampler2D uSampler1;
+uniform int uUseTexture0;
+uniform int uUseTexture1;
+uniform int uColorOp1;
+uniform int uLightingEnable;
+uniform vec4 uGlobalAmbient;
+uniform vec4 uMaterialDiffuse;
+uniform vec4 uMaterialAmbient;
+uniform vec4 uMaterialEmissive;
+uniform int uDiffuseSource;
+uniform int uAmbientSource;
+uniform int uEmissiveSource;
+uniform int uLightCount;
+uniform int uLightType[8];
+uniform vec3 uLightPosition[8];
+uniform vec3 uLightDirection[8];
+uniform vec4 uLightDiffuse[8];
+uniform vec4 uLightAmbient[8];
+uniform float uLightRange[8];
+uniform vec3 uLightAttenuation[8];
+uniform vec4 uLightSpot[8];
+uniform int uFogEnable;
+uniform int uFogMode;
+uniform float uFogStart;
+uniform float uFogEnd;
+uniform float uFogDensity;
+uniform int uRangeFogEnable;
+uniform vec4 uFogColor;
+uniform int uAlphaTestEnable;
+uniform float uAlphaRef;
+uniform int uAlphaFunc;
+uniform int uLinearColor;
+
+in highp vec3 vViewPosition;
+in highp vec3 vViewNormal;
+in highp vec2 vUV0;
+in highp vec2 vUV1;
+in highp vec4 vVertexColor;
+layout(location = 0) out vec4 outColor;
+
+vec4 materialSource(int source, vec4 materialValue) {
+  return source == 0 ? materialValue : vVertexColor;
+}
+
+bool alphaTestPass(float alpha, float reference, int functionValue) {
+  if (functionValue == 1) return false;
+  if (functionValue == 2) return alpha < reference;
+  if (functionValue == 3) return abs(alpha - reference) < (1.0 / 255.0);
+  if (functionValue == 4) return alpha <= reference;
+  if (functionValue == 5) return alpha > reference;
+  if (functionValue == 6) return abs(alpha - reference) >= (1.0 / 255.0);
+  if (functionValue == 7) return alpha >= reference;
+  return true;
+}
+
+float fogFactor() {
+  if (uFogEnable == 0 || uFogMode == 0) return 1.0;
+  float distanceValue = uRangeFogEnable != 0
+      ? length(vViewPosition) : abs(vViewPosition.z);
+  if (uFogMode == 3) {
+    float denominator = max(abs(uFogEnd - uFogStart), 1.0e-6);
+    return clamp((uFogEnd - distanceValue) / denominator, 0.0, 1.0);
+  }
+  if (uFogMode == 1)
+    return clamp(exp(-max(uFogDensity, 0.0) * distanceValue), 0.0, 1.0);
+  float densityDistance = max(uFogDensity, 0.0) * distanceValue;
+  return clamp(exp(-(densityDistance * densityDistance)), 0.0, 1.0);
+}
+
+vec3 srgbToLinear(vec3 value) {
+  bvec3 lower = lessThanEqual(value, vec3(0.04045));
+  return mix(pow((value + 0.055) / 1.055, vec3(2.4)), value / 12.92,
+             vec3(lower));
+}
+
+vec3 linearToSrgb(vec3 value) {
+  value = max(value, vec3(0.0));
+  bvec3 lower = lessThanEqual(value, vec3(0.0031308));
+  return mix(1.055 * pow(value, vec3(1.0 / 2.4)) - 0.055,
+             value * 12.92, vec3(lower));
+}
+
+void main() {
+  vec4 diffuseMaterial = materialSource(uDiffuseSource, uMaterialDiffuse);
+  vec4 ambientMaterial = materialSource(uAmbientSource, uMaterialAmbient);
+  vec4 emissiveMaterial = materialSource(uEmissiveSource, uMaterialEmissive);
+  vec4 lit = vVertexColor;
+  if (uLightingEnable != 0 && uLightCount > 0) {
+    vec3 normalValue = normalize(vViewNormal);
+    lit.rgb = emissiveMaterial.rgb +
+        ambientMaterial.rgb * uGlobalAmbient.rgb;
+    for (int index = 0; index < 8; ++index) {
+      if (index >= uLightCount) break;
+      vec3 toLight = uLightDirection[index];
+      float attenuation = 1.0;
+      if (uLightType[index] != 3) {
+        toLight = uLightPosition[index] - vViewPosition;
+        float distanceValue = length(toLight);
+        if (uLightRange[index] > 0.0 && distanceValue > uLightRange[index])
+          continue;
+        toLight = distanceValue > 1.0e-6
+            ? toLight / distanceValue : vec3(0.0, 0.0, 1.0);
+        vec3 attenuationTerms = uLightAttenuation[index];
+        float denominator = attenuationTerms.x +
+            attenuationTerms.y * distanceValue +
+            attenuationTerms.z * distanceValue * distanceValue;
+        if (denominator > 1.0e-6) attenuation = 1.0 / denominator;
+        if (uLightType[index] == 2) {
+          float cosRho = dot(normalize(uLightDirection[index]), -toLight);
+          float cosTheta = uLightSpot[index].x;
+          float cosPhi = uLightSpot[index].y;
+          float spotFactor = 1.0;
+          if (cosRho < cosPhi) spotFactor = 0.0;
+          else if (cosRho < cosTheta)
+            spotFactor = pow(
+                clamp((cosRho - cosPhi) /
+                      max(cosTheta - cosPhi, 1.0e-6), 0.0, 1.0),
+                uLightSpot[index].z);
+          attenuation *= spotFactor;
+        }
+      }
+      float ndotl = max(dot(normalValue, normalize(toLight)), 0.0);
+      lit.rgb += ambientMaterial.rgb * uLightAmbient[index].rgb;
+      lit.rgb += diffuseMaterial.rgb * uLightDiffuse[index].rgb *
+          ndotl * attenuation;
+    }
+    lit.a = diffuseMaterial.a > 0.0 ? diffuseMaterial.a : vVertexColor.a;
+  }
+
+  vec4 texel0 = uUseTexture0 != 0
+      ? texture(uSampler0, vUV0) : vec4(1.0);
+  vec4 texel1 = uUseTexture1 != 0
+      ? texture(uSampler1, vUV1) : vec4(1.0);
+  vec3 fogColor = uFogColor.rgb;
+  if (uLinearColor != 0) {
+    texel0.rgb = srgbToLinear(texel0.rgb);
+    texel1.rgb = srgbToLinear(texel1.rgb);
+    fogColor = srgbToLinear(fogColor);
+  }
+
+  vec4 current = lit * texel0;
+  if (uUseTexture1 != 0 && uColorOp1 != 1) {
+    if (uColorOp1 == 2) current.rgb = texel1.rgb;
+    else if (uColorOp1 == 5) current.rgb = min(current.rgb * texel1.rgb * 2.0, vec3(1.0));
+    else if (uColorOp1 == 7) current.rgb = min(current.rgb + texel1.rgb, vec3(1.0));
+    else current.rgb *= texel1.rgb;
+  }
+  current = clamp(current, 0.0, 1.0);
+  if (uAlphaTestEnable != 0 &&
+      !alphaTestPass(current.a, uAlphaRef, uAlphaFunc)) discard;
+  if (uFogEnable != 0)
+    current.rgb = mix(fogColor, current.rgb, fogFactor());
+  if (uLinearColor != 0) current.rgb = linearToSrgb(current.rgb);
+  outColor = current;
+}
+)GLSL";
+
+  GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
+  GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
+  if (!CompileShader(vertex, kVertex) || !CompileShader(fragment, kFragment)) {
+    if (vertex) glDeleteShader(vertex);
+    if (fragment) glDeleteShader(fragment);
+    g_native_terrain_program.failed = true;
+    return false;
+  }
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vertex);
+  glAttachShader(program, fragment);
+  glLinkProgram(program);
+  glDeleteShader(vertex);
+  glDeleteShader(fragment);
+  GLint linked = GL_FALSE;
+  glGetProgramiv(program, GL_LINK_STATUS, &linked);
+  if (linked != GL_TRUE) {
+    char log[2048]{};
+    GLsizei length = 0;
+    glGetProgramInfoLog(program, sizeof(log) - 1, &length, log);
+    std::fprintf(stderr, "[WASM Native Terrain] program link failed: %s\n", log);
+    glDeleteProgram(program);
+    g_native_terrain_program.failed = true;
+    return false;
+  }
+
+  g_native_terrain_program.program = program;
+  glGenBuffers(static_cast<GLsizei>(g_native_terrain_program.vbo.size()),
+               g_native_terrain_program.vbo.data());
+#define NATIVE_TERRAIN_UNIFORM(field, name) \
+  g_native_terrain_program.field = glGetUniformLocation(program, name)
+  NATIVE_TERRAIN_UNIFORM(uni_world_view, "uWorldView");
+  NATIVE_TERRAIN_UNIFORM(uni_world_view_normal, "uWorldViewNormal");
+  NATIVE_TERRAIN_UNIFORM(uni_wvp, "uWvp");
+  NATIVE_TERRAIN_UNIFORM(uni_viewport_inv, "uViewportInv");
+  NATIVE_TERRAIN_UNIFORM(uni_sampler0, "uSampler0");
+  NATIVE_TERRAIN_UNIFORM(uni_sampler1, "uSampler1");
+  NATIVE_TERRAIN_UNIFORM(uni_use_texture0, "uUseTexture0");
+  NATIVE_TERRAIN_UNIFORM(uni_use_texture1, "uUseTexture1");
+  NATIVE_TERRAIN_UNIFORM(uni_color_op1, "uColorOp1");
+  NATIVE_TERRAIN_UNIFORM(uni_lighting_enable, "uLightingEnable");
+  NATIVE_TERRAIN_UNIFORM(uni_global_ambient, "uGlobalAmbient");
+  NATIVE_TERRAIN_UNIFORM(uni_material_diffuse, "uMaterialDiffuse");
+  NATIVE_TERRAIN_UNIFORM(uni_material_ambient, "uMaterialAmbient");
+  NATIVE_TERRAIN_UNIFORM(uni_material_emissive, "uMaterialEmissive");
+  NATIVE_TERRAIN_UNIFORM(uni_diffuse_source, "uDiffuseSource");
+  NATIVE_TERRAIN_UNIFORM(uni_ambient_source, "uAmbientSource");
+  NATIVE_TERRAIN_UNIFORM(uni_emissive_source, "uEmissiveSource");
+  NATIVE_TERRAIN_UNIFORM(uni_light_count, "uLightCount");
+  NATIVE_TERRAIN_UNIFORM(uni_light_type, "uLightType[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_position, "uLightPosition[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_direction, "uLightDirection[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_diffuse, "uLightDiffuse[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_ambient, "uLightAmbient[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_range, "uLightRange[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_attenuation, "uLightAttenuation[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_light_spot, "uLightSpot[0]");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_enable, "uFogEnable");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_mode, "uFogMode");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_start, "uFogStart");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_end, "uFogEnd");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_density, "uFogDensity");
+  NATIVE_TERRAIN_UNIFORM(uni_range_fog_enable, "uRangeFogEnable");
+  NATIVE_TERRAIN_UNIFORM(uni_fog_color, "uFogColor");
+  NATIVE_TERRAIN_UNIFORM(uni_alpha_test_enable, "uAlphaTestEnable");
+  NATIVE_TERRAIN_UNIFORM(uni_alpha_ref, "uAlphaRef");
+  NATIVE_TERRAIN_UNIFORM(uni_alpha_func, "uAlphaFunc");
+  NATIVE_TERRAIN_UNIFORM(uni_linear_color, "uLinearColor");
+#undef NATIVE_TERRAIN_UNIFORM
+  g_native_terrain_program.ready = true;
+  return glGetError() == GL_NO_ERROR;
+}
+
+bool TryDrawNativeTerrainUP(
+    D3DPRIMITIVETYPE primitive_type,
+    UINT vertex_count,
+    const void* vertex_data,
+    UINT stride,
+    DWORD fvf) {
+  if (!OpenWydNativeRendererEnabled() || primitive_type != D3DPT_TRIANGLESTRIP ||
+      vertex_count != 4u || !vertex_data || stride != 44u || fvf != 594u ||
+      g_active_vs_hash != 0 || g_active_ps_hash != 0 ||
+      !EnsureNativeTerrainProgram()) {
+    return false;
+  }
+
+  const DWORD color_op0 = StageStateValue(
+      0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+  const DWORD color_arg10 = StageStateValue(
+      0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+  const DWORD color_arg20 = StageStateValue(
+      0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+  const DWORD color_op1 = StageStateValue(
+      1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+  const DWORD color_source10 = color_arg10 & 0xFu;
+  const DWORD color_source20 = color_arg20 & 0xFu;
+  const bool stage0_modulates_texture_and_diffuse =
+      (color_source10 == D3DTA_TEXTURE &&
+       (color_source20 == D3DTA_DIFFUSE || color_source20 == D3DTA_CURRENT)) ||
+      (color_source20 == D3DTA_TEXTURE &&
+       (color_source10 == D3DTA_DIFFUSE || color_source10 == D3DTA_CURRENT));
+  if (color_op0 != D3DTOP_MODULATE ||
+      !stage0_modulates_texture_and_diffuse ||
+      (color_op1 != D3DTOP_DISABLE && color_op1 != D3DTOP_SELECTARG1 &&
+       color_op1 != D3DTOP_MODULATE && color_op1 != D3DTOP_MODULATE2X &&
+       color_op1 != D3DTOP_ADD)) {
+    return false;
+  }
+
+  std::array<GLint, 8> light_types{};
+  std::array<float, 8 * 3> light_positions{};
+  std::array<float, 8 * 3> light_directions{};
+  std::array<float, 8 * 4> light_diffuse{};
+  std::array<float, 8 * 4> light_ambient{};
+  std::array<float, 8> light_ranges{};
+  std::array<float, 8 * 3> light_attenuation{};
+  std::array<float, 8 * 4> light_spot{};
+  int light_count = 0;
+  UpdateDirectionalLightViewCache();
+  for (size_t index = 0; index < g_wasm_d3d9_state.lights.size(); ++index) {
+    if (!g_wasm_d3d9_state.light_enabled[index]) continue;
+    const D3DLIGHT9& light = g_wasm_d3d9_state.lights[index];
+    light_types[light_count] = static_cast<GLint>(light.Type);
+    const D3DXVECTOR3 view_position = TransformPositionToView(light.Position);
+    light_positions[light_count * 3 + 0] = view_position.x;
+    light_positions[light_count * 3 + 1] = view_position.y;
+    light_positions[light_count * 3 + 2] = view_position.z;
+    const D3DXVECTOR3 direction = light.Type == D3DLIGHT_DIRECTIONAL
+        ? g_directional_to_light_view[index]
+        : Normalize3(TransformDirectionToView(light.Direction));
+    light_directions[light_count * 3 + 0] = direction.x;
+    light_directions[light_count * 3 + 1] = direction.y;
+    light_directions[light_count * 3 + 2] = direction.z;
+    const D3DCOLORVALUE colors[2]{light.Diffuse, light.Ambient};
+    std::array<float, 8 * 4>* destinations[2]{
+        &light_diffuse, &light_ambient};
+    for (int kind = 0; kind < 2; ++kind) {
+      (*destinations[kind])[light_count * 4 + 0] = colors[kind].r;
+      (*destinations[kind])[light_count * 4 + 1] = colors[kind].g;
+      (*destinations[kind])[light_count * 4 + 2] = colors[kind].b;
+      (*destinations[kind])[light_count * 4 + 3] = colors[kind].a;
+    }
+    light_ranges[light_count] = light.Range;
+    light_attenuation[light_count * 3 + 0] = light.Attenuation0;
+    light_attenuation[light_count * 3 + 1] = light.Attenuation1;
+    light_attenuation[light_count * 3 + 2] = light.Attenuation2;
+    light_spot[light_count * 4 + 0] = std::cos(light.Theta * 0.5f);
+    light_spot[light_count * 4 + 1] = std::cos(light.Phi * 0.5f);
+    light_spot[light_count * 4 + 2] = light.Falloff;
+    ++light_count;
+  }
+
+  D3DXMATRIX world_view{};
+  D3DXMATRIX wvp{};
+  D3DXMatrixMultiply(&world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.world[0]),
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.view));
+  D3DXMatrixMultiply(&wvp, &world_view,
+      reinterpret_cast<const D3DXMATRIX*>(&g_ffp_state.proj));
+  const D3DXMATRIX world_view_normal = BuildInverseTranspose(world_view);
+
+  WasmNativeTerrainProgram& terrain = g_native_terrain_program;
+  glUseProgram(terrain.program);
+  terrain.ring_index = (terrain.ring_index + 1u) % terrain.vbo.size();
+  const GLuint vbo = terrain.vbo[terrain.ring_index];
+  const GLsizeiptr byte_count =
+      static_cast<GLsizeiptr>(vertex_count) * static_cast<GLsizeiptr>(stride);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  if (terrain.capacities[terrain.ring_index] < byte_count) {
+    glBufferData(GL_ARRAY_BUFFER, byte_count, nullptr, GL_STREAM_DRAW);
+    terrain.capacities[terrain.ring_index] = byte_count;
+  }
+  glBufferSubData(GL_ARRAY_BUFFER, 0, byte_count, vertex_data);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+  const auto offset = [](uintptr_t value) {
+    return reinterpret_cast<const void*>(value);
+  };
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, offset(12));
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, offset(24));
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, offset(28));
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, offset(36));
+
+  glUniformMatrix4fv(terrain.uni_world_view, 1, GL_FALSE, &world_view._11);
+  glUniformMatrix4fv(
+      terrain.uni_world_view_normal, 1, GL_FALSE, &world_view_normal._11);
+  glUniformMatrix4fv(terrain.uni_wvp, 1, GL_FALSE, &wvp._11);
+  glUniform2f(terrain.uni_viewport_inv,
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Width)),
+      1.0f / static_cast<float>(std::max<DWORD>(1, g_wasm_d3d9_state.viewport.Height)));
+
+  const bool has_texture0 = BindTextureStage(0);
+  const bool has_texture1 = BindTextureStage(1);
+  glUniform1i(terrain.uni_sampler0, 0);
+  glUniform1i(terrain.uni_sampler1, 1);
+  glUniform1i(terrain.uni_use_texture0, has_texture0 ? 1 : 0);
+  glUniform1i(terrain.uni_use_texture1, has_texture1 ? 1 : 0);
+  glUniform1i(terrain.uni_color_op1, static_cast<GLint>(color_op1));
+  glUniform1i(terrain.uni_lighting_enable,
+              g_wasm_d3d9_state.lighting_enable != 0u ? 1 : 0);
+
+  const D3DCOLORVALUE global_ambient =
+      ColorValueFromARGB(g_wasm_d3d9_state.ambient);
+  const D3DMATERIAL9& material = g_wasm_d3d9_state.material;
+  const auto set_color = [](GLint location, const D3DCOLORVALUE& value) {
+    glUniform4f(location, value.r, value.g, value.b, value.a);
+  };
+  set_color(terrain.uni_global_ambient, global_ambient);
+  set_color(terrain.uni_material_diffuse, material.Diffuse);
+  set_color(terrain.uni_material_ambient, material.Ambient);
+  set_color(terrain.uni_material_emissive, material.Emissive);
+  glUniform1i(terrain.uni_diffuse_source,
+              static_cast<GLint>(g_wasm_d3d9_state.diffuse_material_source));
+  glUniform1i(terrain.uni_ambient_source,
+              static_cast<GLint>(g_wasm_d3d9_state.ambient_material_source));
+  glUniform1i(terrain.uni_emissive_source,
+              static_cast<GLint>(g_wasm_d3d9_state.emissive_material_source));
+  glUniform1i(terrain.uni_light_count, light_count);
+  if (light_count > 0) {
+    glUniform1iv(terrain.uni_light_type, light_count, light_types.data());
+    glUniform3fv(terrain.uni_light_position, light_count,
+                 light_positions.data());
+    glUniform3fv(terrain.uni_light_direction, light_count,
+                 light_directions.data());
+    glUniform4fv(terrain.uni_light_diffuse, light_count,
+                 light_diffuse.data());
+    glUniform4fv(terrain.uni_light_ambient, light_count,
+                 light_ambient.data());
+    glUniform1fv(terrain.uni_light_range, light_count, light_ranges.data());
+    glUniform3fv(terrain.uni_light_attenuation, light_count,
+                 light_attenuation.data());
+    glUniform4fv(terrain.uni_light_spot, light_count, light_spot.data());
+  }
+
+  const bool fog_enabled =
+      ((g_debug_ffp_flags & kDebugDisableFog) == 0u) &&
+      g_wasm_d3d9_state.fog_enable != 0u &&
+      g_wasm_d3d9_state.fog_vertex_mode != D3DFOG_NONE;
+  const D3DCOLORVALUE fog_color =
+      ColorValueFromARGB(g_wasm_d3d9_state.fog_color);
+  glUniform1i(terrain.uni_fog_enable, fog_enabled ? 1 : 0);
+  glUniform1i(terrain.uni_fog_mode,
+              static_cast<GLint>(g_wasm_d3d9_state.fog_vertex_mode));
+  glUniform1f(terrain.uni_fog_start, g_wasm_d3d9_state.fog_start);
+  glUniform1f(terrain.uni_fog_end, g_wasm_d3d9_state.fog_end);
+  glUniform1f(terrain.uni_fog_density, g_wasm_d3d9_state.fog_density);
+  glUniform1i(terrain.uni_range_fog_enable,
+              g_wasm_d3d9_state.range_fog_enable != 0u ? 1 : 0);
+  set_color(terrain.uni_fog_color, fog_color);
+  const bool alpha_test_enabled =
+      ((g_debug_ffp_flags & kDebugDisableAlphaTest) == 0u) &&
+      g_wasm_d3d9_state.alpha_test_enable != 0u &&
+      g_wasm_d3d9_state.alpha_func != D3DCMP_ALWAYS;
+  glUniform1i(terrain.uni_alpha_test_enable,
+              alpha_test_enabled ? 1 : 0);
+  glUniform1f(terrain.uni_alpha_ref,
+              static_cast<float>(g_wasm_d3d9_state.alpha_ref & 0xFFu) / 255.0f);
+  glUniform1i(terrain.uni_alpha_func,
+              static_cast<GLint>(g_wasm_d3d9_state.alpha_func));
+  glUniform1i(terrain.uni_linear_color,
+              g_wasm_d3d9_state.blend_enabled ? 0 : 1);
+
+  const bool depth_test_enabled =
+      g_wasm_d3d9_state.z_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthTest) == 0u);
+  const bool depth_write_enabled =
+      g_wasm_d3d9_state.z_write_enable &&
+      ((g_debug_ffp_flags & kDebugDisableDepthWrite) == 0u);
+  SetCapabilityCached(GL_DEPTH_TEST, depth_test_enabled);
+  SetDepthFuncCached(DepthFuncFromD3D(g_wasm_d3d9_state.z_func));
+  SetDepthMaskCached(depth_write_enabled ? GL_TRUE : GL_FALSE);
+  const bool blend_enabled =
+      g_wasm_d3d9_state.blend_enabled &&
+      ((g_debug_ffp_flags & kDebugDisableBlend) == 0u);
+  SetCapabilityCached(GL_BLEND, blend_enabled);
+  if (blend_enabled) ApplyBlendState();
+  if ((g_debug_ffp_flags & kDebugDisableCull) != 0u)
+    SetCapabilityCached(GL_CULL_FACE, false);
+  else
+    ApplyCullState(IsMirroredMatrix3x3(
+        *reinterpret_cast<const D3DMATRIX*>(&world_view)));
+  SetCapabilityCached(GL_SAMPLE_ALPHA_TO_COVERAGE, false);
+
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, static_cast<GLsizei>(vertex_count));
+  const GLenum draw_error = glGetError();
+  g_ffp_program.program_bound = false;
+  g_ffp_program.vertex_input_bound = false;
+  g_ffp_program.index_buffer_bound = false;
+  return draw_error == GL_NO_ERROR;
+}
+
 void ReleaseBoundResources() {
   if (g_ffp_state.vertex_decl) {
     g_ffp_state.vertex_decl->Release();
@@ -12955,6 +13503,19 @@ HRESULT WydD3D9Device_DrawPrimitiveUP(
   if (ShouldSkipFVFDraw(fvf)) return S_OK;
   const UINT stride = EffectiveStride(fvf, vertex_stream_zero_stride);
   if (stride == 0) return D3DERR_INVALIDCALL;
+
+  if (TryDrawNativeTerrainUP(
+          primitive_type,
+          vertex_count,
+          vertex_stream_zero_data,
+          stride,
+          fvf)) {
+    OpenWydNativeRendererPromoteLastCommand();
+    g_ffp_state.draw_calls += 1;
+    g_ffp_state.primitive_count += primitive_count;
+    ResetUPStreamState(false);
+    return S_OK;
+  }
 
   std::vector<FFPVertex>& vertices = g_draw_scratch.decoded_vertices;
   vertices.clear();
