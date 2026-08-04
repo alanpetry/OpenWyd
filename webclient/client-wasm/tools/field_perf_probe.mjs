@@ -26,6 +26,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--url" && argv[i + 1]) opts.url = argv[++i];
+    else if (arg === "--warmup-ticks" && argv[i + 1]) opts.warmupTicks = Number.parseInt(argv[++i], 10) || opts.warmupTicks;
     else if (arg === "--samples" && argv[i + 1]) opts.samples = Number.parseInt(argv[++i], 10) || opts.samples;
     else if (arg === "--ticks-per-sample" && argv[i + 1]) opts.ticksPerSample = Number.parseInt(argv[++i], 10) || opts.ticksPerSample;
     else if (arg === "--tick-ms" && argv[i + 1]) opts.tickMs = Number.parseInt(argv[++i], 10) || 0;
@@ -37,6 +38,7 @@ function parseArgs(argv) {
 
 function harnessUrl(opts) {
   const url = new URL(opts.url);
+  url.searchParams.set("mode", "play");
   url.searchParams.set("state", "0");
   url.searchParams.set("logical", `${opts.logical.width}x${opts.logical.height}`);
   url.searchParams.set("layout", opts.layout);
@@ -98,6 +100,13 @@ async function tickAndRead(page, count, tickMs) {
         sight: call("_wyd_debug_camera_sight_length"),
       },
       draws: {
+        renderer: {
+          optimized: call("_wyd_optimized_view_enabled"),
+          backend: call("_wyd_renderer_backend"),
+          nativeEnabled: call("_wyd_native_renderer_enabled"),
+          nativeCommands: call("_wyd_native_renderer_last_command_count"),
+          nativeFallbacks: call("_wyd_native_renderer_last_fallback_draws"),
+        },
         total: call("_wyd_d3d9_draw_calls"),
         primitives: call("_wyd_d3d9_primitives"),
         glErrors: call("_wyd_d3d9_gl_error_total"),
