@@ -76,6 +76,7 @@ page.on("console", (message) => {
 page.on("pageerror", (error) => consoleErrors.push(error?.message || String(error)));
 
 const url = new URL(baseUrl);
+const expectNativeWebGL2 = url.searchParams.get("renderer") === "native-webgl2";
 url.searchParams.set("mode", "play");
 url.searchParams.set("displayMode", "optimized");
 url.searchParams.set("quality", qualityProfile);
@@ -90,6 +91,7 @@ const result = {
   url: url.toString(),
   qualityProfile,
   browserName,
+  expectNativeWebGL2,
   samples: [],
   consoleErrors,
   consoleLog,
@@ -130,6 +132,10 @@ async function sample(label) {
         worldSamples: call("_wyd_d3d9_optimized_world_samples"),
         gameState: call("_wyd_get_game_state"),
         glErrors: call("_wyd_d3d9_gl_error_total"),
+        nativeCommands: call("_wyd_native_renderer_last_command_count"),
+        nativeFallbacks: call("_wyd_native_renderer_last_fallback_draws"),
+        offlineHdLoaded: call("_wyd_d3d9_optimized_offline_hd_loaded"),
+        offlineHdRejected: call("_wyd_d3d9_optimized_offline_hd_rejected"),
         assetOpenFailures: call("_wyd_d3d9_asset_file_open_fail"),
         assetOpenFailureSamples: Array.from(
           { length: assetFailureCount },
@@ -157,6 +163,15 @@ async function sample(label) {
 try {
   await page.goto(url.toString(), { waitUntil: "load", timeout: 120000 });
   await page.waitForFunction(() => window.__runtimeReady === true, null, { timeout: 120000 });
+  // Public-demo boot intentionally stops at character selection.  The visual
+  // smoke exercises the deterministic Field fixture, so request it only after
+  // the runtime is ready instead of assuming the URL state wins the demo boot.
+  await page.evaluate(() => {
+    window.stopAutoTick?.();
+    Module._wyd_set_field_mode?.(1);
+    Module._wyd_set_game_state?.(0);
+    for (let tick = 0; tick < 4; tick += 1) Module._wyd_tick_client?.();
+  });
   await page.waitForFunction(() => (
     typeof window.Module?._wyd_get_game_state === "function" &&
     window.Module._wyd_get_game_state() === 0
@@ -213,6 +228,10 @@ try {
     ) &&
     entry.runtime.gameState === 0 &&
     entry.runtime.glErrors === 0 &&
+    (!expectNativeWebGL2 || (
+      entry.runtime.nativeCommands > 0 &&
+      entry.runtime.nativeFallbacks === 0
+    )) &&
     entry.assets.packageBytes > 0 &&
     entry.navigationEntries === 1 &&
     entry.canvas.cssWidth === entry.viewport.width &&
