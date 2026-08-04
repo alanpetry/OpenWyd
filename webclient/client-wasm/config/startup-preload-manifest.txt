@@ -87,6 +87,12 @@ v769ClientRelease/Mesh/**/*.wys@/Mesh/
 v769ClientRelease/Mesh/**/*.dat@/Mesh/
 v769ClientRelease/Mesh/KK01bon@/Mesh/KK01bon
 
+# Offline derivatives are identity-checked against their official source and
+# remain disabled unless the Native WebGL2 optimized path explicitly enables
+# the experiment.
+webclient/client-wasm/assets/optimized-hd/**/*.owhd@/OptimizedHD/
+webclient/client-wasm/assets/optimized-hd/generated-manifest.json@/OptimizedHD/generated-manifest.json
+
 # Sound effects are retained in the synchronous filesystem. MP3 music is
 # streamed from the same origin on demand and must not block initial startup.
 v769ClientRelease/Sound/**/*@/Sound/

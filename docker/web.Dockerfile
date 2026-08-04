@@ -21,6 +21,8 @@ COPY webclient/client-wasm/tools/build_wasm_asset_bundle.py \
     webclient/client-wasm/tools/generate_gdi_font_atlas.cpp \
     /src/webclient/client-wasm/tools/
 COPY webclient/client-wasm/assets/gdi-font /tmp/openwyd-gdi-font
+COPY webclient/client-wasm/assets/optimized-hd \
+    /src/webclient/client-wasm/assets/optimized-hd
 
 RUN --mount=type=cache,id=openwyd-emscripten-system-${TARGETARCH},target=/emsdk/upstream/emscripten/cache \
     --mount=type=cache,id=openwyd-asset-hashes-${TARGETARCH},target=/src/webclient/client-wasm/build/cache \

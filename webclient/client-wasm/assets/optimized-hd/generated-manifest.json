@@ -1,0 +1,282 @@
+{
+  "format": "OWHDv1",
+  "generated": [
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08080.wys.owhd",
+      "outputSha256": "0629ecef95b80bb53bede235f195f3b1527321678078168b66f6400faafc32ac",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08080.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 7.837158,
+      "sourceFnv1a64": "c892ad955f90c5b1",
+      "sourceSha256": "7f0ecdf78f392bfb67f994eeca05bb3a4ea69537eee58a9828434a8817d1b2b7",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08081.wys.owhd",
+      "outputSha256": "0629ecef95b80bb53bede235f195f3b1527321678078168b66f6400faafc32ac",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08081.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 7.837158,
+      "sourceFnv1a64": "c892ad955f90c5b1",
+      "sourceSha256": "7f0ecdf78f392bfb67f994eeca05bb3a4ea69537eee58a9828434a8817d1b2b7",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08090.wys.owhd",
+      "outputSha256": "0c653cdf728cb93cfee351762033a82acaaf9ed26d434f59ff50a167dc643f70",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08090.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.543111,
+      "sourceFnv1a64": "43338ade64ff5f45",
+      "sourceSha256": "c4715c50a22823feb1f7c4d8478fe92bfd64a97a9b885e11fe96ed5f02f567a9",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08091.wys.owhd",
+      "outputSha256": "f2145de4e77f994a72d6b3bb099a31b3e498b57d9501cddfadafa7b56aa9d540",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08091.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.771932,
+      "sourceFnv1a64": "772c9de33a74a326",
+      "sourceSha256": "95ad961b5bcc7965b417c3aca119d2ee760fa19f11169e2fe645c904c151859a",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08092.wys.owhd",
+      "outputSha256": "426d446362266e33709b432e150b45e1fe5d78855c72560ca82c6b344ff41b00",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08092.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 7.314596,
+      "sourceFnv1a64": "c5c341798aa21c2a",
+      "sourceSha256": "7e30e7353eb9e9dac0755c37e9871393ff871cdc0e03ab71733ec9277fabef75",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile08093.wys.owhd",
+      "outputSha256": "70884c127ad8b2e05148b73e452b1ec1f92fe15793e7db799b5aacb0a3f14978",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile08093.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 7.257548,
+      "sourceFnv1a64": "225390bcab51e3bb",
+      "sourceSha256": "af37a8f4d8628be00c24e3324096680a7ca3118c0b7817b3e09762ee209fe874",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile09090.wys.owhd",
+      "outputSha256": "e7f39d5ca978fd7b9b885a8b6ce5edf9cffff021efe7aea6463013834c40d89c",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile09090.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.642049,
+      "sourceFnv1a64": "1ccbf5c79dc8e44a",
+      "sourceSha256": "2d114c7824f3e6c1a29294651e85a27385a249494dfef9654da12268cc5ef3e6",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile09091.wys.owhd",
+      "outputSha256": "e7f39d5ca978fd7b9b885a8b6ce5edf9cffff021efe7aea6463013834c40d89c",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile09091.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.642049,
+      "sourceFnv1a64": "1ccbf5c79dc8e44a",
+      "sourceSha256": "2d114c7824f3e6c1a29294651e85a27385a249494dfef9654da12268cc5ef3e6",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile01080.wys.owhd",
+      "outputSha256": "4de460bfc6dff1e96568acefd233420e057a45725d8a14dbb239ff64ac537d7b",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile01080.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.94694,
+      "sourceFnv1a64": "e37a2fa0fa1cd666",
+      "sourceSha256": "4535a686018ace7847d1a89e23a585b06729f42f29ab37499eeb2ec89403460f",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile01081.wys.owhd",
+      "outputSha256": "4421b37ee6bc659b6005f3d194c83d58d72555eaa286b71b143ec47e71d6e27f",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile01081.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.935954,
+      "sourceFnv1a64": "0c34343ba8ebcbd2",
+      "sourceSha256": "d142d07d8ccbf0cbeb7c4c881eb640afaad5c73106e93c4c5463fac95de309e4",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile01082.wys.owhd",
+      "outputSha256": "b507572f0bedaa08d8eeb1c0e8c195d245512029349a90ec685a80aceee98bf5",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile01082.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.354105,
+      "sourceFnv1a64": "edee242aa2125af2",
+      "sourceSha256": "3c31452ce204731f6e87e55e56a315451ece3d86e332ac203db466fb40e9b35e",
+      "sourceSize": [
+        128,
+        128
+      ]
+    },
+    {
+      "catalogAlphaMode": "N",
+      "colorPolicy": "official-local-color-v1",
+      "mipCount": 10,
+      "mipPolicy": "unassociated-rgba-lanczos-v1",
+      "model": "RealESRGAN_x4plus",
+      "modelSha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "output": "webclient/client-wasm/assets/optimized-hd/Env/tile01083.wys.owhd",
+      "outputSha256": "e6c115cc283291c745a161ed9447a8c814686992a596327533455980a5e78e72",
+      "outputSize": [
+        512,
+        512
+      ],
+      "source": "Env/tile01083.wys",
+      "sourceAlphaDelta": 0.0,
+      "sourceColorDelta": 6.2217,
+      "sourceFnv1a64": "9fc2e498fe83f1ed",
+      "sourceSha256": "651168af8fb0264db4350ca75e8adea3d70cbd92550667db7036b673c62c47d3",
+      "sourceSize": [
+        128,
+        128
+      ]
+    }
+  ],
+  "schemaVersion": 1
+}
