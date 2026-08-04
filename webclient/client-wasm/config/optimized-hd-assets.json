@@ -1,0 +1,125 @@
+{
+  "entries": [
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010141.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010241.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010346.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010446.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010546.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ch010646.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/aawhammerone.wys"
+    },
+    {
+      "approved": false,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Mesh/ksob28.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08080.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08081.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08090.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08091.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08092.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile08093.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile09090.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile09091.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile01080.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile01081.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile01082.wys"
+    },
+    {
+      "approved": true,
+      "model": "RealESRGAN_x4plus",
+      "scale": 4,
+      "source": "Env/tile01083.wys"
+    }
+  ],
+  "schemaVersion": 1
+}

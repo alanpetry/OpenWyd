@@ -564,6 +564,17 @@ uint64_t g_optimized_material_hd_model_textures = 0;
 uint64_t g_optimized_material_hd_model_source_pixels = 0;
 std::vector<std::string> g_optimized_material_hd_samples;
 int g_optimized_material_hd_override = -1;
+// Every shipped derivative passed the normal-camera A/B gate. The loader is
+// still restricted to Optimized + Native WebGL2 and rejects stale source
+// identities, so Legacy always renders the untouched official asset.
+bool g_optimized_offline_hd_enabled = true;
+uint64_t g_optimized_offline_hd_loaded = 0;
+uint64_t g_optimized_offline_hd_rejected = 0;
+uint64_t g_optimized_offline_hd_source_pixels = 0;
+uint64_t g_optimized_offline_hd_physical_pixels = 0;
+std::vector<std::string> g_optimized_offline_hd_samples;
+std::vector<std::string> g_drawn_texture_paths;
+std::unordered_set<std::string> g_drawn_texture_path_seen;
 uint64_t g_native_buffer_uploads = 0;
 uint64_t g_native_buffer_upload_bytes = 0;
 uint64_t g_native_resident_draws = 0;
@@ -1389,6 +1400,8 @@ class DummyDirect3DVertexDeclaration9 final : public IDirect3DVertexDeclaration9
 };
 
 uint64_t HashShaderBytecode(const std::vector<DWORD>& bytecode);
+uint64_t Fnv1a64(const uint8_t* data, size_t size);
+uint64_t HashTextureSourceFile(const std::string& source_path);
 
 class DummyDirect3DVertexShader9 final : public IDirect3DVertexShader9, private ComRefBase {
  public:
@@ -1483,6 +1496,10 @@ class DummyDirect3DTexture9 final : public IDirect3DTexture9, private ComRefBase
   UINT pitch = 4;
   std::vector<uint8_t> pixels;
   std::vector<DecodedTextureMip> embedded_mips;
+  std::vector<DecodedTextureMip> optimized_hd_mips;
+  uint64_t source_file_hash = 0;
+  bool optimized_hd_checked = false;
+  bool optimized_hd_valid = false;
   bool locked = false;
   GLuint gl_texture = 0;
   bool gl_dirty = true;
@@ -5037,9 +5054,16 @@ HRESULT D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9*,
 
   auto* tex = new DummyDirect3DTexture9(w, h, MipLevels, texture_format, Pool);
   if (!tex) return E_OUTOFMEMORY;
+  if (pSrcData && SrcDataSize > 0) {
+    tex->source_file_hash = Fnv1a64(
+        static_cast<const uint8_t*>(pSrcData),
+        static_cast<size_t>(SrcDataSize));
+  }
   if (pSrcData && SrcDataSize > 0 && !g_last_closed_debug_source_path.empty()) {
     tex->debug_source_path = g_last_closed_debug_source_path;
     tex->debug_category_flags = ComputeTextureCategoryFlags(tex->debug_source_path);
+    const uint64_t file_hash = HashTextureSourceFile(tex->debug_source_path);
+    if (file_hash != 0) tex->source_file_hash = file_hash;
     g_last_closed_debug_source_path.clear();
   }
   // TMFont2 owns a single-line 512x64 atlas in Legacy and a 512x128 2x-raster
@@ -6502,6 +6526,189 @@ uint64_t HashShaderBytecode(const std::vector<DWORD>& bytecode) {
   return Fnv1a64(
       reinterpret_cast<const uint8_t*>(bytecode.data()),
       bytecode.size() * sizeof(DWORD));
+}
+
+uint64_t HashTextureSourceFile(const std::string& source_path) {
+  if (source_path.empty()) return 0;
+  const std::filesystem::path resolved = ResolveCaseInsensitivePath(source_path.c_str());
+  std::ifstream input(resolved, std::ios::binary);
+  if (!input) return 0;
+  std::vector<uint8_t> bytes(
+      (std::istreambuf_iterator<char>(input)),
+      std::istreambuf_iterator<char>());
+  return bytes.empty() ? 0 : Fnv1a64(bytes.data(), bytes.size());
+}
+
+std::string OptimizedHdVirtualPath(const std::string& source_path) {
+  std::string normalized = ToLowerCopy(NormalizeWinPath(source_path.c_str()));
+  while (!normalized.empty() && normalized.front() == '/') normalized.erase(normalized.begin());
+  static constexpr std::array<const char*, 5> kAssetRoots{
+      "mesh/", "env/", "effect/", "ui/", "nui/"};
+  size_t asset_offset = std::string::npos;
+  for (const char* root : kAssetRoots) {
+    const size_t found = normalized.find(root);
+    if (found != std::string::npos &&
+        (asset_offset == std::string::npos || found < asset_offset)) {
+      asset_offset = found;
+    }
+  }
+  if (asset_offset == std::string::npos) return {};
+  normalized.erase(0, asset_offset);
+  if (normalized.find("..") != std::string::npos) return {};
+  return "/OptimizedHD/" + normalized + ".owhd";
+}
+
+void TrackOptimizedHdSample(const std::string& value) {
+  if (g_optimized_offline_hd_samples.size() < 64u)
+    g_optimized_offline_hd_samples.push_back(value);
+}
+
+bool EnsureOptimizedOfflineHdTexture(DummyDirect3DTexture9* tex) {
+  if (!tex || tex->optimized_hd_checked) return tex && tex->optimized_hd_valid;
+  tex->optimized_hd_checked = true;
+  if (!g_optimized_offline_hd_enabled || wyd_optimized_view_enabled() == 0 ||
+      !OpenWydNativeRendererEnabled() || tex->source_file_hash == 0 ||
+      tex->debug_source_path.empty()) {
+    return false;
+  }
+
+  const std::string virtual_path = OptimizedHdVirtualPath(tex->debug_source_path);
+  if (virtual_path.empty()) return false;
+  const std::filesystem::path resolved = ResolveCaseInsensitivePath(virtual_path.c_str());
+  std::error_code file_error;
+  if (!std::filesystem::is_regular_file(resolved, file_error) || file_error) return false;
+  const uintmax_t file_size = std::filesystem::file_size(resolved, file_error);
+  constexpr uintmax_t kMaxOptimizedHdBytes = 256u * 1024u * 1024u;
+  if (file_error || file_size < 40u || file_size > kMaxOptimizedHdBytes) {
+    ++g_optimized_offline_hd_rejected;
+    TrackOptimizedHdSample(tex->debug_source_path + " rejected:size");
+    return false;
+  }
+
+  std::ifstream input(resolved, std::ios::binary);
+  std::vector<uint8_t> bytes(
+      (std::istreambuf_iterator<char>(input)),
+      std::istreambuf_iterator<char>());
+  static constexpr std::array<uint8_t, 8> kMagic{
+      'O', 'W', 'H', 'D', 'v', '1', 0, 0};
+  const auto reject = [&](const char* reason) {
+    ++g_optimized_offline_hd_rejected;
+    TrackOptimizedHdSample(tex->debug_source_path + " rejected:" + reason);
+    return false;
+  };
+  if (bytes.size() != static_cast<size_t>(file_size) || bytes.size() < 40u ||
+      std::memcmp(bytes.data(), kMagic.data(), kMagic.size()) != 0) {
+    return reject("header");
+  }
+
+  const uint32_t version = ReadUnaligned<uint32_t>(bytes.data() + 8u);
+  const uint32_t header_size = ReadUnaligned<uint32_t>(bytes.data() + 12u);
+  const uint64_t source_hash = ReadUnaligned<uint64_t>(bytes.data() + 16u);
+  const uint32_t source_width = ReadUnaligned<uint32_t>(bytes.data() + 24u);
+  const uint32_t source_height = ReadUnaligned<uint32_t>(bytes.data() + 28u);
+  const uint32_t mip_count = ReadUnaligned<uint32_t>(bytes.data() + 32u);
+  if (version != 1u || header_size != 40u || source_hash != tex->source_file_hash ||
+      source_width != tex->width || source_height != tex->height ||
+      mip_count == 0u || mip_count > 16u) {
+    return reject("identity");
+  }
+
+  GLint max_texture_size = 0;
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
+  size_t cursor = header_size;
+  std::vector<DecodedTextureMip> mips;
+  mips.reserve(mip_count);
+  uint32_t previous_width = 0;
+  uint32_t previous_height = 0;
+  for (uint32_t level = 0; level < mip_count; ++level) {
+    if (cursor > bytes.size() || bytes.size() - cursor < 12u) return reject("truncated");
+    const uint32_t width = ReadUnaligned<uint32_t>(bytes.data() + cursor);
+    const uint32_t height = ReadUnaligned<uint32_t>(bytes.data() + cursor + 4u);
+    const uint32_t rgba_bytes = ReadUnaligned<uint32_t>(bytes.data() + cursor + 8u);
+    cursor += 12u;
+    const uint64_t expected_bytes = static_cast<uint64_t>(width) * height * 4u;
+    if (width == 0u || height == 0u || width > static_cast<uint32_t>(max_texture_size) ||
+        height > static_cast<uint32_t>(max_texture_size) || expected_bytes != rgba_bytes ||
+        cursor > bytes.size() || rgba_bytes > bytes.size() - cursor) {
+      return reject("mip");
+    }
+    if (level == 0u) {
+      if (width <= source_width || height <= source_height ||
+          width / source_width != height / source_height) {
+        return reject("scale");
+      }
+    } else if (width != std::max(1u, previous_width / 2u) ||
+               height != std::max(1u, previous_height / 2u)) {
+      return reject("chain");
+    }
+    DecodedTextureMip mip{};
+    mip.width = width;
+    mip.height = height;
+    mip.rgba.assign(bytes.begin() + static_cast<ptrdiff_t>(cursor),
+                    bytes.begin() + static_cast<ptrdiff_t>(cursor + rgba_bytes));
+    mips.push_back(std::move(mip));
+    cursor += rgba_bytes;
+    previous_width = width;
+    previous_height = height;
+  }
+  if (cursor != bytes.size()) return reject("trailing");
+
+  tex->optimized_hd_mips = std::move(mips);
+  tex->optimized_hd_valid = true;
+  ++g_optimized_offline_hd_loaded;
+  g_optimized_offline_hd_source_pixels +=
+      static_cast<uint64_t>(source_width) * source_height;
+  g_optimized_offline_hd_physical_pixels +=
+      static_cast<uint64_t>(tex->optimized_hd_mips.front().width) *
+      tex->optimized_hd_mips.front().height;
+  TrackOptimizedHdSample(
+      tex->debug_source_path + " " + std::to_string(source_width) + "x" +
+      std::to_string(source_height) + "->" +
+      std::to_string(tex->optimized_hd_mips.front().width) + "x" +
+      std::to_string(tex->optimized_hd_mips.front().height));
+  return true;
+}
+
+extern "C" void wyd_d3d9_set_optimized_offline_hd_enabled(int enabled) {
+  g_optimized_offline_hd_enabled = enabled != 0;
+}
+
+extern "C" int wyd_d3d9_optimized_offline_hd_enabled() {
+  return g_optimized_offline_hd_enabled ? 1 : 0;
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_offline_hd_loaded() {
+  return static_cast<uint32_t>(g_optimized_offline_hd_loaded);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_offline_hd_rejected() {
+  return static_cast<uint32_t>(g_optimized_offline_hd_rejected);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_offline_hd_source_pixels() {
+  return static_cast<uint32_t>(g_optimized_offline_hd_source_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_offline_hd_physical_pixels() {
+  return static_cast<uint32_t>(g_optimized_offline_hd_physical_pixels);
+}
+
+extern "C" uint32_t wyd_d3d9_optimized_offline_hd_sample_count() {
+  return static_cast<uint32_t>(g_optimized_offline_hd_samples.size());
+}
+
+extern "C" const char* wyd_d3d9_optimized_offline_hd_sample(uint32_t index) {
+  return index < g_optimized_offline_hd_samples.size()
+      ? g_optimized_offline_hd_samples[index].c_str()
+      : "";
+}
+
+extern "C" uint32_t wyd_d3d9_drawn_texture_path_count() {
+  return static_cast<uint32_t>(g_drawn_texture_paths.size());
+}
+
+extern "C" const char* wyd_d3d9_drawn_texture_path(uint32_t index) {
+  return index < g_drawn_texture_paths.size() ? g_drawn_texture_paths[index].c_str() : "";
 }
 
 void TrackShaderCreate(
@@ -10140,6 +10347,7 @@ GLint D3DFilterToGLMin(DWORD min_filter, DWORD mip_filter, bool mipmaps_availabl
 void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   if (stage >= kMaxTextureStages) return;
   if (!tex) return;
+  EnsureOptimizedOfflineHdTexture(tex);
 
   const DWORD addr_u = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSU];
   const DWORD addr_v = g_ffp_state.sampler[stage][D3DSAMP_ADDRESSV];
@@ -10152,7 +10360,9 @@ void ApplyTextureSamplerState(DWORD stage, DummyDirect3DTexture9* tex) {
   const DWORD mag_filter = g_ffp_state.sampler[stage][D3DSAMP_MAGFILTER];
   const DWORD mip_filter = g_ffp_state.sampler[stage][D3DSAMP_MIPFILTER];
   const bool mipmaps_available =
-      tex->embedded_mips.size() > 1u &&
+      (tex->optimized_hd_valid
+          ? tex->optimized_hd_mips.size()
+          : tex->embedded_mips.size()) > 1u &&
       IsPowerOfTwo(tex->width) && IsPowerOfTwo(tex->height);
   GLint gl_min_filter = D3DFilterToGLMin(min_filter, mip_filter, mipmaps_available);
   GLint gl_mag_filter = D3DFilterToGLMag(mag_filter);
@@ -10225,12 +10435,16 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
     tex->gl_dirty = true;
   }
   if (tex->gl_dirty) {
+    EnsureOptimizedOfflineHdTexture(tex);
+    const std::vector<DecodedTextureMip>& upload_mips = tex->optimized_hd_valid
+        ? tex->optimized_hd_mips
+        : tex->embedded_mips;
     const bool use_embedded_mips =
-        g_wasm_d3d9_state.webgl2 && tex->mip_levels != 1u &&
-        !tex->embedded_mips.empty();
+        g_wasm_d3d9_state.webgl2 && !upload_mips.empty() &&
+        (tex->optimized_hd_valid || tex->mip_levels != 1u);
     if (use_embedded_mips) {
-      for (size_t level = 0; level < tex->embedded_mips.size(); ++level) {
-        const DecodedTextureMip& mip = tex->embedded_mips[level];
+      for (size_t level = 0; level < upload_mips.size(); ++level) {
+        const DecodedTextureMip& mip = upload_mips[level];
         glTexImage2D(
             GL_TEXTURE_2D,
             static_cast<GLint>(level),
@@ -10245,7 +10459,7 @@ bool UploadBoundTexture(DummyDirect3DTexture9* tex) {
       glTexParameteri(
           GL_TEXTURE_2D,
           0x813D, // GL_TEXTURE_MAX_LEVEL (WebGL 2 / OpenGL ES 3)
-          static_cast<GLint>(tex->embedded_mips.size() - 1u));
+          static_cast<GLint>(upload_mips.size() - 1u));
     } else {
       std::vector<uint8_t> rgba;
       BuildGLTextureRGBA(tex, &rgba);
@@ -10303,6 +10517,12 @@ bool BindTextureStage(DWORD stage) {
   glBindTexture(GL_TEXTURE_2D, tex->gl_texture);
   ApplyTextureSamplerState(stage, tex);
   if (!UploadBoundTexture(tex)) return false;
+
+  if (stage == 0u && !tex->debug_source_path.empty() &&
+      g_drawn_texture_paths.size() < 512u &&
+      g_drawn_texture_path_seen.insert(tex->debug_source_path).second) {
+    g_drawn_texture_paths.push_back(tex->debug_source_path);
+  }
 
   g_tex_draw_count += 1;
   return true;
@@ -14241,6 +14461,9 @@ HRESULT WydD3D9Surface_UnlockRect(IDirect3DSurface9* surface) {
   s->locked = false;
   if (s->owner) {
     s->owner->embedded_mips.clear();
+    s->owner->optimized_hd_mips.clear();
+    s->owner->optimized_hd_valid = false;
+    s->owner->optimized_hd_checked = true;
     s->owner->gl_dirty = true;
   }
   return S_OK;
@@ -14315,6 +14538,9 @@ HRESULT WydD3D9Texture_UnlockRect(IDirect3DTexture9* texture, UINT level) {
   if (!tex) return D3DERR_INVALIDCALL;
   tex->locked = false;
   tex->embedded_mips.clear();
+  tex->optimized_hd_mips.clear();
+  tex->optimized_hd_valid = false;
+  tex->optimized_hd_checked = true;
   tex->gl_dirty = true;
   return S_OK;
 }

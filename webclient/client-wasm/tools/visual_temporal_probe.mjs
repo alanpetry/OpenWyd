@@ -63,6 +63,7 @@ function parseArgs(argv) {
     fixedTimeMs: null,
     tickMs: 16,
     cameraOffset: null,
+    offlineHd: false,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -78,7 +79,8 @@ function parseArgs(argv) {
       opts.label = next;
       i += 1;
     } else if (arg === "--state" && next) {
-      opts.state = Number.parseInt(next, 10) || opts.state;
+      const parsed = Number.parseInt(next, 10);
+      if (Number.isFinite(parsed)) opts.state = parsed;
       i += 1;
     } else if (arg === "--debug-flags" && next) {
       opts.debugFlags = Number.parseInt(next, 10) || 0;
@@ -109,6 +111,8 @@ function parseArgs(argv) {
     } else if (arg === "--camera-offset" && next) {
       opts.cameraOffset = parseCameraOffset(next);
       i += 1;
+    } else if (arg === "--offline-hd") {
+      opts.offlineHd = true;
     } else if (arg === "--trace-probe" && next) {
       const probe = parseTraceProbe(next);
       if (probe) {
@@ -538,6 +542,7 @@ try {
   await page.goto(opts.url, { waitUntil: "load", timeout: opts.timeoutMs });
   await page.waitForFunction(
     () => window.__runtimeReady === true || /runtime initialized/.test(document.getElementById("log")?.textContent || ""),
+    null,
     { timeout: opts.timeoutMs },
   );
   await page.evaluate(() => {
@@ -575,8 +580,17 @@ try {
       }
     });
   }
+  await page.evaluate((enabled) => {
+    if (typeof Module._wyd_d3d9_set_optimized_offline_hd_enabled === "function") {
+      Module._wyd_d3d9_set_optimized_offline_hd_enabled(enabled ? 1 : 0);
+    }
+  }, opts.offlineHd);
   result.boot = await page.evaluate(() => Module._wyd_boot_client(0));
   await page.evaluate(({ state, debugFlags, debugSkipFvf }) => {
+    if ((state === 0 || state === 9) &&
+        typeof Module._wyd_set_field_mode === "function") {
+      Module._wyd_set_field_mode(1);
+    }
     if (typeof Module._wyd_set_game_state === "function") Module._wyd_set_game_state(state);
     if (typeof Module._wyd_d3d9_set_debug_flags === "function") Module._wyd_d3d9_set_debug_flags(debugFlags >>> 0);
     if (typeof Module._wyd_d3d9_set_debug_skip_fvf === "function") Module._wyd_d3d9_set_debug_skip_fvf(debugSkipFvf >>> 0);
