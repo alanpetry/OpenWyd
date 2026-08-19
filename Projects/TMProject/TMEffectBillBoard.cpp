@@ -154,8 +154,23 @@ int TMEffectBillBoard::Render()
 
 		g_pDevice->SetTexture(0, g_pTextureManager->GetEffectTexture(m_nCycleIndex + m_nTextureIndex, 5000u));
 
-		if (g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u) < 0) 
+		if (g_pDevice->m_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2u, m_vertex, 24u) < 0)
+		{
+			g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
+			g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
+			g_pDevice->SetRenderState(D3DRS_SRCBLEND, 2u);
+			g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
+			g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
+			g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+			g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
+
+			if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
+				g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
+			else
+				g_pDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, 2u);
+
 			return 0;
+		}
 
 		g_pDevice->SetRenderState(D3DRS_CULLMODE, 3u);
 		g_pDevice->SetRenderState(D3DRS_LIGHTING, 1u);
@@ -163,6 +178,7 @@ int TMEffectBillBoard::Render()
 		g_pDevice->SetRenderState(D3DRS_ALPHAFUNC, 7u);
 		g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, 1u);
 		g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, 1u);
+		g_pDevice->SetRenderState(D3DRS_FOGENABLE, g_pDevice->m_bFog);
 
 		if (m_efAlphaType == EEFFECT_ALPHATYPE::EF_BRIGHT)
 			g_pDevice->SetRenderState(D3DRS_DESTBLEND, 6u);
@@ -335,16 +351,17 @@ int TMEffectBillBoard::FrameMove(unsigned int dwServerTime)
 	{
 		float fSin = sinf((m_fProgress * 3.1415927f) * m_fCircleSpeed);
 		m_vecPosition.y = (m_fProgress * m_fParticleV) + m_vecStartPos.y;
-		m_vecPosition.x = (fSin * m_fParticleH) + m_vecStartPos.x;
-		m_vecPosition.z = (m_fProgress * m_fParticleH) + m_vecStartPos.z;
+		m_vecPosition.x = (m_fProgress * m_fParticleH) + m_vecStartPos.x;
+		m_vecPosition.z = (fSin * m_fParticleH) + m_vecStartPos.z;
 	}
 	break;
 	case 4:
 	{
 		float fSin = sinf((m_fProgress * 3.1415927f) * m_fCircleSpeed);
+		float fCos = cosf((m_fProgress * 3.1415927f) * m_fCircleSpeed);
 		m_vecPosition.y = (m_fProgress * m_fParticleV) + m_vecStartPos.y;
-		m_vecPosition.x = (m_fProgress * m_fParticleH) + m_vecStartPos.x;
-		m_vecPosition.z = (fSin * m_fParticleH) + m_vecStartPos.z;
+		m_vecPosition.x = (fSin * m_fParticleH) + m_vecStartPos.x;
+		m_vecPosition.z = (fCos * m_fParticleH) + m_vecStartPos.z;
 	}
 	break;
 	case 5:
