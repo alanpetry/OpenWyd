@@ -188,6 +188,13 @@ using INT = int;
 using WCHAR = wchar_t;
 using CHAR = char;
 
+#ifndef D3DTA_TEMP
+#define D3DTA_TEMP 0x00000005
+#endif
+#ifndef D3DPMISCCAPS_TSSARGTEMP
+#define D3DPMISCCAPS_TSSARGTEMP 0x00000200L
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
